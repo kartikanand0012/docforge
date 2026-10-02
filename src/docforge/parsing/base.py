@@ -9,6 +9,10 @@ class ParseError(Exception):
     """The file could not be read as a PDF or the parser failed on it."""
 
 
+class DocumentTooLarge(ParseError):
+    """The document exceeds a configured limit (pages)."""
+
+
 class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 

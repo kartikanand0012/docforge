@@ -92,6 +92,27 @@ def test_retries_transient_errors_with_growing_delays(code: int) -> None:
     assert sleeps[0] < sleeps[1]
 
 
+def test_waits_as_long_as_the_api_asks_when_rate_limited() -> None:
+    limited = errors.APIError(
+        429,
+        {
+            "error": {
+                "message": "quota",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                    {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "7s"}
+                ],
+            }
+        },
+    )
+    sleeps: list[float] = []
+    gemini, _ = provider([limited, reply()], sleeps)
+
+    gemini.generate(REQUEST)
+
+    assert sleeps == [7.0]
+
+
 def test_gives_up_after_the_last_attempt() -> None:
     sleeps: list[float] = []
     gemini, models = provider([api_error(429)] * 4, sleeps)
