@@ -36,6 +36,12 @@ def test_single_character_substitution_is_detected() -> None:
     assert not is_valid_gstin("27AAPFU0938F1ZV")
 
 
+def test_entity_number_zero_is_rejected_even_with_a_correct_check_char() -> None:
+    first_14 = "27AAPFU0939F0Z"
+
+    assert not is_valid_gstin(first_14 + gstin_check_char(first_14))
+
+
 def test_make_gstin_produces_a_valid_gstin() -> None:
     gstin = make_gstin(state_code="24", pan="ABCDE1234F")
 

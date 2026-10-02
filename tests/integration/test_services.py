@@ -24,7 +24,7 @@ def http_status(url: str) -> int:
 
 
 def test_postgres_is_version_16(settings: Settings) -> None:
-    engine = create_engine(settings.database_url)
+    engine = create_engine(settings.database_url.get_secret_value())
     with engine.connect() as conn:
         version = conn.execute(text("SHOW server_version_num")).scalar_one()
     engine.dispose()

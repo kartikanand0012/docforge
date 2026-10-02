@@ -7,7 +7,7 @@ import pytest
 
 from docforge.gstin import is_valid_gstin
 from docforge.synth import DEFAULT_COUNT, DEFAULT_SEED
-from docforge.synth.builder import build_pair
+from docforge.synth.builder import build_pair, compute_totals, line_amounts
 from docforge.synth.models import DocumentPair, Party
 
 CENT = Decimal("0.01")
@@ -46,6 +46,84 @@ def test_set_covers_both_supply_types_layouts_and_schemes() -> None:
     assert {pair.layout for pair in PAIRS} == {"A", "B"}
     assert any(line.free_qty > 0 for pair in PAIRS for line in pair.invoice.lines)
     assert any(line.free_qty == 0 for pair in PAIRS for line in pair.invoice.lines)
+
+
+class TestHandComputedArithmetic:
+    """Expected values worked out by hand, so these do not mirror the implementation."""
+
+    def test_intra_state_line_with_discount(self) -> None:
+        # 20 x 59.51 = 1190.20; less 2% = 1166.396 -> 1166.40; 6% = 69.984 -> 69.98 each.
+        amounts = line_amounts(
+            qty=20,
+            ptr=Decimal("59.51"),
+            discount_pct=Decimal(2),
+            gst_rate=Decimal(12),
+            intra_state=True,
+        )
+
+        assert [str(value) for value in amounts] == ["1166.40", "69.98", "69.98", "0.00", "1306.36"]
+
+    def test_half_paisa_tie_rounds_each_tax_component_up(self) -> None:
+        # 10 x 10.02 = 100.20; 2.5% = 2.505, which rounds half-up to 2.51 for CGST and SGST
+        # separately. Their sum (5.02) is a paisa above 5% of the taxable value (5.01).
+        amounts = line_amounts(
+            qty=10,
+            ptr=Decimal("10.02"),
+            discount_pct=Decimal(0),
+            gst_rate=Decimal(5),
+            intra_state=True,
+        )
+
+        assert [str(value) for value in amounts] == ["100.20", "2.51", "2.51", "0.00", "105.22"]
+
+    def test_inter_state_line_charges_igst_only(self) -> None:
+        amounts = line_amounts(
+            qty=10,
+            ptr=Decimal("10.02"),
+            discount_pct=Decimal(0),
+            gst_rate=Decimal(5),
+            intra_state=False,
+        )
+
+        assert [str(value) for value in amounts] == ["100.20", "0.00", "0.00", "5.01", "105.21"]
+
+    @pytest.mark.parametrize(
+        ("taxable", "round_off", "grand_total"),
+        [
+            ("100.50", "0.50", "101.00"),  # exactly half a rupee rounds up
+            ("100.49", "-0.49", "100.00"),
+            ("100.00", "0.00", "100.00"),
+        ],
+    )
+    def test_grand_total_round_off(self, taxable: str, round_off: str, grand_total: str) -> None:
+        line = (
+            PAIRS[0]
+            .invoice.lines[0]
+            .model_copy(
+                update={
+                    "taxable_value": Decimal(taxable),
+                    "cgst": Decimal("0.00"),
+                    "sgst": Decimal("0.00"),
+                    "igst": Decimal("0.00"),
+                }
+            )
+        )
+
+        totals = compute_totals([line])
+
+        assert (str(totals.round_off), str(totals.grand_total)) == (round_off, grand_total)
+
+    def test_first_default_pair_totals(self) -> None:
+        # Checked by hand against the rendered invoice: 90677.93 + 2 x 4009.65 = 98697.23.
+        totals = PAIRS[0].invoice.totals
+
+        assert str(totals.taxable_value) == "90677.93"
+        assert (str(totals.cgst), str(totals.sgst), str(totals.igst)) == (
+            "4009.65",
+            "4009.65",
+            "0.00",
+        )
+        assert (str(totals.round_off), str(totals.grand_total)) == ("-0.23", "98697.00")
 
 
 @pytest.mark.parametrize("pair", PAIRS, ids=pair_ids)
