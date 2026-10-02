@@ -7,12 +7,13 @@ from importlib.metadata import version
 from docforge.config import Settings
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService, Pipeline
-from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
+from docforge.extraction.pipeline import INVOICE_SPEC, ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.llm.gemini import GeminiProvider
 from docforge.parsing.docling_parser import DoclingParser
 from docforge.parsing.isolation import IsolatedParser
 from docforge.queue import JobQueue
+from docforge.review.service import ReviewService
 from docforge.storage import S3ObjectStore
 
 
@@ -48,6 +49,16 @@ def load_pipelines(settings: Settings) -> dict[str, Pipeline]:
     factory = getattr(import_module(module_name), function_name)
     pipelines: dict[str, Pipeline] = factory(settings)
     return pipelines
+
+
+def build_review(settings: Settings) -> ReviewService:
+    """The review service, over the same database and store as the document service."""
+    database_url = settings.database_url.get_secret_value()
+    return ReviewService(
+        make_session_factory(make_engine(database_url)),
+        S3ObjectStore.from_settings(settings),
+        {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC},
+    )
 
 
 def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:

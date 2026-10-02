@@ -1,5 +1,6 @@
 """Review by a person: the queue, corrections, and signed approval or rejection."""
 
+import io
 import uuid
 from collections.abc import Callable
 from typing import Any
@@ -329,3 +330,28 @@ def test_a_page_of_the_original_is_served_as_an_image(world: World, review: Revi
     assert png.startswith(b"\x89PNG\r\n\x1a\n")
     with pytest.raises(LookupError):
         review.page_image(DEFAULT_TENANT_ID, invoice_id, 2)
+
+
+def test_the_command_line_adds_a_reviewer_reading_the_pin_from_standard_input(
+    sessions: SessionFactory,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    engine: Engine,
+) -> None:
+    from docforge.config import get_settings
+    from docforge.review.__main__ import main
+
+    monkeypatch.setenv("DATABASE_URL", engine.url.render_as_string(hide_password=False))
+    get_settings.cache_clear()
+    monkeypatch.setattr("sys.stdin", io.StringIO("135790\n"))
+    try:
+        assert main(["add-reviewer", "--name", "Ravi", "--email", "Ravi@Example.com"]) == 0
+        monkeypatch.setattr("sys.stdin", io.StringIO("12\n"))
+        assert main(["add-reviewer", "--name", "R", "--email", "r2@example.com"]) == 1
+    finally:
+        get_settings.cache_clear()
+
+    assert "Added reviewer" in capsys.readouterr().out
+    with sessions() as session:
+        stored = session.scalars(select(Reviewer).where(Reviewer.email == "ravi@example.com")).one()
+    assert verify_pin("135790", stored.pin_hash)

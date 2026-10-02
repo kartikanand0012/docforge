@@ -6,16 +6,19 @@
 
 import hashlib
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 
 from docforge import __version__
 from docforge.api.documents import documents_router
+from docforge.api.review import review_router
 from docforge.api.uploads import (
     DEFAULT_MAX_UPLOAD_BYTES,
     MULTIPART_OVERHEAD,
@@ -28,6 +31,7 @@ from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, Inv
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
+from docforge.review.service import ReviewService
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +85,21 @@ def create_app(
     *,
     service: DocumentService | None = None,
     max_pages: int = DEFAULT_MAX_PAGES,
+    review: ReviewService | None = None,
+    evals_dir: Path | None = None,
+    prices: tuple[float, float] | None = None,
+    cors_origins: Sequence[str] = (),
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     app = FastAPI(title="DocForge", version=__version__)
+    if cors_origins:
+        # Only the review screen's own origin; credentials are not sent by cookie.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(cors_origins),
+            allow_methods=["GET", "POST"],
+            allow_headers=["Content-Type"],
+        )
 
     @app.middleware("http")
     async def refuse_oversized_requests(
@@ -116,6 +132,8 @@ def create_app(
         app.include_router(
             documents_router(service, max_upload_bytes=max_upload_bytes, max_pages=max_pages)
         )
+    if review is not None:
+        app.include_router(review_router(review, evals_dir, prices))
     if pipeline is not None:
         _add_preview_endpoint(app, pipeline, max_upload_bytes)
     return app

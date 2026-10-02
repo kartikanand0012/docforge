@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     # the parser or model without changing this package.
     pipeline_factory: str = "docforge.wiring:build_pipelines"
 
+    # The review screen's origin(s), comma-separated, e.g. http://localhost:3000.
+    cors_origins: str = ""
+    evals_dir: str = "evals/baselines"  # the committed reports the eval page shows
+    # Model prices in USD per million tokens, for the cost figure. Unset means no cost is
+    # shown: a price that is not checked against the provider's current list is not invented.
+    price_input_per_million_usd: float | None = None
+    price_output_per_million_usd: float | None = None
+
     job_max_attempts: int = 5
     max_pending_documents: int = 1000  # uploads are refused while this many are waiting
     job_retry_wait_seconds: float = 5
