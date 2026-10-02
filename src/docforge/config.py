@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     parser_timeout_seconds: float = 900.0
     parser_max_rss_mb: int = 8192
     parser_batch_pages: int = 10  # pages converted at a time; bounds memory on long files
+    # Use only models already on disk: no download while a document is being parsed.
+    # Needs the models present first (`make models`); the deployed image bakes them in.
+    parser_offline: bool = False
 
     # `module:function` returning one pipeline per document type; lets a deployment swap
     # the parser or model without changing this package.

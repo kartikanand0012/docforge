@@ -27,6 +27,7 @@ def build_pipeline(settings: Settings) -> InvoicePipeline:
         max_documents=settings.parser_max_documents,
         timeout_seconds=settings.parser_timeout_seconds,
         max_rss_bytes=settings.parser_max_rss_mb * 1024 * 1024,
+        child_env={"HF_HUB_OFFLINE": "1"} if settings.parser_offline else None,
     )
     return InvoicePipeline(parser, provider, max_pages=settings.max_pages)
 

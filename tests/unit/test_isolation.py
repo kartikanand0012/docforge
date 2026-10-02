@@ -153,3 +153,15 @@ def test_closing_from_another_thread_stops_a_parse_that_is_under_way() -> None:
         isolated.close()
 
     assert time.monotonic() - started < 10
+
+
+def test_the_parser_process_can_be_given_settings_of_its_own() -> None:
+    isolated = IsolatedParser(
+        CommandParser, name="command", version="0", child_env={"HF_HUB_OFFLINE": "1"}
+    )
+    try:
+        seen = isolated.parse(b"env").blocks[0].text
+    finally:
+        isolated.close()
+
+    assert "HF_HUB_OFFLINE=1" in seen

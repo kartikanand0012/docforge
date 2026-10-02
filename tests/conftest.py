@@ -1,7 +1,9 @@
 """Shared fixtures."""
 
+import os
 import uuid
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -12,6 +14,16 @@ from sqlalchemy.engine import URL, Engine, make_url
 from docforge.config import Settings, get_settings
 from docforge.db import alembic_config
 from docforge.db.session import SessionFactory, make_engine, make_session_factory
+
+# Real-parser tests use the models already on disk when they are there. A new converter
+# otherwise asks the model hub whether its files are current, and a dropped connection then
+# fails a test that has nothing to do with the network. On a fresh machine the first such
+# test downloads the models as before.
+_LAYOUT_MODEL = (
+    Path.home() / ".cache" / "huggingface" / "hub" / "models--docling-project--docling-layout-heron"
+)
+if _LAYOUT_MODEL.is_dir():
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
 
 TEST_DATABASE = "docforge_test"
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}

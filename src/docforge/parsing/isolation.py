@@ -10,7 +10,7 @@ import multiprocessing
 import os
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from multiprocessing.connection import Connection
 from multiprocessing.context import SpawnProcess
 
@@ -33,12 +33,15 @@ _POLL_SECONDS = 0.2
 _GIB = 1024**3
 
 
-def _serve(factory: Callable[[], Parser], connection: Connection) -> None:
+def _serve(
+    factory: Callable[[], Parser], connection: Connection, child_env: dict[str, str]
+) -> None:
     """The child: parse each file received and send back the result or the error."""
     # The parser needs no credentials, and it runs native code on files we did not write.
     for name in list(os.environ):
         if any(marker in name.upper() for marker in _SECRET_MARKERS):
             del os.environ[name]
+    os.environ.update(child_env)
     parser: Parser | None = None
     while True:
         try:
@@ -75,6 +78,7 @@ class IsolatedParser:
         max_documents: int = 50,
         timeout_seconds: float = 900.0,
         max_rss_bytes: int = 8 * _GIB,
+        child_env: Mapping[str, str] | None = None,
     ) -> None:
         self.name = name
         self.version = version
@@ -82,6 +86,7 @@ class IsolatedParser:
         self._max_documents = max_documents
         self._timeout_seconds = timeout_seconds
         self._max_rss_bytes = max_rss_bytes
+        self._child_env = dict(child_env or {})  # e.g. HF_HUB_OFFLINE=1: no model downloads
         self._lock = threading.Lock()
         self._process: SpawnProcess | None = None
         self._connection: Connection | None = None
@@ -154,7 +159,9 @@ class IsolatedParser:
             self._stop()
         context = multiprocessing.get_context("spawn")
         ours, theirs = context.Pipe()
-        process = context.Process(target=_serve, args=(self._factory, theirs), daemon=True)
+        process = context.Process(
+            target=_serve, args=(self._factory, theirs, self._child_env), daemon=True
+        )
         process.start()
         theirs.close()
         self._process, self._connection, self._served = process, ours, 0

@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate api worker test test-unit lint format generate generate-scans eval eval-record
+.PHONY: help install up down migrate api worker test test-unit lint format generate generate-scans models eval eval-record
 
 SYNTH_DIR := tests/fixtures/synthetic
 SYNTH_SEED := 20261002
@@ -49,6 +49,9 @@ generate: ## Regenerate the synthetic invoice/PO pairs with ground truth
 
 generate-scans: ## Rewrite the scanned variants (their recorded parses must then be re-recorded)
 	uv run python -m docforge.synth --scans-from $(SYNTH_DIR) --out tests/fixtures/scanned
+
+models: ## Download the parser's layout, table and OCR models once (then PARSER_OFFLINE=true works)
+	uv run python -c "from docforge.parsing.docling_parser import DoclingParser; from pathlib import Path; [DoclingParser().parse(Path(p).read_bytes()) for p in ('tests/fixtures/synthetic/pair_001/invoice.pdf', 'tests/fixtures/scanned/scan_good/pair_001/invoice.pdf')]"
 
 eval: ## Re-run the invoice eval offline from recordings and rewrite the baseline report
 	uv run python -m docforge.evals --mode replay
