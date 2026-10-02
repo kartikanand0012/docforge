@@ -150,7 +150,7 @@ def test_openapi_describes_the_extraction_endpoint() -> None:
 
 
 def test_build_pipeline_needs_a_gemini_key() -> None:
-    settings = Settings(_env_file=None, gemini_api_key=None)  # type: ignore[call-arg]
+    settings = Settings(_env_file=None, gemini_api_key=None)
 
     with pytest.raises(ValueError, match="GEMINI_API_KEY"):
         build_pipeline(settings)
@@ -158,7 +158,7 @@ def test_build_pipeline_needs_a_gemini_key() -> None:
 
 def test_build_pipeline_uses_the_configured_model_and_limits() -> None:
     settings = Settings(
-        _env_file=None,  # type: ignore[call-arg]
+        _env_file=None,
         gemini_api_key="not-a-real-key",
         gemini_model="gemini-test",
         max_pages=7,

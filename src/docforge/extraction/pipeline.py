@@ -23,6 +23,7 @@ class PipelineResult:
     parsed: ParsedDocument
     extraction: InvoiceExtraction
     responses: tuple[LLMResponse, ...]  # one per model call, in order
+    prompt_version: str = PROMPT_VERSION
 
 
 def _describe(error: ValidationError) -> str:

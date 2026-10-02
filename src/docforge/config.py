@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     s3_bucket: str = "docforge-originals"
 
     gemini_api_key: SecretStr | None = None
+    # Pinned, never a "-latest" alias: a model change must be a deliberate, evaluated change.
+    gemini_model: str = "gemini-3.5-flash-lite"
+
+    max_upload_bytes: int = 10 * 1024 * 1024
+    max_pages: int = 20
 
     @field_validator("database_url")
     @classmethod
