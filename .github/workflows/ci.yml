@@ -15,7 +15,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -24,6 +24,15 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
           enable-cache: true
+
+      # Docling downloads its layout and table models on first use.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/.cache/docling
+          key: docling-models-${{ hashFiles('uv.lock') }}
+          restore-keys: docling-models-
 
       # Same entry points a developer uses, so CI proves the clean-machine gate.
       - name: Start services and migrate
@@ -34,6 +43,10 @@ jobs:
 
       - name: Test
         run: make test
+
+      # The C1 gate: the baseline report is reproduced offline from recordings.
+      - name: Eval (offline replay)
+        run: make eval && git diff --exit-code -- evals/baselines
 
       - name: Service logs
         if: failure()

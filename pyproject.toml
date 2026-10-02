@@ -18,6 +18,8 @@ dependencies = [
     "python-multipart>=0.0.32",
     "reportlab>=4.2",
     "sqlalchemy>=2.0",
+    "torch>=2.14.1",
+    "torchvision>=0.29.1",
     "uvicorn[standard]>=0.54.0",
 ]
 
@@ -30,6 +32,17 @@ dev = [
     "pytest-cov>=5.0",
     "ruff>=0.5",
 ]
+
+# Docling needs PyTorch. On Linux the default wheel bundles CUDA (several GB); the service
+# runs its models on CPU, so Linux installs the CPU-only build.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["hatchling"]
