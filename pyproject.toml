@@ -68,5 +68,5 @@ files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["boto3.*", "botocore.*", "reportlab.*"]
+module = ["boto3.*", "botocore.*", "pypdfium2.*", "reportlab.*"]
 ignore_missing_imports = true
