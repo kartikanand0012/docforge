@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from docforge.api.app import create_app
-from docforge.api.main import build_pipeline
 from fastapi.testclient import TestClient
 
+from docforge.api.app import create_app
+from docforge.api.main import build_pipeline
 from docforge.config import Settings
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.extraction.prompt import PROMPT_VERSION
