@@ -1,0 +1,136 @@
+"""ORM models for the tables the service reads and writes. Migrations are hand-written."""
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Identity, Integer, Text, text
+from sqlalchemy.dialects.postgresql import CHAR, JSONB, UUID
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+_NEW_UUID = text("gen_random_uuid()")
+_NOW = text("now()")
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def _id() -> Mapped[uuid.UUID]:
+    return mapped_column(UUID(as_uuid=True), primary_key=True, server_default=_NEW_UUID)
+
+
+def _tenant() -> Mapped[uuid.UUID]:
+    return mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"))
+
+
+def _version() -> Mapped[uuid.UUID]:
+    return mapped_column(UUID(as_uuid=True), ForeignKey("document_versions.id"))
+
+
+def _created_at() -> Mapped[datetime]:
+    return mapped_column(DateTime(timezone=True), server_default=_NOW)
+
+
+class Tenant(Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[uuid.UUID] = _id()
+    name: Mapped[str] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Document(Base):
+    """One uploaded file. `(tenant_id, sha256)` is unique: the content hash is the identity."""
+
+    __tablename__ = "documents"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    doc_type: Mapped[str] = mapped_column(Text)
+    sha256: Mapped[str] = mapped_column(CHAR(64))
+    storage_key: Mapped[str] = mapped_column(Text)
+    filename: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    page_count: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, server_default="received")
+    created_at: Mapped[datetime] = _created_at()
+
+
+class DocumentVersion(Base):
+    """One processing run of a document."""
+
+    __tablename__ = "document_versions"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"))
+    version_no: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, server_default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    parser_version: Mapped[str | None] = mapped_column(Text)
+    schema_version: Mapped[str | None] = mapped_column(Text)
+    prompt_version: Mapped[str | None] = mapped_column(Text)
+    model_id: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ParseOutput(Base):
+    __tablename__ = "parse_outputs"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_version_id: Mapped[uuid.UUID] = _version()
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Extraction(Base):
+    """Immutable: the database rejects UPDATE and DELETE."""
+
+    __tablename__ = "extractions"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_version_id: Mapped[uuid.UUID] = _version()
+    schema_version: Mapped[str] = mapped_column(Text)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    sha256: Mapped[str] = mapped_column(CHAR(64))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ModelRun(Base):
+    __tablename__ = "model_runs"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_version_id: Mapped[uuid.UUID] = _version()
+    call_no: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(Text)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    thinking_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class AuditEntry(Base):
+    """Append-only and hash-chained per tenant; see `docforge.audit`."""
+
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(always=True), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    actor: Mapped[str] = mapped_column(Text)
+    action: Mapped[str] = mapped_column(Text)
+    target_type: Mapped[str] = mapped_column(Text)
+    target_id: Mapped[str] = mapped_column(Text)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    prev_hash: Mapped[str | None] = mapped_column(CHAR(64))
+    hash: Mapped[str] = mapped_column(CHAR(64))

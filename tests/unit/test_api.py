@@ -10,12 +10,12 @@ import pytest
 from fastapi.testclient import TestClient
 
 from docforge.api.app import create_app
-from docforge.api.main import build_pipeline
 from docforge.config import Settings
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.extraction.prompt import PROMPT_VERSION
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import ParsedDocument
+from docforge.wiring import build_pipeline
 from fakes import PARSED, FakeParser, ScriptedProvider
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
@@ -28,7 +28,7 @@ RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 def client(replies: list[str | Exception], **options: int) -> TestClient:
     max_pages = options.pop("max_pages", 20)
     pipeline = InvoicePipeline(FakeParser(), ScriptedProvider(replies), max_pages=max_pages)
-    return TestClient(create_app(pipeline, **options))
+    return TestClient(create_app(pipeline, options.pop("max_upload_bytes", 10 * 1024 * 1024)))
 
 
 def upload(api: TestClient, data: bytes = PDF, query: str = "") -> Any:

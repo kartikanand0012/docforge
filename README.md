@@ -6,9 +6,10 @@ DocForge turns PDFs and scans into validated, structured records. Every extracte
 its place on the page, and nothing extracted by a model becomes a record until a rule or a person
 accepts it.
 
-**Status:** checkpoint C1 complete. A born-digital invoice PDF goes in through the API and a typed,
-schema-validated record comes out, with the source block of every field. Storage, verification,
-scans and the review screen are not built yet. See [docs/architecture.md](docs/architecture.md) for
+**Status:** checkpoint C2 complete. A born-digital invoice PDF is uploaded, stored by content hash,
+queued, and extracted by a worker into a typed, schema-validated record with the source block of
+every field. Each step is written to an append-only, hash-chained audit log. Verification of values
+against their source, scans and the review screen are not built yet. See [docs/architecture.md](docs/architecture.md) for
 the design and [docs/progress.md](docs/progress.md) for what has been built and measured.
 
 ## Measured so far
@@ -32,12 +33,19 @@ make api     # run the API on http://127.0.0.1:8000 (needs GEMINI_API_KEY in .en
 make down    # stop the services
 ```
 
-With the API running:
+With `make api` and `make worker` both running:
 
 ```bash
-curl -F "file=@tests/fixtures/synthetic/pair_001/invoice.pdf" \
-  "http://127.0.0.1:8000/v1/extractions?include_blocks=true"
+# Upload: returns at once with the document id. The same file again returns the same document.
+curl -F "file=@tests/fixtures/synthetic/pair_001/invoice.pdf" http://127.0.0.1:8000/v1/documents
+
+curl http://127.0.0.1:8000/v1/documents/<id>              # status and versions
+curl http://127.0.0.1:8000/v1/documents/<id>/extraction   # the record, once extracted
+curl http://127.0.0.1:8000/v1/documents/<id>/audit        # every step taken
+curl http://127.0.0.1:8000/v1/audit/verification          # recompute the audit hash chain
 ```
+
+`POST /v1/extractions` is a stateless preview: it extracts in the request and stores nothing.
 
 The API has no authentication yet, so keep it bound to localhost. The first `make test` downloads
 Docling's layout and table models.

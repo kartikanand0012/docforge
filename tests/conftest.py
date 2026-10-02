@@ -1,13 +1,17 @@
 """Shared fixtures."""
 
+import uuid
 from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
+from alembic import command
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL, make_url
+from sqlalchemy.engine import URL, Engine, make_url
 
 from docforge.config import Settings, get_settings
+from docforge.db import alembic_config
+from docforge.db.session import SessionFactory, make_engine, make_session_factory
 
 TEST_DATABASE = "docforge_test"
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
@@ -96,3 +100,25 @@ def empty_database_url(settings: Settings) -> Iterator[URL]:
         with admin.connect() as conn:
             conn.execute(text(f'DROP DATABASE IF EXISTS "{TEST_DATABASE}" WITH (FORCE)'))
         admin.dispose()
+
+
+@pytest.fixture
+def engine(empty_database_url: URL) -> Iterator[Engine]:
+    command.upgrade(alembic_config(empty_database_url), "head")
+    engine = make_engine(empty_database_url)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def sessions(engine: Engine) -> SessionFactory:
+    return make_session_factory(engine)
+
+
+@pytest.fixture
+def other_tenant(engine: Engine) -> uuid.UUID:
+    with engine.begin() as conn:
+        tenant_id: uuid.UUID = conn.execute(
+            text("INSERT INTO tenants (name) VALUES ('other') RETURNING id")
+        ).scalar_one()
+    return tenant_id

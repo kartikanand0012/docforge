@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate api test test-unit lint format generate eval eval-record
+.PHONY: help install up down migrate api worker test test-unit lint format generate eval eval-record
 
 SYNTH_DIR := tests/fixtures/synthetic
 SYNTH_SEED := 20261002
@@ -23,6 +23,9 @@ migrate: ## Apply database migrations
 
 api: ## Run the API on http://127.0.0.1:8000 (needs GEMINI_API_KEY; no auth yet, local only)
 	uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port 8000
+
+worker: ## Run a worker that processes uploaded documents (needs GEMINI_API_KEY)
+	uv run python -m docforge.worker
 
 test: ## Run all tests (integration tests need `make up`)
 	uv run pytest

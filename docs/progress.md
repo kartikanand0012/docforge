@@ -2,6 +2,174 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C2 Async and durable (2026-10-02): gate passed
+
+Branch `c2-async-durable`, PR #3.
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Same file uploaded twice yields one document | Pass | Service, queue and API tests; live run: second upload returned HTTP 200, `created: false`, same id, no new job |
+| Killing a worker mid-job loses nothing | Pass | `tests/integration/test_worker_crash.py`: a real worker process is killed with SIGKILL while holding a job; a second worker finishes it; exactly one extraction exists |
+| Audit chain verifies | Pass | `tests/integration/test_audit.py`; live run: `GET /v1/audit/verification` reported the chain consistent |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 907 passed (766 unit, 115 integration, 26 Docling) |
+| Coverage | 96% |
+| Live run, upload to stored extraction | 26 s for a 10-line invoice (Docling parse plus an 18 s model call), one model call |
+| Upload response | Returned before processing started (HTTP 202) |
+| Recovery after a killed worker | Not timed. The test allows 40 s with a 2 s stalled-worker timeout and passes; the default timeout is 30 s |
+
+No load or throughput measurement was made in this checkpoint.
+
+### What was built
+
+- `POST /v1/documents` stores the original in object storage under its content hash, records the
+  document, and enqueues a job, in one database transaction. A worker (`make worker`) extracts.
+- `GET /v1/documents/{id}`, `/extraction`, `/audit`, `POST /reprocess`, `GET /v1/audit/verification`.
+- Versions: each processing run is a version. Extractions are immutable in the database.
+- An append-only, hash-chained audit log, one chain per tenant.
+- The queue is Procrastinate in the same Postgres database, as the architecture chose.
+- Document types are registered by name (`PIPELINE_FACTORY`), following the decision to keep the
+  product general. Only `invoice` is registered so far.
+- The C1 endpoint `POST /v1/extractions` remains as a stateless preview that stores nothing.
+
+### How processing stays correct when things go wrong
+
+Delivery is at-least-once. Each delivery takes a turn number when it starts and may write its
+result only while that turn is still current, so a delivery that was overtaken writes nothing.
+The result is written in one transaction. The turn count is also the budget: after five starts the
+version is failed, whether the earlier attempts ended in an error or in a dead worker. The cost of
+this design is that a model call can be repeated after a crash; the extraction is still recorded
+once.
+
+### Departures from the plan
+
+- **Parse output is stored as one JSON document per version**, not as `pages` and `blocks` tables.
+  Those arrive with provenance queries in C3.
+- **The audit claim in the architecture was reworded.** It said the application role has no update
+  or delete grant; that role does not exist until C6. See the architecture, section 5.
+- **No Object Lock on originals yet.** Local MinIO only; the worker does check each original
+  against its recorded hash before extracting.
+- **Document status is the status of the newest version.** A failed reprocess shows `failed` while
+  the earlier extraction is still served.
+
+### Review (ECC python-reviewer, database-reviewer and security-reviewer)
+
+No secret exposure. The reviews found faults in the failure paths that the first version of the
+gate tests did not exercise. Fixed in this checkpoint:
+
+- A late or duplicate delivery could overwrite a finished version or leave it stuck.
+- A document that crashed its worker would have been retried without limit.
+- Large inserts ran while the per-tenant audit lock was held. (The same review reported a deadlock
+  between reprocess and the worker. That turned out to be wrong; see "Second verification pass".)
+- Any exception other than a provider failure dropped the job and stranded the version.
+- Migration 0002 failed on a database that already had rows, and its downgrade silently discarded
+  audit records.
+- Nothing in the database stopped two audit entries sharing a parent.
+- Unlimited reprocess and upload were a cost amplifier; reprocess is now refused while a version
+  is in flight and uploads are refused when 1,000 documents are waiting.
+- The worker extracted whatever was at the storage key without checking its hash.
+- Filenames were written into the permanent audit log.
+- The audit wording claimed more than a plain hash chain delivers.
+- `PIPELINE_FACTORY` could name any importable function; in production it is restricted to this
+  package.
+
+Deferred, with the checkpoint that should pick each up:
+
+| Item | Checkpoint |
+| --- | --- |
+| Separate migration and application database roles; application role with insert and select only on the audit log | C6 |
+| Latest audit hash recorded outside the database, or a keyed hash | C6 |
+| Composite foreign keys so a child row's tenant must equal its parent's; tenant in job arguments for row-level security | C6 |
+| Per-tenant rate limits and quotas; cache for chain verification, which reads the whole chain per call | C6 |
+| A sweeper for versions left in flight after the queue gives up (for example a database outage longer than all retries) | C8 |
+| Removing finished jobs from the queue table | C8 |
+| Model runs of a failed version are not stored | C8 |
+| S3 Object Lock, server-side encryption, TLS-only, least-privilege storage principal: required before any real document is stored | C9 |
+| Deploy restarts use up the same attempt budget as real failures | C8 |
+| Applying constraints with `NOT VALID` then `VALIDATE` for large tables | When a database with real volume exists |
+
+### Verification pass before merge (2026-10-02)
+
+Run against real processes (API, workers, Postgres, MinIO) on a scratch database, with a stand-in
+pipeline unless stated.
+
+| Check | Result |
+| --- | --- |
+| 20 simultaneous uploads of one file | One 202, nineteen 200, one document, one version, one job |
+| 19 different files at once, two workers | All 20 documents extracted once each; every version ran once; chain consistent with 60 entries |
+| 10 simultaneous reprocess requests | One accepted, nine refused with 409 |
+| Both workers killed with SIGKILL while each held a job | A new worker finished both; one extraction each, two attempts each |
+| SIGTERM to a worker holding a job | It finished the job, then exited with status 0 |
+| A document whose worker is killed on every attempt | Failed after 5 starts with "Processing was interrupted too many times." |
+| An audit entry edited with the triggers disabled | Verification reported the chain inconsistent at that entry |
+| Object storage stopped during an upload | Request failed with no document row and no job; the same upload succeeded once storage was back |
+| Postgres restarted under a running API and worker | Both carried on; the next uploads were accepted and processed |
+| Malformed input: empty file, magic bytes only, truncated, password-protected, 11 MB, 21 pages, wrong field, non-multipart body, unknown type, hostile filename, malformed id | Each refused with 413, 415 or 422; nothing stored |
+| Real pipeline: a PDF with no text | Version failed with "The PDF has no text layer."; no model call |
+| Real pipeline: an invoice, then reprocess | Both versions succeeded; header, totals, every batch and amount matched the label |
+
+Found and fixed in this pass:
+
+- Storage or database being unavailable answered 500 "Internal error."; it now answers 503 with a
+  "try again later" message, and the worker treats unavailable storage as retryable.
+
+Observed, not a fault:
+
+- Reprocessing the same invoice with the same model gave identical values but two different
+  citations (the label cell in one run, the value cell in the other). The model is not perfectly
+  repeatable at temperature 0; C3's check of values against cited text covers this.
+- A worker sent SIGTERM in its first second, before it installs its handlers, exits at once. It
+  holds no job at that point.
+- A blank `doc_type` form field is treated as omitted and defaults to `invoice`.
+
+Added to the test suite from this pass: a crash after the model call but before the write,
+simultaneous reprocess and upload requests, and unreachable storage.
+
+### Second verification pass (2026-10-02)
+
+Closing the items the first pass left open. Stand-in pipeline unless stated.
+
+| Check | Result |
+| --- | --- |
+| 300 documents, 8 workers, 16 concurrent uploaders | All accepted; about 150 uploads/s; upload latency p50 100 ms, p95 145 ms, max 204 ms; all processed in 3.6 s (84 documents/s) |
+| The same with 4 of the 8 workers killed with SIGKILL one second in | All 300 processed in 8.6 s; none lost |
+| Exactly-once across both runs | 600 versions, 600 extractions, no version ran twice, no duplicate extraction |
+| Audit chain after both runs | Consistent, 1,800 entries, recomputed in 29 ms |
+| Recovery with default settings (heartbeat 10 s, stalled after 30 s), one surviving worker | Job finished 28 s after the kill; expect roughly 20 to 45 s depending on when the last heartbeat landed |
+| Real pipeline: worker killed with SIGKILL during the Gemini call | Killed before the model replied; a second worker finished it 56 s later; one extraction, correct against the label, two attempts recorded |
+| Reprocess racing the worker on one document, 15 rounds | No database error; at most one version in flight; chain consistent. Now a test in the suite |
+
+These throughput figures measure everything except the model and the parser: the stand-in pipeline
+returns in milliseconds. With the real pipeline a worker handles roughly four invoices a minute.
+
+**The deadlock reported in review was not real.** The database review said reprocess and the worker
+took the document lock and the audit lock in opposite orders. Running that interleaving against the
+code from before the change (commit `bc70056`, 40 rounds, 800 reprocess calls) produced no deadlock,
+and a trace of its SQL showed why: the ORM sends pending row updates before any statement, so the
+document row was already locked before the audit lock was requested. Both paths took the locks in
+the same order all along. The explicit ordering added in this checkpoint is harmless and makes the
+order visible, but it did not fix a fault, and the earlier summary that said it did was wrong.
+
+Found and fixed in this pass:
+
+- The API answered 503 for unavailable storage without logging the cause. It now logs it.
+
+### Not verified
+
+- Workers in separate containers or on separate machines. Three attempts to run workers in
+  containers failed for a reason unrelated to DocForge: the local Docker VM could not download
+  Python packages. Heartbeats and audit timestamps use the database clock, which limits the
+  exposure to clock differences; a real check belongs with the first container image in C9.
+- Throughput and latency with the real parser and model under sustained load. Needs a paid model
+  tier; planned for C8.
+- More than eight workers.
+
 ## C1 Walking skeleton (2026-10-02): gate passed
 
 Branch `c1-walking-skeleton`, PR #2.
