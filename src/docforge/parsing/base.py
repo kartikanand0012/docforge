@@ -14,7 +14,7 @@ class DocumentTooLarge(ParseError):
 
 
 class NoTextLayer(ParseError):
-    """The PDF has no extractable text (for example a scan); OCR is not available yet."""
+    """The PDF has no extractable text: a scan with OCR switched off, or blank pages."""
 
 
 class _Model(BaseModel):
@@ -72,6 +72,7 @@ class Page(_Model):
 class ParsedDocument(_Model):
     parser: str
     parser_version: str
+    source: Literal["text_layer", "ocr"] = "text_layer"  # where the characters came from
     pages: tuple[Page, ...]
     blocks: tuple[Block, ...]
 

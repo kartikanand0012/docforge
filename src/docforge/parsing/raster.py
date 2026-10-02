@@ -22,15 +22,23 @@ _SKEW_SEARCH = ((0.5, 5.0), (0.1, 0.5))  # (step, span) in degrees: coarse, then
 _SKEW_THUMBNAIL = 1000  # pixels on the long side; enough to see text lines, cheap to rotate
 
 
-def render_pages(pdf: bytes, dpi: int) -> list[Image.Image]:
-    """Each page as a greyscale image. Raises `ParseError` if the PDF cannot be rendered."""
+def render_pages(
+    pdf: bytes, dpi: int, first: int = 1, last: int | None = None
+) -> list[Image.Image]:
+    """Pages `first`..`last` (1-based, inclusive; all by default) as greyscale images.
+
+    Raises `ParseError` if the PDF cannot be rendered.
+    """
     with PDFIUM_LOCK:
         try:
             document = pdfium.PdfDocument(pdf)
             try:
                 return [
                     page.render(scale=dpi / 72).to_pil().convert("L")
-                    for page in (document[index] for index in range(len(document)))
+                    for page in (
+                        document[index]
+                        for index in range(first - 1, min(last or len(document), len(document)))
+                    )
                 ]
             finally:
                 document.close()
