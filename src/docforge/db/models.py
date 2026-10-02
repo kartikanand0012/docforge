@@ -110,6 +110,7 @@ class Extraction(Base):
     schema_version: Mapped[str] = mapped_column(Text)
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
     sha256: Mapped[str] = mapped_column(CHAR(64))
+    raw: Mapped[dict[str, Any] | None] = mapped_column(JSONB)  # the model's reply; C5 onward
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -162,6 +163,55 @@ class MatchRecord(Base):
     decision: Mapped[str] = mapped_column(Text)
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
     created_at: Mapped[datetime] = _created_at()
+
+
+class Reviewer(Base):
+    """A person who corrects and signs. The PIN is re-entered for every signature."""
+
+    __tablename__ = "reviewers"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    name: Mapped[str] = mapped_column(Text)
+    email: Mapped[str] = mapped_column(Text)
+    pin_hash: Mapped[str] = mapped_column(Text)
+    failed_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Correction(Base):
+    """One field's printed text changed or confirmed by a reviewer. Immutable."""
+
+    __tablename__ = "corrections"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_version_id: Mapped[uuid.UUID] = _version()
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("reviewers.id"))
+    path: Mapped[str] = mapped_column(Text)
+    old_text: Mapped[str | None] = mapped_column(Text)
+    new_text: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Review(Base):
+    """The signed decision on one version. Immutable; one per version."""
+
+    __tablename__ = "reviews"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_version_id: Mapped[uuid.UUID] = _version()
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("reviewers.id"))
+    outcome: Mapped[str] = mapped_column(Text)
+    meaning: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    override_reason: Mapped[str | None] = mapped_column(Text)
+    record_sha256: Mapped[str] = mapped_column(CHAR(64))
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    signed_at: Mapped[datetime] = _created_at()
 
 
 class AuditEntry(Base):

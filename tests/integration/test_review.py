@@ -10,7 +10,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
 
 from docforge.db import DEFAULT_TENANT_ID
-from docforge.db.models import AuditEntry, Correction as CorrectionRow, Reviewer
+from docforge.db.models import AuditEntry, Reviewer
+from docforge.db.models import Correction as CorrectionRow
 from docforge.db.session import SessionFactory
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
@@ -277,7 +278,8 @@ def test_a_signature_no_longer_matches_if_the_signed_record_is_altered(
         conn.execute(text("ALTER TABLE reviews DISABLE TRIGGER reviews_append_only"))
         conn.execute(
             text(
-                "UPDATE reviews SET data = jsonb_set(data, '{record,invoice_no,value}', '\"FORGED\"')"
+                "UPDATE reviews SET data = "
+                "jsonb_set(data, '{record,invoice_no,value}', '\"FORGED\"')"
             )
         )
         conn.execute(text("ALTER TABLE reviews ENABLE ALWAYS TRIGGER reviews_append_only"))

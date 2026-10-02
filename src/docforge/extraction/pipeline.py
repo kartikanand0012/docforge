@@ -58,6 +58,7 @@ class PipelineResult[E: BaseModel]:
     parsed: ParsedDocument
     extraction: E
     responses: tuple[LLMResponse, ...]  # one per model call, in order
+    raw: BaseModel  # what the model returned, merged across pages; corrections apply to it
     prompt_version: str
     schema_version: str
     assessment: Assessment  # what was checked and whether a person must look
@@ -135,6 +136,7 @@ class ExtractionPipeline[E: BaseModel]:
             parsed=parsed,
             extraction=extraction,
             responses=responses,
+            raw=raw,
             prompt_version=prompt_version,
             schema_version=spec.schema_version,
             assessment=assess(extraction, parsed, spec.rules),

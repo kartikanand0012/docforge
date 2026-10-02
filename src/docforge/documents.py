@@ -141,6 +141,41 @@ class ExtractionDetail:
     model_runs: list[ModelRun]
 
 
+def current_match(
+    session: Session, tenant_id: uuid.UUID, version_id: uuid.UUID
+) -> tuple[MatchRecord | None, uuid.UUID | None]:
+    """The newest comparison of this version, and the counterpart's document id.
+
+    A comparison counts only while the other side is still that document's newest version:
+    once the counterpart is read again, the old comparison is history.
+    """
+    other = aliased(DocumentVersion)
+    newer = aliased(DocumentVersion)
+    found = session.execute(
+        select(MatchRecord, other.document_id)
+        .join(
+            other,
+            other.id
+            == case(
+                (MatchRecord.invoice_version_id == version_id, MatchRecord.order_version_id),
+                else_=MatchRecord.invoice_version_id,
+            ),
+        )
+        .where(
+            MatchRecord.tenant_id == tenant_id,
+            (MatchRecord.invoice_version_id == version_id)
+            | (MatchRecord.order_version_id == version_id),
+            other.version_no
+            == select(func.max(newer.version_no))
+            .where(newer.document_id == other.document_id)
+            .scalar_subquery(),
+        )
+        .order_by(MatchRecord.created_at.desc())
+        .limit(1)
+    ).first()
+    return (found[0], found[1]) if found is not None else (None, None)
+
+
 _MATCH_CANDIDATES = 20
 
 
@@ -373,6 +408,7 @@ class DocumentService:
                     schema_version=result.schema_version,
                     data=data,
                     sha256=sha256,
+                    raw=result.raw.model_dump(mode="json"),
                 )
             )
             for call_no, response in enumerate(result.responses, start=1):
@@ -625,36 +661,7 @@ class DocumentService:
             if row is None:
                 return None
             version, record = row
-            # A comparison counts only while the other side is still that document's newest
-            # version: once the counterpart is read again, the old comparison is history.
-            other = aliased(DocumentVersion)
-            newer = aliased(DocumentVersion)
-            found = session.execute(
-                select(MatchRecord, other.document_id)
-                .join(
-                    other,
-                    other.id
-                    == case(
-                        (
-                            MatchRecord.invoice_version_id == version.id,
-                            MatchRecord.order_version_id,
-                        ),
-                        else_=MatchRecord.invoice_version_id,
-                    ),
-                )
-                .where(
-                    MatchRecord.tenant_id == tenant_id,
-                    (MatchRecord.invoice_version_id == version.id)
-                    | (MatchRecord.order_version_id == version.id),
-                    other.version_no
-                    == select(func.max(newer.version_no))
-                    .where(newer.document_id == other.document_id)
-                    .scalar_subquery(),
-                )
-                .order_by(MatchRecord.created_at.desc())
-                .limit(1)
-            ).first()
-            match, counterpart = found if found is not None else (None, None)
+            match, counterpart = current_match(session, tenant_id, version.id)
             return AssessmentDetail(version, record, match, counterpart, document.doc_type)
 
     def audit_trail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> list[AuditEntry]:
