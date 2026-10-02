@@ -22,6 +22,7 @@ from docforge.llm.replay import RecordingProvider
 from docforge.parsing.cache import CachingParser
 from docforge.parsing.docling_parser import DoclingParser
 from docforge.synth.models import PairLabel
+from docforge.trust.assess import Assessment
 
 LABEL_FILE = "label.json"
 INVOICE_FILE = "invoice.pdf"
@@ -79,6 +80,7 @@ def run_eval(
     fixtures: Path,
     pipeline: InvoicePipeline,
     on_document: Callable[[DocumentScore], None] | None = None,
+    on_result: Callable[[DocumentScore, Assessment | None], None] | None = None,
 ) -> EvalReport:
     """Extract every `pair_*/invoice.pdf` under `fixtures` and score it against its label.
 
@@ -105,14 +107,18 @@ def run_eval(
         except ExtractionError as error:
             calls = error.responses
             score = score_invoice(label, None, parsed, error=str(error))
+            assessment = None
         else:
             calls = result.responses
             score = score_invoice(label, result.extraction, parsed)
+            assessment = result.assessment
         responses.extend(calls)
         latencies.append(sum(call.latency_ms for call in calls))
         scores.append(score)
         if on_document is not None:
             on_document(score)
+        if on_result is not None:
+            on_result(score, assessment)
 
     return EvalReport(
         dataset=DatasetInfo(seed=manifest["seed"], count=len(scores)),
