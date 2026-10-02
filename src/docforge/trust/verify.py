@@ -1,0 +1,103 @@
+"""Check each extracted value against the text of the blocks it cites.
+
+The model copies text and points at blocks. This is the check that it did: the printed
+string must appear in the cited blocks. A value that does not is flagged for review and is
+never corrected here.
+"""
+
+import re
+import unicodedata
+from collections.abc import Iterator
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict
+
+from docforge.extraction.schema import Extracted
+from docforge.parsing.base import ParsedDocument
+
+Status = Literal["verified", "not_in_cited_blocks", "no_citation"]
+
+
+class Box(BaseModel):
+    """Where a cited block sits. PDF points, origin at the bottom-left of the page."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    page: int
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
+class FieldCheck(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str
+    status: Status
+    boxes: tuple[Box, ...]  # the cited blocks, whether or not the value was found in them
+    found_in: tuple[str, ...]  # other blocks that do contain the value, when not verified
+
+
+def extracted_fields(model: BaseModel, prefix: str = "") -> Iterator[tuple[str, Extracted[object]]]:
+    """Every `Extracted` field in an extraction, with its path (`lines[0].qty`)."""
+    for name in type(model).model_fields:
+        value = getattr(model, name)
+        path = f"{prefix}.{name}" if prefix else name
+        if isinstance(value, Extracted):
+            yield path, value
+        elif isinstance(value, BaseModel):
+            yield from extracted_fields(value, path)
+        elif isinstance(value, tuple):
+            for index, item in enumerate(value):
+                if isinstance(item, Extracted):
+                    yield f"{path}[{index}]", item
+                elif isinstance(item, BaseModel):
+                    yield from extracted_fields(item, f"{path}[{index}]")
+
+
+def _normalise(text: str) -> str:
+    """The same folding the prompt applies, so the comparison is like for like."""
+    return " ".join(unicodedata.normalize("NFKC", text).split())
+
+
+def _contains(haystack: str, needle: str) -> bool:
+    """True if `needle` occurs in `haystack` as a whole token, not inside a longer one.
+
+    "20" is not found in "200", "166.40" not in "1,166.40", and "86.24" not in "86.245".
+    """
+    pattern = (
+        r"(?<![0-9A-Za-z])(?<![0-9][.,])" + re.escape(needle) + r"(?![0-9A-Za-z])(?![.,][0-9])"
+    )
+    return re.search(pattern, haystack) is not None
+
+
+def verify_extraction(extraction: BaseModel, parsed: ParsedDocument) -> tuple[FieldCheck, ...]:
+    """One check per field that has a value. Fields the model left null are not checked."""
+    texts = {block.id: _normalise(block.text) for block in parsed.blocks}
+    blocks = {block.id: block for block in parsed.blocks}
+    checks: list[FieldCheck] = []
+    for path, field in extracted_fields(extraction):
+        if field.raw is None:
+            continue
+        needle = _normalise(field.raw)
+        cited = [block_id for block_id in field.block_ids if block_id in texts]
+        # A value may run across several cited blocks, e.g. a two-line address.
+        joined = " ".join(texts[block_id] for block_id in cited)
+        if not cited:
+            status: Status = "no_citation"
+        elif _contains(joined, needle):
+            status = "verified"
+        else:
+            status = "not_in_cited_blocks"
+        checks.append(
+            FieldCheck(
+                path=path,
+                status=status,
+                boxes=tuple(Box(page=blocks[b].page, **blocks[b].bbox.model_dump()) for b in cited),
+                found_in=()
+                if status == "verified"
+                else tuple(b for b, text in texts.items() if _contains(text, needle)),
+            )
+        )
+    return tuple(checks)
