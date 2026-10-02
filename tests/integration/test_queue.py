@@ -7,8 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from docforge.queue import QUEUE_NAME, JobQueue
-from docforge.worker import requeue_stalled, run_worker
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -19,7 +17,9 @@ from docforge.db.session import SessionFactory
 from docforge.documents import DocumentService, IngestResult
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.llm.base import LLMError
+from docforge.queue import QUEUE_NAME, JobQueue
 from docforge.storage import MemoryObjectStore
+from docforge.worker import requeue_stalled, run_worker
 from fakes import FakeParser, ScriptedProvider
 
 pytestmark = pytest.mark.integration

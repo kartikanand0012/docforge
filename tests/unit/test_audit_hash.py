@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 import pytest
+
 from docforge.audit import canonical_json, entry_hash
 
 TENANT = uuid.UUID("00000000-0000-0000-0000-000000000001")

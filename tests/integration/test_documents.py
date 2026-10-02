@@ -8,13 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from docforge.documents import (
-    DocumentNotFound,
-    DocumentService,
-    TransientProcessingError,
-    UnknownDocumentType,
-)
-from docforge.storage import MemoryObjectStore, original_key
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -29,9 +22,16 @@ from docforge.db.models import (
     ParseOutput,
 )
 from docforge.db.session import SessionFactory
+from docforge.documents import (
+    DocumentNotFound,
+    DocumentService,
+    TransientProcessingError,
+    UnknownDocumentType,
+)
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.llm.base import LLMError
 from docforge.parsing.base import ParsedDocument
+from docforge.storage import MemoryObjectStore, original_key
 from fakes import PARSED, FakeParser, ScriptedProvider
 
 pytestmark = pytest.mark.integration

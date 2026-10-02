@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from docforge.queue import JobQueue
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 
@@ -26,6 +25,7 @@ from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.models import AuditEntry, DocumentVersion, Extraction
 from docforge.db.session import SessionFactory
 from docforge.documents import DocumentService
+from docforge.queue import JobQueue
 from docforge.storage import S3ObjectStore
 from worker_fixtures import BLOCK_FILE_VAR, REPLY_FILE_VAR, BlockingPipeline
 

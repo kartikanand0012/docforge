@@ -3,6 +3,9 @@
 import uuid
 
 import pytest
+
+from docforge.config import Settings
+from docforge.db import DEFAULT_TENANT_ID
 from docforge.storage import (
     MemoryObjectStore,
     ObjectNotFound,
@@ -10,9 +13,6 @@ from docforge.storage import (
     S3ObjectStore,
     original_key,
 )
-
-from docforge.config import Settings
-from docforge.db import DEFAULT_TENANT_ID
 
 pytestmark = pytest.mark.integration
 
