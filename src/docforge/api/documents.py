@@ -1,5 +1,6 @@
 """Document endpoints: upload returns at once, a worker does the extraction."""
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Annotated, Any
@@ -21,6 +22,8 @@ from docforge.documents import (
 from docforge.parsing.base import ParseError
 from docforge.parsing.pdf import pdf_page_count
 from docforge.storage import StorageUnavailable
+
+logger = logging.getLogger(__name__)
 
 # Until authentication arrives in C6 there is one tenant and one, unnamed, caller.
 TENANT = DEFAULT_TENANT_ID
@@ -140,8 +143,10 @@ def documents_router(
         except DocumentTypeConflict as error:
             raise HTTPException(409, f"{str(error).capitalize()}.") from error
         except QueueFull as error:
+            logger.warning("upload refused: %s", error)
             raise HTTPException(503, "The processing queue is full. Try again later.") from error
         except StorageUnavailable as error:
+            logger.warning("upload refused, storage unavailable: %r", error.__cause__)
             raise HTTPException(503, "Storage is unavailable. Try again later.") from error
         response.headers["Location"] = f"/v1/documents/{result.document.id}"
         if not result.created:

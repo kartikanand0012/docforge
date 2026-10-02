@@ -56,11 +56,9 @@ not measured, so `worker.py` and `wiring.py` show lower figures than they are ex
 
 Not covered by tests:
 
-- A worker killed after the model call but before the result is written. The code path is the same
-  as a kill during the call (the next delivery starts a new turn), but no test stops a process at
-  that exact point.
-- The reprocess-versus-worker deadlock the database review described. The lock order was changed
-  to remove it and reprocess is now refused while a version is in flight; no test forces the old
-  interleaving.
+- A real worker process killed at the exact point after the model call and before the write. A
+  test covers that window inside the service; the process-level kill checks land during the call.
+- The deadlock the database review described was later shown not to exist (see `progress.md`,
+  second verification pass). A test now runs reprocess against the worker on one document.
 - The retry wait times: tests run with a wait of zero.
 - Two workers racing to requeue the same stalled job.

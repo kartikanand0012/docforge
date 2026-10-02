@@ -65,8 +65,8 @@ gate tests did not exercise. Fixed in this checkpoint:
 
 - A late or duplicate delivery could overwrite a finished version or leave it stuck.
 - A document that crashed its worker would have been retried without limit.
-- Reprocess and the worker took locks in different orders, which could deadlock; large inserts ran
-  while the per-tenant audit lock was held.
+- Large inserts ran while the per-tenant audit lock was held. (The same review reported a deadlock
+  between reprocess and the worker. That turned out to be wrong; see "Second verification pass".)
 - Any exception other than a provider failure dropped the job and stranded the version.
 - Migration 0002 failed on a database that already had rows, and its downgrade silently discarded
   audit records.
@@ -131,13 +131,44 @@ Observed, not a fault:
 Added to the test suite from this pass: a crash after the model call but before the write,
 simultaneous reprocess and upload requests, and unreachable storage.
 
+### Second verification pass (2026-10-02)
+
+Closing the items the first pass left open. Stand-in pipeline unless stated.
+
+| Check | Result |
+| --- | --- |
+| 300 documents, 8 workers, 16 concurrent uploaders | All accepted; about 150 uploads/s; upload latency p50 100 ms, p95 145 ms, max 204 ms; all processed in 3.6 s (84 documents/s) |
+| The same with 4 of the 8 workers killed with SIGKILL one second in | All 300 processed in 8.6 s; none lost |
+| Exactly-once across both runs | 600 versions, 600 extractions, no version ran twice, no duplicate extraction |
+| Audit chain after both runs | Consistent, 1,800 entries, recomputed in 29 ms |
+| Recovery with default settings (heartbeat 10 s, stalled after 30 s), one surviving worker | Job finished 28 s after the kill; expect roughly 20 to 45 s depending on when the last heartbeat landed |
+| Real pipeline: worker killed with SIGKILL during the Gemini call | Killed before the model replied; a second worker finished it 56 s later; one extraction, correct against the label, two attempts recorded |
+| Reprocess racing the worker on one document, 15 rounds | No database error; at most one version in flight; chain consistent. Now a test in the suite |
+
+These throughput figures measure everything except the model and the parser: the stand-in pipeline
+returns in milliseconds. With the real pipeline a worker handles roughly four invoices a minute.
+
+**The deadlock reported in review was not real.** The database review said reprocess and the worker
+took the document lock and the audit lock in opposite orders. Running that interleaving against the
+code from before the change (commit `bc70056`, 40 rounds, 800 reprocess calls) produced no deadlock,
+and a trace of its SQL showed why: the ORM sends pending row updates before any statement, so the
+document row was already locked before the audit lock was requested. Both paths took the locks in
+the same order all along. The explicit ordering added in this checkpoint is harmless and makes the
+order visible, but it did not fix a fault, and the earlier summary that said it did was wrong.
+
+Found and fixed in this pass:
+
+- The API answered 503 for unavailable storage without logging the cause. It now logs it.
+
 ### Not verified
 
-- Throughput or latency under sustained load.
-- Recovery time with the default 30 s stalled-worker timeout (the checks used 2 s).
-- More than two workers, or workers on different machines.
-- The reprocess-versus-worker deadlock from the database review was designed out, not reproduced.
-- A worker process killed during a real Gemini call; the kill checks used the stand-in pipeline.
+- Workers in separate containers or on separate machines. Three attempts to run workers in
+  containers failed for a reason unrelated to DocForge: the local Docker VM could not download
+  Python packages. Heartbeats and audit timestamps use the database clock, which limits the
+  exposure to clock differences; a real check belongs with the first container image in C9.
+- Throughput and latency with the real parser and model under sustained load. Needs a paid model
+  tier; planned for C8.
+- More than eight workers.
 
 ## C1 Walking skeleton (2026-10-02): gate passed
 

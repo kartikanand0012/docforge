@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import threading
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -707,3 +708,61 @@ def test_processing_while_storage_is_down_is_retried_later(
 
     harness.service._store = working
     assert harness.service.process(ingested.version.id) == "succeeded"
+
+
+def test_reprocess_and_the_worker_on_one_document_never_deadlock(
+    sessions: SessionFactory, perfect: str
+) -> None:
+    """Both take the document lock and the audit lock; they must take them in one order.
+
+    A review suspected a deadlock here. Running this interleaving against the code as it
+    was before the lock order was made explicit showed none, so this guards the order
+    against future change; it is not a reproduction of a past failure.
+    """
+    rounds = 15
+    harness = Harness(sessions, [perfect] * (rounds + 1))
+    ingested = harness.ingest()
+    document_id, version_id = ingested.document.id, ingested.version.id
+    errors: list[BaseException] = []
+
+    def reprocess() -> uuid.UUID | None:
+        try:
+            return harness.service.reprocess(
+                tenant_id=DEFAULT_TENANT_ID, document_id=document_id, actor="api:x"
+            ).id
+        except ReprocessInProgress:
+            return None
+
+    def run_worker(target: uuid.UUID) -> None:
+        try:
+            harness.service.process(target)
+        except Exception as error:
+            errors.append(error)
+
+    def keep_requesting(queued: list[uuid.UUID]) -> None:
+        try:
+            for _ in range(20):
+                new = reprocess()
+                if new is not None:
+                    queued.append(new)
+        except Exception as error:
+            errors.append(error)
+
+    for _ in range(rounds):
+        queued: list[uuid.UUID] = []
+        threads = [
+            threading.Thread(target=run_worker, args=(version_id,)),
+            threading.Thread(target=keep_requesting, args=(queued,)),
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        assert len(queued) <= 1  # at most one version may be in flight
+        next_version = queued[0] if queued else reprocess()
+        assert next_version is not None
+        version_id = next_version
+
+    assert errors == []
+    with sessions() as session:
+        assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
