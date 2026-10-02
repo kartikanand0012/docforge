@@ -2,8 +2,10 @@
 
 import random
 import string
+from collections.abc import Sequence
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from typing import NamedTuple
 
 from docforge.gstin import make_gstin
 from docforge.synth import catalog
@@ -70,6 +72,32 @@ def _free_qty(qty: int, scheme: str | None) -> int:
     return (qty // buy) * free
 
 
+class LineAmounts(NamedTuple):
+    taxable_value: Decimal
+    cgst: Decimal
+    sgst: Decimal
+    igst: Decimal
+    amount: Decimal
+
+
+def line_amounts(
+    *, qty: int, ptr: Decimal, discount_pct: Decimal, gst_rate: Decimal, intra_state: bool
+) -> LineAmounts:
+    """Money columns of one invoice line, each rounded half-up to the paisa.
+
+    Within a state the tax is split into CGST and SGST and each half is rounded on its
+    own, so their sum can be a paisa more than the rate applied to the taxable value.
+    """
+    taxable = _money(qty * ptr * (Decimal(100) - discount_pct) / Decimal(100))
+    if intra_state:
+        cgst = sgst = _money(taxable * gst_rate / Decimal(200))
+        igst = _ZERO
+    else:
+        cgst = sgst = _ZERO
+        igst = _money(taxable * gst_rate / Decimal(100))
+    return LineAmounts(taxable, cgst, sgst, igst, taxable + cgst + sgst + igst)
+
+
 def _line(
     rng: random.Random,
     sl_no: int,
@@ -84,13 +112,13 @@ def _line(
     ptr = _money(mrp * Decimal(rng.randint(68, 76)) / Decimal(100))
     discount_pct = rng.choice(catalog.DISCOUNTS)
 
-    taxable = _money(qty * ptr * (Decimal(100) - discount_pct) / Decimal(100))
-    if intra_state:
-        cgst = sgst = _money(taxable * product.gst_rate / Decimal(200))
-        igst = _ZERO
-    else:
-        cgst = sgst = _ZERO
-        igst = _money(taxable * product.gst_rate / Decimal(100))
+    amounts = line_amounts(
+        qty=qty,
+        ptr=ptr,
+        discount_pct=discount_pct,
+        gst_rate=product.gst_rate,
+        intra_state=intra_state,
+    )
 
     mfg_offset = -rng.randint(2, 14)
     shelf_life = rng.choice((18, 24, 36))
@@ -107,17 +135,14 @@ def _line(
         mrp=mrp,
         ptr=ptr,
         discount_pct=discount_pct,
-        taxable_value=taxable,
         gst_rate=product.gst_rate,
-        cgst=cgst,
-        sgst=sgst,
-        igst=igst,
-        amount=taxable + cgst + sgst + igst,
+        **amounts._asdict(),
     )
     return line, scheme
 
 
-def _totals(lines: list[InvoiceLine]) -> InvoiceTotals:
+def compute_totals(lines: Sequence[InvoiceLine]) -> InvoiceTotals:
+    """Sum the lines and round the grand total half-up to the whole rupee."""
     taxable = sum((line.taxable_value for line in lines), _ZERO)
     cgst = sum((line.cgst for line in lines), _ZERO)
     sgst = sum((line.sgst for line in lines), _ZERO)
@@ -187,7 +212,7 @@ def build_pair(index: int, seed: int) -> DocumentPair:
         place_of_supply_code=buyer.state_code,
         supply_type="inter_state" if inter_state else "intra_state",
         lines=tuple(lines),
-        totals=_totals(lines),
+        totals=compute_totals(lines),
     )
     purchase_order = PurchaseOrder(
         po_no=po_no,

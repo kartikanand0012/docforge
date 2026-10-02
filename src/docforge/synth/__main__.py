@@ -23,7 +23,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = parser.parse_args(argv)
 
-    labels = generate_dataset(args.out, count=args.count, seed=args.seed)
+    try:
+        labels = generate_dataset(args.out, count=args.count, seed=args.seed)
+    except ValueError as error:
+        parser.error(str(error))
     print(f"Wrote {len(labels)} invoice/PO pairs to {args.out}")
     return 0
 

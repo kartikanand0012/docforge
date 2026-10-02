@@ -6,8 +6,12 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, PlainSerializer
 
-# Money is written to JSON as a two-place string so no precision is lost.
-Money = Annotated[Decimal, PlainSerializer(lambda value: f"{value:.2f}", return_type=str)]
+# Money has at most two decimal places and is written to JSON as a two-place string.
+Money = Annotated[
+    Decimal,
+    Field(decimal_places=2),
+    PlainSerializer(lambda value: f"{value:.2f}", return_type=str),
+]
 # Calendar month, e.g. "2028-03". Printed on documents as MM/YY.
 Month = Annotated[str, Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")]
 Layout = Literal["A", "B"]
@@ -109,10 +113,39 @@ class FieldBox(_Model):
 
 
 class DocumentBoxes(_Model):
+    """Where the ground truth sits in one PDF.
+
+    Every value of the document's label is either in `boxes` or listed in `unprinted`.
+    Unprinted values are implied by the document (for example the supply type) but appear
+    nowhere on the page, so an extractor must not be scored on reading them.
+    """
+
     file: str
     page_width: float
     page_height: float
     boxes: tuple[FieldBox, ...]
+    unprinted: tuple[str, ...]
+
+
+def leaf_paths(model: BaseModel) -> set[str]:
+    """Path of every scalar value in `model`, e.g. `lines[0].batch_no`, `seller.gstin`."""
+
+    def walk(value: object, prefix: str) -> set[str]:
+        if isinstance(value, dict):
+            return {
+                path
+                for key, item in value.items()
+                for path in walk(item, f"{prefix}.{key}" if prefix else key)
+            }
+        if isinstance(value, list):
+            return {
+                path
+                for index, item in enumerate(value)
+                for path in walk(item, f"{prefix}[{index}]")
+            }
+        return {prefix}
+
+    return walk(model.model_dump(mode="json"), "")
 
 
 class PairLabel(_Model):

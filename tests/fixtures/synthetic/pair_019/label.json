@@ -373,6 +373,15 @@
           "y1": 446.66
         },
         {
+          "path": "lines[0].sl_no",
+          "text": "1",
+          "page": 1,
+          "x0": 43.14,
+          "y0": 399.72,
+          "x1": 47.31,
+          "y1": 406.66
+        },
+        {
           "path": "lines[0].product_name",
           "text": "Vitamin C Tablets 500mg",
           "page": 1,
@@ -497,6 +506,15 @@
           "y0": 399.72,
           "x1": 809.89,
           "y1": 406.66
+        },
+        {
+          "path": "lines[1].sl_no",
+          "text": "2",
+          "page": 1,
+          "x0": 43.14,
+          "y0": 385.72,
+          "x1": 47.31,
+          "y1": 392.66
         },
         {
           "path": "lines[1].product_name",
@@ -625,6 +643,15 @@
           "y1": 392.66
         },
         {
+          "path": "lines[2].sl_no",
+          "text": "3",
+          "page": 1,
+          "x0": 43.14,
+          "y0": 371.72,
+          "x1": 47.31,
+          "y1": 378.66
+        },
+        {
           "path": "lines[2].product_name",
           "text": "Ciprofloxacin Tablets IP 500mg",
           "page": 1,
@@ -749,6 +776,15 @@
           "y0": 371.72,
           "x1": 809.89,
           "y1": 378.66
+        },
+        {
+          "path": "lines[3].sl_no",
+          "text": "4",
+          "page": 1,
+          "x0": 43.14,
+          "y0": 357.72,
+          "x1": 47.31,
+          "y1": 364.66
         },
         {
           "path": "lines[3].product_name",
@@ -877,6 +913,15 @@
           "y1": 364.66
         },
         {
+          "path": "lines[4].sl_no",
+          "text": "5",
+          "page": 1,
+          "x0": 43.14,
+          "y0": 343.72,
+          "x1": 47.31,
+          "y1": 350.66
+        },
+        {
           "path": "lines[4].product_name",
           "text": "Metformin Tablets IP 500mg",
           "page": 1,
@@ -1001,6 +1046,15 @@
           "y0": 343.72,
           "x1": 809.89,
           "y1": 350.66
+        },
+        {
+          "path": "lines[5].sl_no",
+          "text": "6",
+          "page": 1,
+          "x0": 43.14,
+          "y0": 329.72,
+          "x1": 47.31,
+          "y1": 336.66
         },
         {
           "path": "lines[5].product_name",
@@ -1173,6 +1227,33 @@
           "x1": 809.89,
           "y1": 267.76
         }
+      ],
+      "unprinted": [
+        "buyer.state",
+        "buyer.state_code",
+        "lines[0].cgst",
+        "lines[0].igst",
+        "lines[0].sgst",
+        "lines[1].cgst",
+        "lines[1].igst",
+        "lines[1].sgst",
+        "lines[2].cgst",
+        "lines[2].igst",
+        "lines[2].sgst",
+        "lines[3].cgst",
+        "lines[3].igst",
+        "lines[3].sgst",
+        "lines[4].cgst",
+        "lines[4].igst",
+        "lines[4].sgst",
+        "lines[5].cgst",
+        "lines[5].igst",
+        "lines[5].sgst",
+        "place_of_supply_code",
+        "seller.state",
+        "seller.state_code",
+        "supply_type",
+        "totals.igst"
       ]
     },
     "purchase_order": {
@@ -1262,6 +1343,15 @@
           "y1": 718.99
         },
         {
+          "path": "lines[0].sl_no",
+          "text": "1",
+          "page": 1,
+          "x0": 45.12,
+          "y0": 668.13,
+          "x1": 49.85,
+          "y1": 675.99
+        },
+        {
           "path": "lines[0].product_name",
           "text": "Vitamin C Tablets 500mg",
           "page": 1,
@@ -1305,6 +1395,15 @@
           "y0": 668.13,
           "x1": 563.28,
           "y1": 675.99
+        },
+        {
+          "path": "lines[1].sl_no",
+          "text": "2",
+          "page": 1,
+          "x0": 45.12,
+          "y0": 653.13,
+          "x1": 49.85,
+          "y1": 660.99
         },
         {
           "path": "lines[1].product_name",
@@ -1352,6 +1451,15 @@
           "y1": 660.99
         },
         {
+          "path": "lines[2].sl_no",
+          "text": "3",
+          "page": 1,
+          "x0": 45.12,
+          "y0": 638.13,
+          "x1": 49.85,
+          "y1": 645.99
+        },
+        {
           "path": "lines[2].product_name",
           "text": "Ciprofloxacin Tablets IP 500mg",
           "page": 1,
@@ -1386,6 +1494,15 @@
           "y0": 638.13,
           "x1": 563.28,
           "y1": 645.99
+        },
+        {
+          "path": "lines[3].sl_no",
+          "text": "4",
+          "page": 1,
+          "x0": 45.12,
+          "y0": 623.13,
+          "x1": 49.85,
+          "y1": 630.99
         },
         {
           "path": "lines[3].product_name",
@@ -1433,6 +1550,15 @@
           "y1": 630.99
         },
         {
+          "path": "lines[4].sl_no",
+          "text": "5",
+          "page": 1,
+          "x0": 45.12,
+          "y0": 608.13,
+          "x1": 49.85,
+          "y1": 615.99
+        },
+        {
           "path": "lines[4].product_name",
           "text": "Metformin Tablets IP 500mg",
           "page": 1,
@@ -1476,6 +1602,15 @@
           "y0": 608.13,
           "x1": 563.28,
           "y1": 615.99
+        },
+        {
+          "path": "lines[5].sl_no",
+          "text": "6",
+          "page": 1,
+          "x0": 45.12,
+          "y0": 593.13,
+          "x1": 49.85,
+          "y1": 600.99
         },
         {
           "path": "lines[5].product_name",
@@ -1522,6 +1657,11 @@
           "x1": 563.28,
           "y1": 600.99
         }
+      ],
+      "unprinted": [
+        "buyer.state",
+        "buyer.state_code",
+        "lines[2].scheme"
       ]
     }
   }

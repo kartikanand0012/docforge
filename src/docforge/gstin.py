@@ -8,7 +8,8 @@ import re
 
 _ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 _BASE = len(_ALPHABET)
-_PATTERN = re.compile(r"\d{2}[A-Z]{5}\d{4}[A-Z][0-9A-Z]Z[0-9A-Z]")
+# The state code is not checked against the list of real states here.
+_PATTERN = re.compile(r"\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]")
 
 
 def gstin_check_char(first_14: str) -> str:

@@ -7,6 +7,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
+from pydantic import BaseModel
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfgen.canvas import Canvas
@@ -19,6 +20,7 @@ from docforge.synth.models import (
     Party,
     PurchaseOrder,
     PurchaseOrderLine,
+    leaf_paths,
 )
 
 _REGULAR = "Helvetica"
@@ -27,6 +29,9 @@ _MARGIN = 30.0
 _CELL_PAD = 2.0
 
 Align = Literal["left", "right"]
+DateStyle = Literal["dd-Mon-yyyy", "dd/mm/yyyy"]
+# Not strftime("%b"): that follows the process locale, and the output must not.
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
 
 @dataclass(frozen=True)
@@ -35,6 +40,7 @@ class RenderedDocument:
     page_width: float
     page_height: float
     boxes: tuple[FieldBox, ...]
+    unprinted: tuple[str, ...]  # label paths that appear nowhere on the page
 
 
 @dataclass(frozen=True)
@@ -44,7 +50,6 @@ class _Column[LineT]:
     weight: float
     align: Align
     text: Callable[[LineT], str | None]
-    boxed: bool = True  # False for values that are not ground truth, e.g. the serial number
 
 
 @dataclass(frozen=True)
@@ -52,16 +57,16 @@ class _Style:
     page: tuple[float, float]
     font_size: float
     row_pitch: float
-    date_format: str
+    dates: DateStyle
 
 
 _INVOICE_STYLES: dict[Layout, _Style] = {
-    "A": _Style(page=landscape(A4), font_size=7.5, row_pitch=14.0, date_format="%d-%b-%Y"),
-    "B": _Style(page=A4, font_size=6.5, row_pitch=13.0, date_format="%d/%m/%Y"),
+    "A": _Style(page=landscape(A4), font_size=7.5, row_pitch=14.0, dates="dd-Mon-yyyy"),
+    "B": _Style(page=A4, font_size=6.5, row_pitch=13.0, dates="dd/mm/yyyy"),
 }
 _ORDER_STYLES: dict[Layout, _Style] = {
-    "A": _Style(page=A4, font_size=8.5, row_pitch=15.0, date_format="%d-%b-%Y"),
-    "B": _Style(page=A4, font_size=8.0, row_pitch=14.0, date_format="%d/%m/%Y"),
+    "A": _Style(page=A4, font_size=8.5, row_pitch=15.0, dates="dd-Mon-yyyy"),
+    "B": _Style(page=A4, font_size=8.0, row_pitch=14.0, dates="dd/mm/yyyy"),
 }
 
 
@@ -72,8 +77,9 @@ class _Page:
         self.style = style
         self.width, self.height = style.page
         self._buffer = io.BytesIO()
-        # invariant=1 fixes the timestamps and document id so output is reproducible.
-        self._canvas = Canvas(self._buffer, pagesize=style.page, invariant=1)
+        # invariant fixes the timestamps and document id; leaving streams uncompressed keeps
+        # the bytes independent of the zlib build. Together they make output reproducible.
+        self._canvas = Canvas(self._buffer, pagesize=style.page, invariant=1, pageCompression=0)
         self._boxes: list[FieldBox] = []
 
     def text(
@@ -142,13 +148,14 @@ class _Page:
                 value = column.text(row)
                 if value is None:
                     continue
-                path = f"lines[{row_index}].{column.field}" if column.boxed else None
+                path = f"lines[{row_index}].{column.field}"
                 self.text(anchor, y, value, align=column.align, path=path)
         bottom = y - self.style.row_pitch * 0.35
         self.rule(bottom)
         return bottom
 
-    def finish(self) -> RenderedDocument:
+    def finish(self, truth: BaseModel) -> RenderedDocument:
+        """Close the page. `truth` is the label the page was drawn from."""
         self._canvas.showPage()
         self._canvas.save()
         return RenderedDocument(
@@ -156,6 +163,7 @@ class _Page:
             page_width=float(self.width),
             page_height=float(self.height),
             boxes=tuple(self._boxes),
+            unprinted=tuple(sorted(leaf_paths(truth) - {box.path for box in self._boxes})),
         )
 
 
@@ -192,7 +200,7 @@ def _party_block(page: _Page, x: float, y: float, party: Party, prefix: str, pit
 
 _INVOICE_COLUMNS: dict[Layout, tuple[_Column[InvoiceLine], ...]] = {
     "A": (
-        _Column("sl_no", "Sl", 16, "right", lambda line: str(line.sl_no), boxed=False),
+        _Column("sl_no", "Sl", 16, "right", lambda line: str(line.sl_no)),
         _Column("product_name", "Product", 130, "left", lambda line: line.product_name),
         _Column("pack", "Pack", 34, "left", lambda line: line.pack),
         _Column("hsn", "HSN", 42, "left", lambda line: line.hsn),
@@ -209,7 +217,7 @@ _INVOICE_COLUMNS: dict[Layout, tuple[_Column[InvoiceLine], ...]] = {
         _Column("amount", "Amount", 58, "right", lambda line: _money(line.amount)),
     ),
     "B": (
-        _Column("sl_no", "#", 14, "right", lambda line: str(line.sl_no), boxed=False),
+        _Column("sl_no", "#", 14, "right", lambda line: str(line.sl_no)),
         _Column("hsn", "HSN/SAC", 38, "left", lambda line: line.hsn),
         _Column(
             "product_name", "Description of Goods", 112, "left", lambda line: line.product_name
@@ -233,7 +241,7 @@ _INVOICE_COLUMNS: dict[Layout, tuple[_Column[InvoiceLine], ...]] = {
 
 _ORDER_COLUMNS: dict[Layout, tuple[_Column[PurchaseOrderLine], ...]] = {
     "A": (
-        _Column("sl_no", "Sl", 20, "right", lambda line: str(line.sl_no), boxed=False),
+        _Column("sl_no", "Sl", 20, "right", lambda line: str(line.sl_no)),
         _Column("product_name", "Item", 220, "left", lambda line: line.product_name),
         _Column("pack", "Pack", 60, "left", lambda line: line.pack),
         _Column("qty", "Qty", 50, "right", lambda line: str(line.qty)),
@@ -241,7 +249,7 @@ _ORDER_COLUMNS: dict[Layout, tuple[_Column[PurchaseOrderLine], ...]] = {
         _Column("rate", "Rate (PTR)", 80, "right", lambda line: _money(line.rate)),
     ),
     "B": (
-        _Column("sl_no", "No.", 24, "right", lambda line: str(line.sl_no), boxed=False),
+        _Column("sl_no", "No.", 24, "right", lambda line: str(line.sl_no)),
         _Column("product_name", "Product Description", 210, "left", lambda line: line.product_name),
         _Column("qty", "Order Qty", 60, "right", lambda line: str(line.qty)),
         _Column("scheme", "Free Scheme", 70, "right", lambda line: line.scheme),
@@ -254,7 +262,7 @@ _ORDER_COLUMNS: dict[Layout, tuple[_Column[PurchaseOrderLine], ...]] = {
 def _invoice_meta(invoice: Invoice, layout: Layout, style: _Style) -> list[tuple[str, str, str]]:
     """(label, value, path) for the invoice header; the two layouts word the labels differently."""
     place = f"{invoice.place_of_supply} ({invoice.place_of_supply_code})"
-    invoice_date = invoice.invoice_date.strftime(style.date_format)
+    invoice_date = _dated(invoice.invoice_date, style)
     po_date = _dated(invoice.po_date, style)
     if layout == "A":
         return [
@@ -274,7 +282,9 @@ def _invoice_meta(invoice: Invoice, layout: Layout, style: _Style) -> list[tuple
 
 
 def _dated(value: date, style: _Style) -> str:
-    return value.strftime(style.date_format)
+    if style.dates == "dd-Mon-yyyy":
+        return f"{value.day:02d}-{_MONTHS[value.month - 1]}-{value.year}"
+    return f"{value.day:02d}/{value.month:02d}/{value.year}"
 
 
 def _totals_rows(invoice: Invoice) -> list[tuple[str, str, str]]:
@@ -331,7 +341,7 @@ def render_invoice(invoice: Invoice, layout: Layout) -> RenderedDocument:
         page.text(label_x, y, label, bold=bold)
         page.text(value_x, y, value, bold=bold, align="right", path=path)
         y -= pitch
-    return page.finish()
+    return page.finish(invoice)
 
 
 def render_purchase_order(order: PurchaseOrder, layout: Layout) -> RenderedDocument:
@@ -360,4 +370,4 @@ def render_purchase_order(order: PurchaseOrder, layout: Layout) -> RenderedDocum
     page.labelled(_MARGIN + 50, y - pitch, "GSTIN:", order.supplier_gstin, "supplier_gstin")
 
     page.table(y - 2 * pitch - style.row_pitch, _ORDER_COLUMNS[layout], order.lines)
-    return page.finish()
+    return page.finish(order)

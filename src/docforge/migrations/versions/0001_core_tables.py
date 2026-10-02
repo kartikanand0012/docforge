@@ -5,6 +5,7 @@ Revises:
 """
 
 import uuid
+from collections.abc import Sequence
 from datetime import datetime
 
 import sqlalchemy as sa
@@ -13,8 +14,8 @@ from sqlalchemy.dialects import postgresql
 
 revision: str = "0001"
 down_revision: str | None = None
-branch_labels: str | None = None
-depends_on: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def _id() -> sa.Column[uuid.UUID]:
@@ -33,6 +34,7 @@ def _created_at() -> sa.Column[datetime]:
 
 
 def upgrade() -> None:
+    # Needs a role allowed to create extensions (the Compose superuser; rds_superuser on RDS).
     op.execute("CREATE EXTENSION IF NOT EXISTS vector")
 
     op.create_table(

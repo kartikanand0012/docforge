@@ -14,7 +14,7 @@ if config.config_file_name is not None:
 
 
 def run_migrations() -> None:
-    url = config.attributes.get("url") or get_settings().database_url
+    url = config.attributes.get("url") or get_settings().database_url.get_secret_value()
     engine = create_engine(url, poolclass=pool.NullPool)
     try:
         with engine.connect() as connection:

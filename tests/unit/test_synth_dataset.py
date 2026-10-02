@@ -8,7 +8,8 @@ import pytest
 from docforge.synth import DEFAULT_COUNT, DEFAULT_SEED, dataset
 from docforge.synth.__main__ import main
 from docforge.synth.dataset import generate_dataset
-from docforge.synth.models import PairLabel, leaf_paths
+from docforge.synth.models import Invoice, Layout, PairLabel, leaf_paths
+from docforge.synth.render import RenderedDocument, render_invoice
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
 PAIR_FILES = {"invoice.pdf", "purchase_order.pdf", "label.json"}
@@ -113,15 +114,14 @@ def test_a_failed_run_leaves_the_existing_set_untouched(
 ) -> None:
     generate_dataset(tmp_path, count=3, seed=DEFAULT_SEED)
     before = snapshot(tmp_path)
-    real_render = dataset.render_invoice
     calls = 0
 
-    def fail_on_second_invoice(*args: object, **kwargs: object) -> object:
+    def fail_on_second_invoice(invoice: Invoice, layout: Layout) -> RenderedDocument:
         nonlocal calls
         calls += 1
         if calls == 2:
             raise RuntimeError("render failed")
-        return real_render(*args, **kwargs)  # type: ignore[arg-type]
+        return render_invoice(invoice, layout)
 
     monkeypatch.setattr(dataset, "render_invoice", fail_on_second_invoice)
 

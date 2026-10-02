@@ -373,6 +373,15 @@
           "y1": 685.56
         },
         {
+          "path": "lines[0].sl_no",
+          "text": "1",
+          "page": 1,
+          "x0": 38.06,
+          "y0": 642.54,
+          "x1": 41.67,
+          "y1": 648.56
+        },
+        {
           "path": "lines[0].hsn",
           "text": "30049099",
           "page": 1,
@@ -497,6 +506,15 @@
           "y0": 642.54,
           "x1": 563.28,
           "y1": 648.56
+        },
+        {
+          "path": "lines[1].sl_no",
+          "text": "2",
+          "page": 1,
+          "x0": 38.06,
+          "y0": 629.54,
+          "x1": 41.67,
+          "y1": 635.56
         },
         {
           "path": "lines[1].hsn",
@@ -625,6 +643,15 @@
           "y1": 635.56
         },
         {
+          "path": "lines[2].sl_no",
+          "text": "3",
+          "page": 1,
+          "x0": 38.06,
+          "y0": 616.54,
+          "x1": 41.67,
+          "y1": 622.56
+        },
+        {
           "path": "lines[2].hsn",
           "text": "30049099",
           "page": 1,
@@ -749,6 +776,15 @@
           "y0": 616.54,
           "x1": 563.28,
           "y1": 622.56
+        },
+        {
+          "path": "lines[3].sl_no",
+          "text": "4",
+          "page": 1,
+          "x0": 38.06,
+          "y0": 603.54,
+          "x1": 41.67,
+          "y1": 609.56
         },
         {
           "path": "lines[3].hsn",
@@ -877,6 +913,15 @@
           "y1": 609.56
         },
         {
+          "path": "lines[4].sl_no",
+          "text": "5",
+          "page": 1,
+          "x0": 38.06,
+          "y0": 590.54,
+          "x1": 41.67,
+          "y1": 596.56
+        },
+        {
           "path": "lines[4].hsn",
           "text": "30049099",
           "page": 1,
@@ -1001,6 +1046,15 @@
           "y0": 590.54,
           "x1": 563.28,
           "y1": 596.56
+        },
+        {
+          "path": "lines[5].sl_no",
+          "text": "6",
+          "page": 1,
+          "x0": 38.06,
+          "y0": 577.54,
+          "x1": 41.67,
+          "y1": 583.56
         },
         {
           "path": "lines[5].hsn",
@@ -1173,6 +1227,33 @@
           "x1": 200.0,
           "y1": 520.01
         }
+      ],
+      "unprinted": [
+        "buyer.state",
+        "buyer.state_code",
+        "lines[0].cgst",
+        "lines[0].igst",
+        "lines[0].sgst",
+        "lines[1].cgst",
+        "lines[1].igst",
+        "lines[1].sgst",
+        "lines[2].cgst",
+        "lines[2].igst",
+        "lines[2].sgst",
+        "lines[3].cgst",
+        "lines[3].igst",
+        "lines[3].sgst",
+        "lines[4].cgst",
+        "lines[4].igst",
+        "lines[4].sgst",
+        "lines[5].cgst",
+        "lines[5].igst",
+        "lines[5].sgst",
+        "place_of_supply_code",
+        "seller.state",
+        "seller.state_code",
+        "supply_type",
+        "totals.igst"
       ]
     },
     "purchase_order": {
@@ -1262,6 +1343,15 @@
           "y1": 696.13
         },
         {
+          "path": "lines[0].sl_no",
+          "text": "1",
+          "page": 1,
+          "x0": 49.04,
+          "y0": 648.23,
+          "x1": 53.49,
+          "y1": 655.63
+        },
+        {
           "path": "lines[0].product_name",
           "text": "Atorvastatin Tablets IP 10mg",
           "page": 1,
@@ -1307,6 +1397,15 @@
           "y1": 655.63
         },
         {
+          "path": "lines[1].sl_no",
+          "text": "2",
+          "page": 1,
+          "x0": 49.04,
+          "y0": 634.23,
+          "x1": 53.49,
+          "y1": 641.63
+        },
+        {
           "path": "lines[1].product_name",
           "text": "Amlodipine Tablets IP 5mg",
           "page": 1,
@@ -1343,6 +1442,15 @@
           "y1": 641.63
         },
         {
+          "path": "lines[2].sl_no",
+          "text": "3",
+          "page": 1,
+          "x0": 49.04,
+          "y0": 620.23,
+          "x1": 53.49,
+          "y1": 627.63
+        },
+        {
           "path": "lines[2].product_name",
           "text": "Cetirizine Tablets IP 10mg",
           "page": 1,
@@ -1377,6 +1485,15 @@
           "y0": 620.23,
           "x1": 563.28,
           "y1": 627.63
+        },
+        {
+          "path": "lines[3].sl_no",
+          "text": "4",
+          "page": 1,
+          "x0": 49.04,
+          "y0": 606.23,
+          "x1": 53.49,
+          "y1": 613.63
         },
         {
           "path": "lines[3].product_name",
@@ -1424,6 +1541,15 @@
           "y1": 613.63
         },
         {
+          "path": "lines[4].sl_no",
+          "text": "5",
+          "page": 1,
+          "x0": 49.04,
+          "y0": 592.23,
+          "x1": 53.49,
+          "y1": 599.63
+        },
+        {
           "path": "lines[4].product_name",
           "text": "Omeprazole Capsules IP 20mg",
           "page": 1,
@@ -1469,6 +1595,15 @@
           "y1": 599.63
         },
         {
+          "path": "lines[5].sl_no",
+          "text": "6",
+          "page": 1,
+          "x0": 49.04,
+          "y0": 578.23,
+          "x1": 53.49,
+          "y1": 585.63
+        },
+        {
           "path": "lines[5].product_name",
           "text": "ORS Powder WHO Formula 21g",
           "page": 1,
@@ -1504,6 +1639,13 @@
           "x1": 563.28,
           "y1": 585.63
         }
+      ],
+      "unprinted": [
+        "buyer.state",
+        "buyer.state_code",
+        "lines[1].scheme",
+        "lines[2].scheme",
+        "lines[5].scheme"
       ]
     }
   }

@@ -1,7 +1,8 @@
 # Local development services. Ports bind to 127.0.0.1 only; credentials are local defaults.
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    # pgvector/pgvector:pg16 (PostgreSQL 16.15, pgvector 0.8.7), pinned by digest.
+    image: pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-docforge}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docforge}
