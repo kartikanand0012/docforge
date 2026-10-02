@@ -2,6 +2,104 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C2 Async and durable (2026-10-02): gate passed
+
+Branch `c2-async-durable`, PR #3.
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Same file uploaded twice yields one document | Pass | Service, queue and API tests; live run: second upload returned HTTP 200, `created: false`, same id, no new job |
+| Killing a worker mid-job loses nothing | Pass | `tests/integration/test_worker_crash.py`: a real worker process is killed with SIGKILL while holding a job; a second worker finishes it; exactly one extraction exists |
+| Audit chain verifies | Pass | `tests/integration/test_audit.py`; live run: `GET /v1/audit/verification` reported the chain consistent |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 907 passed (766 unit, 115 integration, 26 Docling) |
+| Coverage | 96% |
+| Live run, upload to stored extraction | 26 s for a 10-line invoice (Docling parse plus an 18 s model call), one model call |
+| Upload response | Returned before processing started (HTTP 202) |
+| Recovery after a killed worker | Not timed. The test allows 40 s with a 2 s stalled-worker timeout and passes; the default timeout is 30 s |
+
+No load or throughput measurement was made in this checkpoint.
+
+### What was built
+
+- `POST /v1/documents` stores the original in object storage under its content hash, records the
+  document, and enqueues a job, in one database transaction. A worker (`make worker`) extracts.
+- `GET /v1/documents/{id}`, `/extraction`, `/audit`, `POST /reprocess`, `GET /v1/audit/verification`.
+- Versions: each processing run is a version. Extractions are immutable in the database.
+- An append-only, hash-chained audit log, one chain per tenant.
+- The queue is Procrastinate in the same Postgres database, as the architecture chose.
+- Document types are registered by name (`PIPELINE_FACTORY`), following the decision to keep the
+  product general. Only `invoice` is registered so far.
+- The C1 endpoint `POST /v1/extractions` remains as a stateless preview that stores nothing.
+
+### How processing stays correct when things go wrong
+
+Delivery is at-least-once. Each delivery takes a turn number when it starts and may write its
+result only while that turn is still current, so a delivery that was overtaken writes nothing.
+The result is written in one transaction. The turn count is also the budget: after five starts the
+version is failed, whether the earlier attempts ended in an error or in a dead worker. The cost of
+this design is that a model call can be repeated after a crash; the extraction is still recorded
+once.
+
+### Departures from the plan
+
+- **Parse output is stored as one JSON document per version**, not as `pages` and `blocks` tables.
+  Those arrive with provenance queries in C3.
+- **The audit claim in the architecture was reworded.** It said the application role has no update
+  or delete grant; that role does not exist until C6. See the architecture, section 5.
+- **No Object Lock on originals yet.** Local MinIO only; the worker does check each original
+  against its recorded hash before extracting.
+- **Document status is the status of the newest version.** A failed reprocess shows `failed` while
+  the earlier extraction is still served.
+
+### Review (ECC python-reviewer, database-reviewer and security-reviewer)
+
+No secret exposure. The reviews found faults in the failure paths that the first version of the
+gate tests did not exercise. Fixed in this checkpoint:
+
+- A late or duplicate delivery could overwrite a finished version or leave it stuck.
+- A document that crashed its worker would have been retried without limit.
+- Reprocess and the worker took locks in different orders, which could deadlock; large inserts ran
+  while the per-tenant audit lock was held.
+- Any exception other than a provider failure dropped the job and stranded the version.
+- Migration 0002 failed on a database that already had rows, and its downgrade silently discarded
+  audit records.
+- Nothing in the database stopped two audit entries sharing a parent.
+- Unlimited reprocess and upload were a cost amplifier; reprocess is now refused while a version
+  is in flight and uploads are refused when 1,000 documents are waiting.
+- The worker extracted whatever was at the storage key without checking its hash.
+- Filenames were written into the permanent audit log.
+- The audit wording claimed more than a plain hash chain delivers.
+- `PIPELINE_FACTORY` could name any importable function; in production it is restricted to this
+  package.
+
+Deferred, with the checkpoint that should pick each up:
+
+| Item | Checkpoint |
+| --- | --- |
+| Separate migration and application database roles; application role with insert and select only on the audit log | C6 |
+| Latest audit hash recorded outside the database, or a keyed hash | C6 |
+| Composite foreign keys so a child row's tenant must equal its parent's; tenant in job arguments for row-level security | C6 |
+| Per-tenant rate limits and quotas; cache for chain verification, which reads the whole chain per call | C6 |
+| A sweeper for versions left in flight after the queue gives up (for example a database outage longer than all retries) | C8 |
+| Removing finished jobs from the queue table | C8 |
+| Model runs of a failed version are not stored | C8 |
+| S3 Object Lock, server-side encryption, TLS-only, least-privilege storage principal: required before any real document is stored | C9 |
+| Deploy restarts use up the same attempt budget as real failures | C8 |
+| Applying constraints with `NOT VALID` then `VALIDATE` for large tables | When a database with real volume exists |
+
+### Not verified
+
+- Behaviour under load, or with more than one worker running.
+- Recovery time with the default 30 s stalled-worker timeout.
+- The deadlock scenario from the database review was reasoned about and designed out, not reproduced.
+
 ## C1 Walking skeleton (2026-10-02): gate passed
 
 Branch `c1-walking-skeleton`, PR #2.

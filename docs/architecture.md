@@ -103,8 +103,13 @@ All tenant tables carry `tenant_id` and are protected by row-level security.
 | `chunks` | Text, embedding, `tsvector`, block references |
 | `webhook_deliveries` | Outbound events with retry state |
 
-`audit_log` has no update or delete grant for the application role; each row stores the hash of the
-previous row so tampering is detectable.
+`audit_log` is append-only and hash-chained per tenant. As built in C2: database triggers reject
+UPDATE, DELETE and TRUNCATE, each entry may have only one successor, and each entry stores the hash
+of the one before it, so an entry edited or removed from the middle is evident when the chain is
+recomputed. Not yet built: a restricted application role without rights to change the table (C6),
+and a copy of the latest hash kept outside the database. Until both exist, someone with owner
+access to the database could rewrite the log and recompute its hashes, so we describe the log as
+tamper-evident against ordinary access, not tamper-proof.
 
 ## 6. Reliability and scale
 

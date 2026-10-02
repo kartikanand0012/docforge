@@ -103,6 +103,24 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C2 Async and durable (2026-10-02)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| Exactly-once vs at-least-once | Chose at-least-once delivery with an idempotent result. Each delivery takes a turn number at the start and may only write while that turn is current; the result is one transaction. A crash can repeat the model call but never the record. | `process`, `_owned` and `_complete` in `src/docforge/documents.py` |
+| How do you make an upload idempotent? | The content hash is the identity, unique per tenant, enforced by the database with `ON CONFLICT DO NOTHING`. The object is stored before the row, because an object without a row is harmless and the reverse is not. | `ingest` in `src/docforge/documents.py` |
+| How do you avoid a job without a row, or a row without a job? | The job is inserted on the same connection, in the same transaction, as the document. A test fails the transaction after the enqueue and checks the job is gone too. | `JobQueue.enqueue` in `src/docforge/queue.py`; `tests/integration/test_queue.py` |
+| What happens when a worker dies mid-job? | Workers send heartbeats; a job whose worker stopped is put back. Proved with a test that starts a real worker process, kills it with SIGKILL while it holds a job, and starts another. | `requeue_stalled` in `src/docforge/worker.py`; `tests/integration/test_worker_crash.py` |
+| A bug your tests missed | The first version passed the kill test but a review found that a worker that only looked dead could come back and overwrite the finished result, or leave the version stuck. The sequential test could not see it. Added the turn number and tests that interleave two deliveries. | `test_a_late_failure_cannot_undo_...` in `tests/integration/test_documents.py` |
+| Poison messages | A document that kills its worker every time would have been retried forever, because the retry limit only applied when Python got to handle an error. The attempt count is now taken at the start of each run, so dead workers use up the budget too. | `process` in `src/docforge/documents.py` |
+| Retries: what do you retry and what not? | Permanent failures (unreadable file, reply that never fits the schema, hash mismatch) fail at once. Provider and unexpected errors go back to the queue with a growing wait, up to five starts. | `process` in `src/docforge/documents.py`; `src/docforge/queue.py` |
+| Deadlocks | Two code paths took the document lock and the audit lock in opposite orders. Fixed by one lock order everywhere (document, version, audit) and by flushing pending writes before taking the audit lock. | `_locked` in `src/docforge/documents.py`; `append` in `src/docforge/audit.py` |
+| How would you build a tamper-evident audit log, and what are its limits? | Hash chain per tenant, appended under an advisory lock in the same transaction as the change; the database refuses updates, deletes, truncation and a second successor. Limits stated plainly: someone who can rewrite the table can recompute the hashes, and a chain cut at the end still verifies, until the latest hash is anchored outside the database. | `src/docforge/audit.py`; `src/docforge/migrations/versions/0003_integrity_hardening.py` |
+| What should never go in an audit log? | Anything that may need erasing. Filenames can carry personal data and the log cannot be edited, so entries hold hashes, counts and fixed strings only. | `ingest` in `src/docforge/documents.py` |
+| Zero-downtime migrations | A review caught a migration that added required columns with no default: fine on an empty database, a failure on one with rows. It now adds, backfills, then constrains, and a test upgrades a database that already holds documents. | `src/docforge/migrations/versions/0002_durable_processing.py`; `tests/integration/test_schema_c2.py` |
+| Queue choice | Postgres-backed queue in the same database as the data: transactional enqueue and no extra service, at the price of the queue sharing the database's capacity. | `docs/architecture.md` section 4; `src/docforge/queue.py` |
+| Backpressure | Uploads are refused with 503 when too many documents are waiting, and reprocess is refused while a version is in flight, so one caller cannot queue unlimited model calls. | `_pending` and `reprocess` in `src/docforge/documents.py` |
+
 ### C1 Walking skeleton (2026-10-02)
 
 | Question it answers | What happened in this project | Where to point |
