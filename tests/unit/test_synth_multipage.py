@@ -57,7 +57,7 @@ def test_lines_fill_the_pages_in_order_and_stay_inside_the_margins() -> None:
 
     assert line_pages == sorted(line_pages)
     assert all(
-        20 <= box.y0 and box.y1 <= INVOICE.page_height - 20 and 0 <= box.x0 <= INVOICE.page_width
+        box.y0 >= 20 and box.y1 <= INVOICE.page_height - 20 and 0 <= box.x0 <= INVOICE.page_width
         for box in INVOICE.boxes
     )
 

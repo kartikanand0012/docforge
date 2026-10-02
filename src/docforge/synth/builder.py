@@ -159,12 +159,13 @@ def compute_totals(lines: Sequence[InvoiceLine]) -> InvoiceTotals:
     )
 
 
-def build_pair(index: int, seed: int) -> DocumentPair:
+def build_pair(index: int, seed: int, line_count: int | None = None) -> DocumentPair:
     """Pair number `index` (1-based) of the set generated from `seed`.
 
-    The same `(index, seed)` always gives the same pair. Layout alternates and every
-    third pair is inter-state, so any run of six pairs covers both layouts and both
-    supply types.
+    The same arguments always give the same pair. Layout alternates and every third pair is
+    inter-state, so any run of six pairs covers both layouts and both supply types. With
+    `line_count` the invoice has exactly that many lines, repeating products in different
+    batches as a long invoice does; without it, three to ten different products.
     """
     if index < 1:
         raise ValueError("index must be 1 or greater")
@@ -183,7 +184,10 @@ def build_pair(index: int, seed: int) -> DocumentPair:
     invoice_no = f"{seller_company.code}/{_FINANCIAL_YEAR}/{rng.randint(1, 40):02d}{index:03d}"
     po_no = f"PO-{buyer_company.code}-{rng.randint(10, 99)}{index:03d}"
 
-    products = rng.sample(catalog.PRODUCTS, rng.randint(3, 10))
+    if line_count is None:
+        products = rng.sample(catalog.PRODUCTS, rng.randint(3, 10))
+    else:
+        products = [rng.choice(catalog.PRODUCTS) for _ in range(line_count)]
     used_batches: set[str] = set()
     lines: list[InvoiceLine] = []
     order_lines: list[PurchaseOrderLine] = []

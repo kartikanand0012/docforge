@@ -45,6 +45,7 @@ format: ## Auto-format and fix lint
 generate: ## Regenerate the synthetic invoice/PO pairs with ground truth
 	uv run python -m docforge.synth --count $(SYNTH_COUNT) --seed $(SYNTH_SEED) --out $(SYNTH_DIR)
 	uv run python -m docforge.synth --seeded --out tests/fixtures/seeded
+	uv run python -m docforge.synth --multipage --seed $(SYNTH_SEED) --out tests/fixtures/multipage
 
 generate-scans: ## Rewrite the scanned variants (their recorded parses must then be re-recorded)
 	uv run python -m docforge.synth --scans-from $(SYNTH_DIR) --out tests/fixtures/scanned

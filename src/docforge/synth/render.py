@@ -81,6 +81,16 @@ class _Page:
         # the bytes independent of the zlib build. Together they make output reproducible.
         self._canvas = Canvas(self._buffer, pagesize=style.page, invariant=1, pageCompression=0)
         self._boxes: list[FieldBox] = []
+        self._page_no = 1
+
+    @property
+    def top(self) -> float:
+        """Baseline of the first line of a page."""
+        return self.height - _MARGIN - 10
+
+    def new_page(self) -> None:
+        self._canvas.showPage()
+        self._page_no += 1
 
     def text(
         self,
@@ -106,7 +116,7 @@ class _Page:
                 FieldBox(
                     path=path,
                     text=text,
-                    page=1,
+                    page=self._page_no,
                     x0=round(left, 2),
                     y0=round(y + descent, 2),
                     x1=round(left + width, 2),
@@ -127,7 +137,31 @@ class _Page:
     def table[LineT](
         self, top: float, columns: tuple[_Column[LineT], ...], rows: tuple[LineT, ...]
     ) -> float:
-        """Draw a header at baseline `top` and one row per line; return the y below the table."""
+        """Draw a header at baseline `top` and one row per line; return the y below the table.
+
+        A table too long for the page continues on the next one under a repeated header.
+        """
+        anchors = self._table_header(top, columns)
+        y = top
+        for row_index, row in enumerate(rows):
+            if y - self.style.row_pitch < _MARGIN + self.style.row_pitch:
+                self.rule(y - self.style.row_pitch * 0.35)
+                self.new_page()
+                y = self.top
+                self._table_header(y, columns)
+            y -= self.style.row_pitch
+            for column, anchor in zip(columns, anchors, strict=True):
+                value = column.text(row)
+                if value is None:
+                    continue
+                path = f"lines[{row_index}].{column.field}"
+                self.text(anchor, y, value, align=column.align, path=path)
+        bottom = y - self.style.row_pitch * 0.35
+        self.rule(bottom)
+        return bottom
+
+    def _table_header[LineT](self, top: float, columns: tuple[_Column[LineT], ...]) -> list[float]:
+        """Draw the header row between two rules; return each column's text anchor."""
         span = self.width - 2 * _MARGIN
         total_weight = sum(column.weight for column in columns)
         self.rule(top + self.style.row_pitch * 0.75)
@@ -140,19 +174,7 @@ class _Page:
             self.text(anchor, top, column.header, bold=True, align=column.align)
             left += width
         self.rule(top - self.style.row_pitch * 0.35)
-
-        y = top
-        for row_index, row in enumerate(rows):
-            y -= self.style.row_pitch
-            for column, anchor in zip(columns, anchors, strict=True):
-                value = column.text(row)
-                if value is None:
-                    continue
-                path = f"lines[{row_index}].{column.field}"
-                self.text(anchor, y, value, align=column.align, path=path)
-        bottom = y - self.style.row_pitch * 0.35
-        self.rule(bottom)
-        return bottom
+        return anchors
 
     def finish(self, truth: BaseModel) -> RenderedDocument:
         """Close the page. `truth` is the label the page was drawn from."""
@@ -306,7 +328,7 @@ def render_invoice(invoice: Invoice, layout: Layout) -> RenderedDocument:
     style = _INVOICE_STYLES[layout]
     page = _Page(style)
     pitch = style.font_size + 4.5
-    top = page.height - _MARGIN - 10
+    top = page.top
     meta = _invoice_meta(invoice, layout, style)
 
     if layout == "A":
@@ -334,9 +356,13 @@ def render_invoice(invoice: Invoice, layout: Layout) -> RenderedDocument:
     )
 
     y = table_bottom - pitch - 4
+    totals = _totals_rows(invoice)
+    if y - len(totals) * pitch < _MARGIN:  # no room left under the table
+        page.new_page()
+        y = page.top
     label_x = page.width - 200 if layout == "A" else _MARGIN
     value_x = page.width - _MARGIN - _CELL_PAD if layout == "A" else _MARGIN + 170
-    for label, value, path in _totals_rows(invoice):
+    for label, value, path in totals:
         bold = path == "totals.grand_total"
         page.text(label_x, y, label, bold=bold)
         page.text(value_x, y, value, bold=bold, align="right", path=path)
