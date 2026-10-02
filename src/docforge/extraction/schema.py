@@ -85,7 +85,7 @@ class Extracted[T](_Model):
 
 class Issue(_Model):
     path: str
-    code: Literal["unparseable", "unknown_block"]
+    code: Literal["unparseable", "unknown_block", "no_line_items"]
     message: str
 
 

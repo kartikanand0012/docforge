@@ -13,6 +13,10 @@ class DocumentTooLarge(ParseError):
     """The document exceeds a configured limit (pages)."""
 
 
+class NoTextLayer(ParseError):
+    """The PDF has no extractable text (for example a scan); OCR is not available yet."""
+
+
 class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 

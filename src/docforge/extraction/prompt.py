@@ -1,6 +1,7 @@
 """The invoice extraction prompt. Change `PROMPT_VERSION` whenever the wording changes."""
 
 import re
+import unicodedata
 
 from docforge.parsing.base import Block, ParsedDocument
 
@@ -27,12 +28,23 @@ Rules:
 - The seller is the party issuing the invoice. The buyer is the party billed.
 """
 
-_CLOSING_FENCE = re.compile(r"</\s*document\s*>", re.IGNORECASE)
+_FENCE = re.compile(r"<\s*/?\s*document\s*>", re.IGNORECASE)
+_LINE_BREAKING = {"Cc", "Zl", "Zp"}  # control characters and Unicode line separators
 
 
 def _text(block: Block) -> str:
-    # One line per block, and a block can never close the fence around the document.
-    return _CLOSING_FENCE.sub("</ document>", " ".join(block.text.split()))
+    """Block text on one line, unable to open or close the fence around the document.
+
+    Compatibility forms are folded and invisible format characters dropped first, so a
+    fence cannot be disguised with look-alike or zero-width characters.
+    """
+    folded = unicodedata.normalize("NFKC", block.text)
+    visible = "".join(
+        " " if unicodedata.category(char) in _LINE_BREAKING else char
+        for char in folded
+        if unicodedata.category(char) != "Cf"
+    )
+    return _FENCE.sub(lambda match: match[0].replace("<", "< "), " ".join(visible.split()))
 
 
 def render_blocks(parsed: ParsedDocument) -> str:

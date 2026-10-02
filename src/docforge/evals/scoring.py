@@ -20,7 +20,15 @@ FieldClass = Literal["identifier", "date", "amount", "quantity", "text"]
 Outcome = Literal["correct", "wrong", "missing", "correct_null", "hallucinated"]
 
 _CLASS_MEMBERS: dict[FieldClass, tuple[str, ...]] = {
-    "identifier": ("invoice_no", "po_no", "gstin", "drug_licence_nos", "batch_no", "hsn"),
+    "identifier": (
+        "invoice_no",
+        "po_no",
+        "gstin",
+        "drug_licence_nos",
+        "batch_no",
+        "hsn",
+        "place_of_supply_code",
+    ),
     "date": ("invoice_date", "po_date", "mfg", "expiry"),
     "amount": (
         "mrp",
@@ -43,6 +51,8 @@ FIELD_CLASSES: dict[str, FieldClass] = {
 # Unprinted on some invoices, and then the extraction must not supply a value.
 NULL_WHEN_UNPRINTED = ("totals.cgst", "totals.sgst", "totals.igst")
 _CITATION_TOLERANCE = 1.0  # points
+# Values printed inside another value's box: "Gujarat (24)" carries the state and its code.
+PRINTED_WITHIN = {"place_of_supply": ("place_of_supply_code",)}
 
 _SEGMENT = re.compile(r"(\w+)|\[(\d+)\]")
 
@@ -103,6 +113,7 @@ class EvalSummary(_Model):
     documents: int
     documents_fully_correct: int
     line_count_matches: int
+    extra_lines: int  # line items extracted beyond those on the documents
     fields: Tally
     by_class: dict[str, Tally]
     by_layout: dict[str, Tally]
@@ -141,7 +152,9 @@ def _is_cited(field: Extracted[object], box: FieldBox, parsed: ParsedDocument | 
     centre_x, centre_y = (box.x0 + box.x1) / 2, (box.y0 + box.y1) / 2
     blocks = (parsed.block(block_id) for block_id in field.block_ids)
     return any(
-        block is not None and block.bbox.contains(centre_x, centre_y, _CITATION_TOLERANCE)
+        block is not None
+        and block.page == box.page
+        and block.bbox.contains(centre_x, centre_y, _CITATION_TOLERANCE)
         for block in blocks
     )
 
@@ -156,12 +169,15 @@ def score_invoice(
     truth = label.documents["invoice"]
     fields: list[FieldScore] = []
 
-    for box in truth.boxes:
-        field_class = FIELD_CLASSES.get(_leaf(box.path))
+    targets = [
+        (path, box) for box in truth.boxes for path in (box.path, *PRINTED_WITHIN.get(box.path, ()))
+    ]
+    for path, box in targets:
+        field_class = FIELD_CLASSES.get(_leaf(path))
         if field_class is None:
             continue
-        expected = _resolve(label.invoice, box.path)
-        field = _extracted(extraction, box.path)
+        expected = _resolve(label.invoice, path)
+        field = _extracted(extraction, path)
         if field is None or field.value is None:
             outcome: Outcome = "missing"
             actual, cited = None, None
@@ -170,7 +186,7 @@ def score_invoice(
             actual, cited = str(field.value), _is_cited(field, box, parsed)
         fields.append(
             FieldScore(
-                path=box.path,
+                path=path,
                 field_class=field_class,
                 expected=str(expected),
                 actual=actual,
@@ -180,7 +196,8 @@ def score_invoice(
         )
 
     for path in NULL_WHEN_UNPRINTED:
-        if path not in truth.unprinted:
+        # A failed extraction earns no credit for leaving these empty.
+        if extraction is None or path not in truth.unprinted:
             continue
         field = _extracted(extraction, path)
         value = field.value if field is not None else None
@@ -233,6 +250,7 @@ def summarize(scores: Iterable[DocumentScore]) -> EvalSummary:
         documents=len(documents),
         documents_fully_correct=sum(document.fully_correct for document in documents),
         line_count_matches=sum(d.expected_lines == d.extracted_lines for d in documents),
+        extra_lines=sum(max(0, d.extracted_lines - d.expected_lines) for d in documents),
         fields=_tally(scored),
         by_class={
             name: _tally(field for field in scored if field.field_class == name)

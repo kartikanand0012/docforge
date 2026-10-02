@@ -30,6 +30,7 @@ class LLMResponse(BaseModel):
     model: str
     input_tokens: int | None
     output_tokens: int | None
+    thinking_tokens: int | None = None  # billed like output, reported separately
     latency_ms: float
 
 

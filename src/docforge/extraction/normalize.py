@@ -25,14 +25,24 @@ from docforge.extraction.schema import (
 from docforge.parsing.base import ParsedDocument
 
 _MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
-_DAY_MONTHNAME_YEAR = re.compile(r"(\d{1,2})[-/ ]([A-Za-z]{3})[-/ ](\d{4})")
-_DAY_MONTH_YEAR = re.compile(r"(\d{1,2})[-/](\d{1,2})[-/](\d{4})")
-_YEAR_MONTH_DAY = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
-_MONTH_YEAR = re.compile(r"(\d{1,2})[-/](\d{2}|\d{4})")
-_NUMBER = re.compile(r"-?\d+(\.\d+)?")
-_CURRENCY = re.compile(r"rs\.?|inr|₹|%", re.IGNORECASE)
-_STATE_THEN_CODE = re.compile(r"(.+?)\s*\((\d{2})\)")
-_CODE_THEN_STATE = re.compile(r"(\d{2})\s*-\s*(.+)")
+# re.ASCII throughout: `\d` must not match digits of other scripts, which int() would accept.
+# The backreference makes both separators of a date the same character.
+_DAY_MONTHNAME_YEAR = re.compile(r"(\d{1,2})([-/ ])([A-Za-z]{3})\2(\d{4})", re.ASCII)
+_DAY_MONTH_YEAR = re.compile(r"(\d{1,2})([-/])(\d{1,2})\2(\d{4})", re.ASCII)
+_YEAR_MONTH_DAY = re.compile(r"(\d{4})-(\d{2})-(\d{2})", re.ASCII)
+_MONTH_YEAR = re.compile(r"(\d{1,2})[-/](\d{2}|\d{4})", re.ASCII)
+# Plain digits, or commas in Western (1,234,567) or Indian (12,34,567) groups. "12,50" is
+# neither, so it is rejected rather than read as 1250.
+_DIGITS = r"(?:\d+|\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})"
+_INTEGER = re.compile(_DIGITS, re.ASCII)
+_NUMBER = re.compile(rf"-?{_DIGITS}(?:\.\d+)?", re.ASCII)
+# A currency mark may lead and a percent sign may trail; neither may sit inside the digits.
+_AFFIXES = re.compile(r"^(?:rs\.?|inr|₹)\s*|\s*%$", re.IGNORECASE)
+_STATE_THEN_CODE = re.compile(r"(.+?)\s*\((\d{2})\)", re.ASCII)
+_CODE_THEN_STATE = re.compile(r"(\d{2})\s*-\s*(.+)", re.ASCII)
+_STATE_DASH_CODE = re.compile(r"(.+?)\s*-\s*(\d{2})", re.ASCII)
+_CODE_ONLY = re.compile(r"\d{2}", re.ASCII)
+_EARLIEST_YEAR = 1900
 
 
 def clean_text(raw: str) -> str | None:
@@ -51,12 +61,12 @@ def parse_date(raw: str) -> date | None:
     """`02-Sep-2026`, `05/06/2026` (day first, as Indian documents print it) or ISO."""
     text = raw.strip()
     if match := _DAY_MONTHNAME_YEAR.fullmatch(text):
-        name = match[2].lower()
+        name = match[3].lower()
         if name not in _MONTHS:
             return None
-        return _date(int(match[3]), _MONTHS.index(name) + 1, int(match[1]))
+        return _date(int(match[4]), _MONTHS.index(name) + 1, int(match[1]))
     if match := _DAY_MONTH_YEAR.fullmatch(text):
-        return _date(int(match[3]), int(match[2]), int(match[1]))
+        return _date(int(match[4]), int(match[3]), int(match[1]))
     if match := _YEAR_MONTH_DAY.fullmatch(text):
         return _date(int(match[1]), int(match[2]), int(match[3]))
     return None
@@ -67,30 +77,35 @@ def parse_month(raw: str) -> str | None:
     match = _MONTH_YEAR.fullmatch(raw.strip())
     if not match:
         return None
-    month, year = int(match[1]), int(match[2])
-    if not 1 <= month <= 12:
+    month = int(match[1])
+    year = 2000 + int(match[2]) if len(match[2]) == 2 else int(match[2])
+    if not 1 <= month <= 12 or year < _EARLIEST_YEAR:
         return None
-    return f"{year if year >= 100 else 2000 + year:04d}-{month:02d}"
+    return f"{year:04d}-{month:02d}"
 
 
 def parse_decimal(raw: str) -> Decimal | None:
-    """A printed amount or rate. Keeps the printed precision; drops currency marks and commas."""
-    text = _CURRENCY.sub("", raw).replace(",", "").strip()
-    return Decimal(text) if _NUMBER.fullmatch(text) else None
+    """A printed amount or rate. Keeps the printed precision; drops a currency mark and commas."""
+    text = _AFFIXES.sub("", raw.strip())
+    return Decimal(text.replace(",", "")) if _NUMBER.fullmatch(text) else None
 
 
 def parse_int(raw: str) -> int | None:
-    text = raw.replace(",", "").strip()
-    return int(text) if text.isascii() and text.isdigit() else None
-
-
-def parse_place_of_supply(raw: str) -> tuple[str, str | None]:
-    """`Gujarat (24)` or `24-Gujarat` to (state, code). The code is None if not printed."""
     text = raw.strip()
+    return int(text.replace(",", "")) if _INTEGER.fullmatch(text) else None
+
+
+def parse_place_of_supply(raw: str) -> tuple[str | None, str | None]:
+    """`Gujarat (24)`, `24-Gujarat` or `Gujarat - 24` to (state, code); either may be None."""
+    text = raw.strip()
+    if _CODE_ONLY.fullmatch(text):
+        return None, text
     if match := _STATE_THEN_CODE.fullmatch(text):
         return match[1], match[2]
     if match := _CODE_THEN_STATE.fullmatch(text):
         return match[2], match[1]
+    if match := _STATE_DASH_CODE.fullmatch(text):
+        return match[1], match[2]
     return text, None
 
 
@@ -166,6 +181,10 @@ class _Normalizer:
 def normalize_invoice(raw: RawInvoice, parsed: ParsedDocument) -> InvoiceExtraction:
     """Convert the model's printed strings to typed values and check its citations exist."""
     normalizer = _Normalizer(parsed)
+    if not raw.lines:
+        normalizer.issues.append(
+            Issue(path="lines", code="no_line_items", message="no line items were extracted")
+        )
     place = normalizer.field("place_of_supply", raw.place_of_supply, clean_text)
     state, code = parse_place_of_supply(place.value) if place.value else (None, None)
     return InvoiceExtraction(

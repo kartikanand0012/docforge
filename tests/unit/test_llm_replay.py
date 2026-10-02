@@ -114,8 +114,15 @@ def test_a_truncated_recording_is_a_miss_not_a_crash(tmp_path: Path) -> None:
     provider.generate(request())
 
     assert inner.calls == 2
-    with pytest.raises(LLMError, match="no recorded response"):
-        (recording.write_text("{", encoding="utf-8"), RecordingProvider(tmp_path, "fake-1"))[
-            1
-        ].generate(request())
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_a_truncated_recording_in_replay_only_mode_is_reported_as_missing(
+    tmp_path: Path,
+) -> None:
+    RecordingProvider(tmp_path, model="fake-1", inner=CountingProvider()).generate(request())
+    (recording,) = tmp_path.glob("*.json")
+    recording.write_text("{", encoding="utf-8")
+
+    with pytest.raises(LLMError, match="no recorded response"):
+        RecordingProvider(tmp_path, model="fake-1").generate(request())

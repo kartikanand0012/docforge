@@ -49,6 +49,7 @@ class Usage(_Model):
     model_calls: int
     input_tokens: int
     output_tokens: int
+    thinking_tokens: int
     pages: int
     latency_ms_p50: float
     latency_ms_p95: float
@@ -85,13 +86,16 @@ def run_eval(
     provider errors (including an exhausted quota) stop the run.
     """
     manifest = json.loads((fixtures / MANIFEST_FILE).read_text(encoding="utf-8"))
+    directories = sorted(fixtures.glob("pair_*"))
+    if [directory.name for directory in directories] != manifest["pairs"]:
+        raise ValueError(f"the pairs under {fixtures} do not match its manifest")
     scores: list[DocumentScore] = []
     responses: list[LLMResponse] = []
     latencies: list[float] = []
     pages = 0
     parser_info = ParserInfo(name=pipeline.parser.name, version=pipeline.parser.version)
 
-    for directory in sorted(fixtures.glob("pair_*")):
+    for directory in directories:
         label = PairLabel.model_validate_json((directory / LABEL_FILE).read_text(encoding="utf-8"))
         parsed = pipeline.parser.parse((directory / INVOICE_FILE).read_bytes())
         parser_info = ParserInfo(name=parsed.parser, version=parsed.parser_version)
@@ -123,6 +127,7 @@ def run_eval(
             model_calls=len(responses),
             input_tokens=sum(call.input_tokens or 0 for call in responses),
             output_tokens=sum(call.output_tokens or 0 for call in responses),
+            thinking_tokens=sum(call.thinking_tokens or 0 for call in responses),
             pages=pages,
             latency_ms_p50=_percentile(latencies, 0.50),
             latency_ms_p95=_percentile(latencies, 0.95),
@@ -159,7 +164,7 @@ def format_report(report: EvalReport) -> str:
         f"model {report.model} ({report.provider}), prompt {report.prompt_version}, "
         f"parser {report.parser.name} {report.parser.version}",
         f"documents: {summary.documents}, fully correct: {summary.documents_fully_correct}, "
-        f"line count right: {summary.line_count_matches}",
+        f"line count right: {summary.line_count_matches}, invented lines: {summary.extra_lines}",
         "field accuracy (printed fields):",
         row("all", summary.fields),
         *(row(name, tally) for name, tally in summary.by_class.items()),

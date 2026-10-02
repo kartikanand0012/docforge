@@ -8,10 +8,11 @@ from docforge.extraction.normalize import normalize_invoice
 from docforge.extraction.prompt import PROMPT_VERSION, SYSTEM_INSTRUCTION, build_prompt
 from docforge.extraction.schema import InvoiceExtraction, RawInvoice
 from docforge.llm.base import LLMProvider, LLMRequest, LLMResponse
-from docforge.parsing.base import DocumentTooLarge, ParsedDocument, Parser
+from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, Parser
 from docforge.parsing.pdf import pdf_page_count
 
 DEFAULT_MAX_PAGES = 20
+DEFAULT_MAX_PROMPT_CHARS = 200_000  # far above any invoice; bounds model cost per request
 
 
 class ExtractionError(Exception):
@@ -40,11 +41,16 @@ def _describe(error: ValidationError) -> str:
 
 class InvoicePipeline:
     def __init__(
-        self, parser: Parser, provider: LLMProvider, max_pages: int = DEFAULT_MAX_PAGES
+        self,
+        parser: Parser,
+        provider: LLMProvider,
+        max_pages: int = DEFAULT_MAX_PAGES,
+        max_prompt_chars: int = DEFAULT_MAX_PROMPT_CHARS,
     ) -> None:
         self.parser = parser
         self.provider = provider
         self.max_pages = max_pages
+        self.max_prompt_chars = max_prompt_chars
 
     def run(self, pdf: bytes) -> PipelineResult:
         """Raises `ParseError`, `LLMError` or `ExtractionError`."""
@@ -54,10 +60,21 @@ class InvoicePipeline:
         return self.extract(self.parser.parse(pdf))
 
     def extract(self, parsed: ParsedDocument) -> PipelineResult:
-        """Extraction from an already parsed document. One retry if the reply is malformed."""
+        """Extraction from an already parsed document. One retry if the reply is malformed.
+
+        Raises `NoTextLayer`, `DocumentTooLarge`, `LLMError` or `ExtractionError`.
+        """
+        if not parsed.blocks:
+            # Without this the model is sent an empty document and returns an all-null record.
+            raise NoTextLayer("the PDF has no extractable text")
+        prompt = build_prompt(parsed)
+        if len(prompt) > self.max_prompt_chars:
+            raise DocumentTooLarge(
+                f"document text is {len(prompt)} characters; the limit is {self.max_prompt_chars}"
+            )
         request = LLMRequest(
             system=SYSTEM_INSTRUCTION,
-            prompt=build_prompt(parsed),
+            prompt=prompt,
             schema=RawInvoice,
             prompt_version=PROMPT_VERSION,
         )

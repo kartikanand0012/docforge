@@ -11,6 +11,7 @@ from docforge.parsing.pdf import pdf_page_count
 if TYPE_CHECKING:
     from docling.document_converter import DocumentConverter
     from docling_core.types.doc.base import BoundingBox
+    from docling_core.types.doc.document import DoclingDocument
 
 _MIN_SIDE = 0.01  # points; keeps a degenerate box valid instead of dropping its text
 
@@ -50,8 +51,6 @@ class DoclingParser:
 
     def parse(self, pdf: bytes) -> ParsedDocument:
         from docling.datamodel.base_models import ConversionStatus, DocumentStream
-        from docling_core.types.doc.items.table.table import TableItem
-        from docling_core.types.doc.items.text import TextItem
 
         pdf_page_count(pdf)  # rejects unreadable files before the models are loaded
         stream = DocumentStream(name="document.pdf", stream=io.BytesIO(pdf))
@@ -63,7 +62,15 @@ class DoclingParser:
         if result.status != ConversionStatus.SUCCESS:
             raise ParseError(f"Docling conversion ended with status {result.status.value}")
 
-        document = result.document
+        try:
+            return self._to_parsed(result.document)
+        except (ValueError, KeyError) as error:  # includes pydantic validation errors
+            raise ParseError("Docling output could not be converted to blocks") from error
+
+    def _to_parsed(self, document: "DoclingDocument") -> ParsedDocument:
+        from docling_core.types.doc.items.table.table import TableItem
+        from docling_core.types.doc.items.text import TextItem
+
         heights = {number: page.size.height for number, page in document.pages.items()}
         blocks: list[Block] = []
         tables = 0

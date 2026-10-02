@@ -104,7 +104,7 @@ def test_only_printed_business_fields_are_scored(intra: Perfect) -> None:
 
     scored = {field.path for field in intra.score().scored}
 
-    assert scored == printed - serial_numbers
+    assert scored == (printed - serial_numbers) | {"place_of_supply_code"}
     assert "supply_type" not in scored
     assert "lines[0].cgst" not in scored
 

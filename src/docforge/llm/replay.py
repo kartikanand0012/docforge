@@ -6,6 +6,7 @@ system instruction, prompt and reply schema. Change any of them and it is a miss
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
@@ -39,10 +40,9 @@ class RecordingProvider:
     def generate(self, request: LLMRequest) -> LLMResponse:
         key = self._key(request)
         path = self._directory / f"{key[:24]}.json"
-        if path.exists():
-            recording = json.loads(path.read_text(encoding="utf-8"))
-            if recording["key"] == key:
-                return LLMResponse.model_validate(recording["response"])
+        recorded = self._read(path, key)
+        if recorded is not None:
+            return recorded
         if self._inner is None:
             raise LLMError(
                 f"no recorded response for this request (key {key[:24]}); "
@@ -56,5 +56,19 @@ class RecordingProvider:
             "prompt_version": request.prompt_version,
             "response": response.model_dump(mode="json"),
         }
-        path.write_text(json.dumps(recording, indent=2) + "\n", encoding="utf-8")
+        # Write then rename, so an interrupted run never leaves half a file behind.
+        temporary = path.with_suffix(".tmp")
+        temporary.write_text(json.dumps(recording, indent=2) + "\n", encoding="utf-8")
+        os.replace(temporary, path)
         return response
+
+    @staticmethod
+    def _read(path: Path, key: str) -> LLMResponse | None:
+        """The recorded response, or None if there is none or the file is damaged."""
+        try:
+            recording = json.loads(path.read_text(encoding="utf-8"))
+            if recording["key"] != key:
+                return None
+            return LLMResponse.model_validate(recording["response"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return None

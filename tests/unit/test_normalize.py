@@ -96,7 +96,7 @@ def test_parse_int_rejects_what_it_cannot_read(raw: str) -> None:
         ("Gujarat", ("Gujarat", None)),
     ],
 )
-def test_parse_place_of_supply(raw: str, expected: tuple[str, str | None]) -> None:
+def test_parse_place_of_supply(raw: str, expected: tuple[str | None, str | None]) -> None:
     assert parse_place_of_supply(raw) == expected
 
 
@@ -113,14 +113,14 @@ def test_clean_text_collapses_whitespace_and_treats_blank_as_missing() -> None:
         "1,234,56.00",
         "1Rs2",  # a currency mark in the middle of the digits
         "5%5",
-        "٣٤.٥",  # non-ASCII digits
+        "\u0663\u0664.\u0665",  # Arabic-Indic digits
     ],
 )
 def test_parse_decimal_rejects_ambiguous_grouping_and_foreign_digits(raw: str) -> None:
     assert parse_decimal(raw) is None
 
 
-@pytest.mark.parametrize("raw", ["1,2", "12,50", "٣٤"])
+@pytest.mark.parametrize("raw", ["1,2", "12,50", "\u0663\u0664"])
 def test_parse_int_rejects_ambiguous_grouping_and_foreign_digits(raw: str) -> None:
     assert parse_int(raw) is None
 
@@ -141,5 +141,5 @@ def test_parse_date_rejects_mixed_separators_and_foreign_digits(raw: str) -> Non
 
 
 def test_a_bare_code_is_not_taken_for_a_state_name() -> None:
-    assert parse_place_of_supply("24") == ("24", None)
+    assert parse_place_of_supply("24") == (None, "24")
     assert parse_place_of_supply("Gujarat - 24") == ("Gujarat", "24")
