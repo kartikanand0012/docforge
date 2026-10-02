@@ -94,11 +94,50 @@ Deferred, with the checkpoint that should pick each up:
 | Deploy restarts use up the same attempt budget as real failures | C8 |
 | Applying constraints with `NOT VALID` then `VALIDATE` for large tables | When a database with real volume exists |
 
+### Verification pass before merge (2026-10-02)
+
+Run against real processes (API, workers, Postgres, MinIO) on a scratch database, with a stand-in
+pipeline unless stated.
+
+| Check | Result |
+| --- | --- |
+| 20 simultaneous uploads of one file | One 202, nineteen 200, one document, one version, one job |
+| 19 different files at once, two workers | All 20 documents extracted once each; every version ran once; chain consistent with 60 entries |
+| 10 simultaneous reprocess requests | One accepted, nine refused with 409 |
+| Both workers killed with SIGKILL while each held a job | A new worker finished both; one extraction each, two attempts each |
+| SIGTERM to a worker holding a job | It finished the job, then exited with status 0 |
+| A document whose worker is killed on every attempt | Failed after 5 starts with "Processing was interrupted too many times." |
+| An audit entry edited with the triggers disabled | Verification reported the chain inconsistent at that entry |
+| Object storage stopped during an upload | Request failed with no document row and no job; the same upload succeeded once storage was back |
+| Postgres restarted under a running API and worker | Both carried on; the next uploads were accepted and processed |
+| Malformed input: empty file, magic bytes only, truncated, password-protected, 11 MB, 21 pages, wrong field, non-multipart body, unknown type, hostile filename, malformed id | Each refused with 413, 415 or 422; nothing stored |
+| Real pipeline: a PDF with no text | Version failed with "The PDF has no text layer."; no model call |
+| Real pipeline: an invoice, then reprocess | Both versions succeeded; header, totals, every batch and amount matched the label |
+
+Found and fixed in this pass:
+
+- Storage or database being unavailable answered 500 "Internal error."; it now answers 503 with a
+  "try again later" message, and the worker treats unavailable storage as retryable.
+
+Observed, not a fault:
+
+- Reprocessing the same invoice with the same model gave identical values but two different
+  citations (the label cell in one run, the value cell in the other). The model is not perfectly
+  repeatable at temperature 0; C3's check of values against cited text covers this.
+- A worker sent SIGTERM in its first second, before it installs its handlers, exits at once. It
+  holds no job at that point.
+- A blank `doc_type` form field is treated as omitted and defaults to `invoice`.
+
+Added to the test suite from this pass: a crash after the model call but before the write,
+simultaneous reprocess and upload requests, and unreachable storage.
+
 ### Not verified
 
-- Behaviour under load, or with more than one worker running.
-- Recovery time with the default 30 s stalled-worker timeout.
-- The deadlock scenario from the database review was reasoned about and designed out, not reproduced.
+- Throughput or latency under sustained load.
+- Recovery time with the default 30 s stalled-worker timeout (the checks used 2 s).
+- More than two workers, or workers on different machines.
+- The reprocess-versus-worker deadlock from the database review was designed out, not reproduced.
+- A worker process killed during a real Gemini call; the kill checks used the stand-in pipeline.
 
 ## C1 Walking skeleton (2026-10-02): gate passed
 
