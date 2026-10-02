@@ -267,7 +267,23 @@ def tax_matches_supply_type(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
     )
 
 
+def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    required = {
+        "invoice_no": invoice.invoice_no.value,
+        "invoice_date": invoice.invoice_date.value,
+        "seller.gstin": invoice.seller.gstin.value,
+        "buyer.gstin": invoice.buyer.gstin.value,
+        "totals.grand_total": invoice.totals.grand_total.value,
+        "lines": invoice.lines or None,
+    }
+    for path, value in required.items():
+        yield _result(
+            "required.present", "error", (path,), value is not None, f"{path} is missing."
+        )
+
+
 INVOICE_RULES: tuple[Callable[[InvoiceExtraction], Iterable[RuleResult]], ...] = (
+    required_present,
     gstin_checksum,
     place_of_supply_matches_buyer,
     hsn_format,

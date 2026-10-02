@@ -5,7 +5,7 @@ the shape the model must reply in, the instruction it is given, and the code tha
 its printed strings into typed values.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -17,6 +17,9 @@ from docforge.extraction.schema import InvoiceExtraction, RawInvoice
 from docforge.llm.base import LLMProvider, LLMRequest, LLMResponse
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, Parser
 from docforge.parsing.pdf import pdf_page_count
+from docforge.trust.assess import Assessment, assess
+from docforge.trust.invoice_rules import INVOICE_RULES
+from docforge.trust.rules import RuleResult
 
 DEFAULT_MAX_PAGES = 20
 DEFAULT_MAX_PROMPT_CHARS = 200_000  # far above any invoice; bounds model cost per request
@@ -40,6 +43,7 @@ class DocumentSpec[E: BaseModel]:
     prompt_version: str  # change whenever the instruction changes
     schema_version: str
     normalize: Callable[[Any, ParsedDocument], E]  # printed strings to typed values, in code
+    rules: tuple[Callable[[E], Iterable[RuleResult]], ...] = ()  # deterministic checks
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,7 @@ class PipelineResult[E: BaseModel]:
     responses: tuple[LLMResponse, ...]  # one per model call, in order
     prompt_version: str
     schema_version: str
+    assessment: Assessment  # what was checked and whether a person must look
 
 
 def _describe(error: ValidationError) -> str:
@@ -119,12 +124,14 @@ class ExtractionPipeline[E: BaseModel]:
                 raise ExtractionError(
                     "model reply did not fit the schema after one retry", responses
                 ) from second_error
+        extraction = spec.normalize(raw, parsed)
         return PipelineResult(
             parsed=parsed,
-            extraction=spec.normalize(raw, parsed),
+            extraction=extraction,
             responses=responses,
             prompt_version=spec.prompt_version,
             schema_version=spec.schema_version,
+            assessment=assess(extraction, parsed, spec.rules),
         )
 
 
@@ -135,6 +142,7 @@ INVOICE_SPEC = DocumentSpec(
     prompt_version=PROMPT_VERSION,
     schema_version="invoice-1",
     normalize=normalize_invoice,
+    rules=INVOICE_RULES,
 )
 
 

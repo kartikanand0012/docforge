@@ -1,6 +1,7 @@
 """The purchase-order document type: what the buyer ordered, to match an invoice against."""
 
 import re
+from collections.abc import Iterable
 from datetime import date
 from decimal import Decimal
 from typing import Literal
@@ -16,7 +17,9 @@ from docforge.extraction.normalize import (
 )
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.schema import Extracted, Issue, PartyExtraction, RawField, RawParty, _Model
+from docforge.gstin import is_valid_gstin
 from docforge.parsing.base import ParsedDocument
+from docforge.trust.rules import RuleResult
 
 PROMPT_VERSION = "purchase-order-v1"
 
@@ -117,6 +120,32 @@ def normalize_purchase_order(
     )
 
 
+def order_rules(order: PurchaseOrderExtraction) -> Iterable[RuleResult]:
+    """The checks that apply to an order on its own; the rest come from matching."""
+    for path, gstin in (
+        ("buyer.gstin", order.buyer.gstin.value),
+        ("supplier_gstin", order.supplier_gstin.value),
+    ):
+        ok = None if gstin is None else is_valid_gstin(gstin)
+        yield RuleResult(
+            rule_id="gstin.checksum",
+            version=1,
+            severity="error",
+            outcome="not_evaluated" if ok is None else ("passed" if ok else "failed"),
+            message="OK" if ok else f"{gstin} is missing or is not a valid GSTIN.",
+            paths=(path,),
+        )
+    for path, present in (("po_no", order.po_no.value is not None), ("lines", bool(order.lines))):
+        yield RuleResult(
+            rule_id="required.present",
+            version=1,
+            severity="error",
+            outcome="passed" if present else "failed",
+            message="OK" if present else f"{path} is missing.",
+            paths=(path,),
+        )
+
+
 PURCHASE_ORDER_SPEC = DocumentSpec(
     doc_type="purchase_order",
     raw_schema=RawPurchaseOrder,
@@ -124,4 +153,5 @@ PURCHASE_ORDER_SPEC = DocumentSpec(
     prompt_version=PROMPT_VERSION,
     schema_version="purchase-order-1",
     normalize=normalize_purchase_order,
+    rules=(order_rules,),
 )
