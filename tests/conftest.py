@@ -1,6 +1,7 @@
 """Shared fixtures."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 
 import pytest
 from sqlalchemy import create_engine, text
