@@ -1,5 +1,6 @@
 """Application settings, read from the environment and an optional `.env` file."""
 
+import re
 from functools import lru_cache
 from typing import Literal, Self
 
@@ -9,6 +10,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
 
 DATABASE_DRIVER = "postgresql+psycopg"
+_FACTORY = re.compile(r"[A-Za-z_][\w.]*:[A-Za-z_]\w*")
 _LOCAL_DATABASE_URL = "postgresql+psycopg://docforge:docforge@127.0.0.1:5432/docforge"
 _LOCAL_S3_SECRET_KEY = "docforge-local-secret"  # noqa: S105 - local Compose default, not a real secret
 
@@ -43,6 +45,7 @@ class Settings(BaseSettings):
     pipeline_factory: str = "docforge.wiring:build_pipelines"
 
     job_max_attempts: int = 5
+    max_pending_documents: int = 1000  # uploads are refused while this many are waiting
     job_retry_wait_seconds: float = 5
     worker_heartbeat_seconds: float = 10
     worker_stalled_after_seconds: float = 30
@@ -57,6 +60,13 @@ class Settings(BaseSettings):
             driver = None
         if driver != DATABASE_DRIVER:
             raise ValueError(f"DATABASE_URL must be a {DATABASE_DRIVER}:// URL")
+        return value
+
+    @field_validator("pipeline_factory")
+    @classmethod
+    def _factory_is_module_and_function(cls, value: str) -> str:
+        if not _FACTORY.fullmatch(value):
+            raise ValueError("PIPELINE_FACTORY must look like module:function")
         return value
 
     @field_validator("gemini_api_key", mode="before")
@@ -75,6 +85,9 @@ class Settings(BaseSettings):
         unset = [name for name, is_default in defaults.items() if is_default]
         if unset:
             raise ValueError(f"{', '.join(unset)} still has its local default value")
+        if not self.pipeline_factory.startswith("docforge."):
+            # The factory is imported and called with every secret in these settings.
+            raise ValueError("PIPELINE_FACTORY must name a function in this package")
         return self
 
 

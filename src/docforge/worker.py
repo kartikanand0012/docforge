@@ -23,10 +23,17 @@ async def requeue_stalled(app: procrastinate.App, *, stalled_after_seconds: floa
             queue=QUEUE_NAME, seconds_since_heartbeat=stalled_after_seconds
         )
     )
+    requeued = 0
     for job in jobs:
-        logger.warning("requeueing job %s: its worker stopped responding", job.id)
-        await app.job_manager.retry_job(job)
-    return len(jobs)
+        try:
+            await app.job_manager.retry_job(job)
+        except Exception:
+            # Another worker got there first, or the job has moved on. Carry on with the rest.
+            logger.warning("could not requeue job %s; skipping it", job.id, exc_info=True)
+            continue
+        logger.warning("requeued job %s: its worker stopped responding", job.id)
+        requeued += 1
+    return requeued
 
 
 async def _requeue_stalled_forever(app: procrastinate.App, stalled_after_seconds: float) -> None:
@@ -47,7 +54,10 @@ async def run_worker(
 ) -> None:
     """Run jobs until stopped by a signal. With `wait=False`, stop when nothing is ready."""
     async with queue.app.open_async():
-        await requeue_stalled(queue.app, stalled_after_seconds=stalled_after_seconds)
+        try:
+            await requeue_stalled(queue.app, stalled_after_seconds=stalled_after_seconds)
+        except Exception:
+            logger.exception("could not check for stalled jobs at startup; will try again")
         watcher = asyncio.create_task(_requeue_stalled_forever(queue.app, stalled_after_seconds))
         try:
             await queue.app.run_worker_async(

@@ -44,6 +44,8 @@ def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
         S3ObjectStore.from_settings(settings),
         load_pipelines(settings),
         queue.enqueue,
+        max_attempts=settings.job_max_attempts,
+        max_pending=settings.max_pending_documents,
     )
     queue.bind(service)
     return service, queue

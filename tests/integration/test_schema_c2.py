@@ -57,13 +57,14 @@ def new_extraction(engine: Engine, version_id: uuid.UUID) -> object:
     )
 
 
-def append_audit(engine: Engine, digit: str = "1") -> object:
+def append_audit(engine: Engine, digit: str = "1", after: str | None = None) -> object:
     return scalar(
         engine,
         "INSERT INTO audit_log (tenant_id, occurred_at, actor, action, target_type, target_id, "
-        "details, hash) VALUES (:tenant, now(), 'test', 'x', 'document', 'id', '{}'::jsonb, :hash) "
-        "RETURNING id",
+        "details, prev_hash, hash) VALUES (:tenant, now(), 'test', 'x', 'document', 'id', "
+        "'{}'::jsonb, :prev, :hash) RETURNING id",
         tenant=DEFAULT_TENANT_ID,
+        prev=after * 64 if after else None,
         hash=digit * 64,
     )
 
@@ -158,7 +159,7 @@ def test_the_audit_log_cannot_be_changed_deleted_or_truncated(db: Engine, statem
 
 
 def test_audit_entries_are_numbered_in_insertion_order(db: Engine) -> None:
-    first, second = append_audit(db, "1"), append_audit(db, "2")
+    first, second = append_audit(db, "1"), append_audit(db, "2", after="1")
 
     assert isinstance(first, int)
     assert isinstance(second, int)

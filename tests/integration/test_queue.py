@@ -247,7 +247,10 @@ def test_a_job_for_a_version_that_no_longer_exists_is_dropped(
     setup.ingest()
     with engine.begin() as conn:
         conn.execute(
-            text("UPDATE procrastinate_jobs SET args = jsonb_build_object('version_id', :id)"),
+            text(
+                "UPDATE procrastinate_jobs "
+                "SET args = jsonb_build_object('version_id', CAST(:id AS text))"
+            ),
             {"id": "00000000-0000-0000-0000-00000000dead"},
         )
 

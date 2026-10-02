@@ -1,12 +1,18 @@
-"""The audit log: append-only, and hash-chained so that edits and removals are detectable.
+"""The audit log: append-only, and hash-chained so that changes to it are evident.
 
 Each entry stores the hash of the entry before it for the same tenant, and its own hash
-over that and its contents. Changing or removing an entry breaks the chain at or after it.
-The database refuses UPDATE, DELETE and TRUNCATE on the table; the chain is the second line,
-for whoever can bypass that.
+over that and its contents. The database refuses UPDATE, DELETE and TRUNCATE on the table
+and allows each entry only one successor.
 
-Not covered: removing entries from the end of the chain leaves a shorter chain that still
-verifies. Detecting that needs the latest hash to be kept somewhere else.
+What the chain shows: an entry that was edited, or removed from the middle, by someone who
+did not also recompute every later hash. `verify_chain` reports where the chain breaks.
+
+What it does not show, so do not claim it:
+- A rewrite by someone who can write to the database and recomputes the hashes. The hash is
+  not keyed and nothing outside the database holds a copy of it.
+- Entries removed from the end: a shorter chain still verifies.
+Closing those needs the latest hash to be recorded somewhere the database owner cannot
+change, which is not built yet.
 """
 
 import hashlib
@@ -16,7 +22,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from docforge.db.models import AuditEntry
@@ -69,6 +75,9 @@ def append(
     Keep `details` to strings, integers, booleans and nulls: the hash must be reproducible
     from what the database returns.
     """
+    # Send the caller's pending writes first, so they are not done while holding the lock
+    # and so row locks are always taken before it.
+    session.flush()
     # One writer per tenant at a time, held until the transaction ends, so every entry
     # has exactly one successor.
     session.execute(
@@ -81,7 +90,10 @@ def append(
         .order_by(AuditEntry.id.desc())
         .limit(1)
     )
-    occurred_at = datetime.now(UTC)
+    # The database clock, read under the lock: one clock for every writer, so timestamps
+    # follow chain order.
+    occurred_at = session.scalar(select(func.clock_timestamp()))
+    assert occurred_at is not None  # noqa: S101 - clock_timestamp() always returns a value
     entry = AuditEntry(
         tenant_id=tenant_id,
         occurred_at=occurred_at,
@@ -109,7 +121,7 @@ def append(
 
 @dataclass(frozen=True)
 class ChainReport:
-    ok: bool
+    consistent: bool  # the stored hashes agree with the stored contents and links
     entries: int  # entries checked
     first_bad_id: int | None = None
     reason: str | None = None

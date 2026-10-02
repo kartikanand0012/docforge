@@ -79,7 +79,7 @@ def test_each_tenant_has_its_own_chain(sessions: SessionFactory, other_tenant: u
     mine = entries(sessions)
     assert mine[2].prev_hash == mine[1].hash
     with sessions() as session:
-        assert audit.verify_chain(session, DEFAULT_TENANT_ID).ok
+        assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
         assert audit.verify_chain(session, other_tenant).consistent
 
 
@@ -157,7 +157,7 @@ def test_concurrent_appends_form_one_unbroken_chain(sessions: SessionFactory) ->
     assert len(chain) == 40
     assert len({entry.prev_hash for entry in chain}) == 40  # no two entries share a parent
     with sessions() as session:
-        assert audit.verify_chain(session, DEFAULT_TENANT_ID).ok
+        assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
 
 
 def test_an_append_that_is_rolled_back_leaves_no_gap_in_the_chain(
@@ -180,7 +180,7 @@ def test_an_append_that_is_rolled_back_leaves_no_gap_in_the_chain(
 
     assert len(entries(sessions)) == 2
     with sessions() as session:
-        assert audit.verify_chain(session, DEFAULT_TENANT_ID).ok
+        assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
 
 
 def test_the_database_refuses_a_second_entry_with_the_same_parent(

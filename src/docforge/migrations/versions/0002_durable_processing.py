@@ -4,6 +4,7 @@ Revision ID: 0002
 Revises: 0001
 """
 
+import os
 import uuid
 from collections.abc import Sequence
 from datetime import datetime
@@ -19,6 +20,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+_ALLOW_DOWNGRADE = "DOCFORGE_ALLOW_DESTRUCTIVE_DOWNGRADE"
 _QUEUE_SCHEMA = Path(__file__).resolve().parents[1] / "sql" / "procrastinate_3_10_0.sql"
 _UUID = postgresql.UUID(as_uuid=True)
 
@@ -104,13 +106,19 @@ def upgrade() -> None:
 
     # Single tenant until C6; every row already carries a tenant.
     op.execute(
-        sa.text("INSERT INTO tenants (id, name) VALUES (CAST(:id AS uuid), 'default')").bindparams(
-            id=DEFAULT_TENANT_ID
-        )
+        sa.text(
+            "INSERT INTO tenants (id, name) VALUES (CAST(:id AS uuid), 'default') "
+            "ON CONFLICT DO NOTHING"
+        ).bindparams(id=DEFAULT_TENANT_ID)
     )
 
+    # Rows created before this migration are filled in before the columns become required.
+    # Until now every document was an invoice; sizes were not recorded, hence 0.
+    op.execute("UPDATE documents SET doc_type = 'invoice' WHERE doc_type IS NULL")
     op.alter_column("documents", "doc_type", nullable=False)
-    op.add_column("documents", sa.Column("size_bytes", sa.BigInteger, nullable=False))
+    op.add_column("documents", sa.Column("size_bytes", sa.BigInteger))
+    op.execute("UPDATE documents SET size_bytes = 0")
+    op.alter_column("documents", "size_bytes", nullable=False)
     op.add_column("documents", sa.Column("page_count", sa.Integer))
     op.create_check_constraint(
         "ck_documents_status",
@@ -118,7 +126,15 @@ def upgrade() -> None:
         "status IN ('received', 'processing', 'extracted', 'failed')",
     )
 
-    op.add_column("document_versions", _tenant())
+    op.add_column(
+        "document_versions",
+        sa.Column("tenant_id", _UUID, sa.ForeignKey("tenants.id", ondelete="RESTRICT")),
+    )
+    op.execute(
+        "UPDATE document_versions v SET tenant_id = d.tenant_id FROM documents d "
+        "WHERE d.id = v.document_id"
+    )
+    op.alter_column("document_versions", "tenant_id", nullable=False)
     op.add_column(
         "document_versions", sa.Column("status", sa.Text, nullable=False, server_default="queued")
     )
@@ -128,6 +144,11 @@ def upgrade() -> None:
     op.add_column("document_versions", sa.Column("started_at", sa.DateTime(timezone=True)))
     op.add_column("document_versions", sa.Column("finished_at", sa.DateTime(timezone=True)))
     op.add_column("document_versions", sa.Column("error", sa.Text))
+    # A version that existed before the queue did has no job; it must not look queued.
+    op.execute(
+        "UPDATE document_versions SET status = 'failed', "
+        "error = 'Created before processing was tracked.'"
+    )
     op.create_check_constraint(
         "ck_document_versions_status",
         "document_versions",
@@ -195,6 +216,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Dropping these tables discards records that are meant to be permanent.
+    if os.environ.get(_ALLOW_DOWNGRADE) != "1":
+        for table in ("audit_log", "extractions"):
+            query = sa.text(f"SELECT EXISTS (SELECT 1 FROM {table})")  # noqa: S608 - fixed names
+            if op.get_bind().execute(query).scalar():
+                raise RuntimeError(
+                    f"{table} has records and this downgrade would discard them; "
+                    f"set {_ALLOW_DOWNGRADE}=1 to do it anyway"
+                )
     op.drop_table("audit_log")
     op.drop_table("model_runs")
     op.drop_table("extractions")
@@ -211,6 +241,9 @@ def downgrade() -> None:
     op.alter_column("documents", "doc_type", nullable=True)
 
     op.execute(
-        sa.text("DELETE FROM tenants WHERE id = CAST(:id AS uuid)").bindparams(id=DEFAULT_TENANT_ID)
+        sa.text(
+            "DELETE FROM tenants t WHERE t.id = CAST(:id AS uuid) "
+            "AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.tenant_id = t.id)"
+        ).bindparams(id=DEFAULT_TENANT_ID)
     )
     op.execute(_DROP_QUEUE)

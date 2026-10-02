@@ -56,7 +56,7 @@ class Killed(BaseException):
 class HookedPipeline:
     """Runs a callback in the middle of the pipeline run, to interleave another delivery."""
 
-    def __init__(self, inner: InvoicePipeline, during_run: Callable[[], None] | None) -> None:
+    def __init__(self, inner: InvoicePipeline, during_run: Callable[[], object] | None) -> None:
         self.inner = inner
         self.during_run = during_run
 
@@ -75,7 +75,7 @@ class Harness:
         *,
         max_attempts: int = 5,
         max_pending: int = 1000,
-        during_run: Callable[[], None] | None = None,
+        during_run: Callable[[], object] | None = None,
     ) -> None:
         self.sessions = sessions
         self.store = MemoryObjectStore()
@@ -266,7 +266,7 @@ def test_processing_writes_an_audit_trail_that_verifies(
     with sessions() as session:
         created = session.scalars(select(AuditEntry).order_by(AuditEntry.id.desc())).first()
         extraction = session.scalars(select(Extraction)).one()
-        assert audit.verify_chain(session, DEFAULT_TENANT_ID).ok
+        assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
     assert created is not None
     assert created.details["extraction_sha256"] == extraction.sha256
     assert created.actor == "system:worker"
@@ -365,7 +365,7 @@ def test_a_worker_killed_mid_job_loses_nothing(sessions: SessionFactory, perfect
     assert harness.version(ingested.version.id).attempts == 2
     assert harness.count(Extraction) == 1
     with sessions() as session:
-        assert audit.verify_chain(session, DEFAULT_TENANT_ID).ok
+        assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
 
 
 def test_processing_an_unknown_version_is_an_error(sessions: SessionFactory) -> None:

@@ -1,8 +1,16 @@
 """Documents: idempotent ingest, versioned processing, and reads.
 
-Processing is at-least-once. A job may run again after a crash or a retry, so each step
-checks the version's state first and the final write is one transaction: an extraction is
-recorded once, however many times the job is delivered.
+Processing is at-least-once. A job may be delivered again after a crash, a retry, or a
+worker that only looked dead, so:
+
+- every delivery takes a turn number (the version's `attempts`) when it starts, and may only
+  write its result while that is still the current turn. A delivery that was overtaken
+  finds a newer turn and writes nothing;
+- the result is written in one transaction, so an extraction is recorded once;
+- `attempts` is also the budget: after `max_attempts` starts the version is failed, whether
+  the earlier attempts ended in an error or in a dead worker.
+
+Row locks are always taken in the order document, version, then the audit lock.
 """
 
 import hashlib
@@ -35,6 +43,7 @@ from docforge.storage import ObjectNotFound, ObjectStore, original_key
 logger = logging.getLogger(__name__)
 
 WORKER = "system:worker"
+IN_FLIGHT = ("queued", "running")
 Outcome = Literal["succeeded", "failed", "skipped"]
 
 
@@ -42,8 +51,20 @@ class UnknownDocumentType(ValueError):
     """No pipeline is registered for the document type."""
 
 
+class DocumentTypeConflict(ValueError):
+    """The same file is already stored under a different document type."""
+
+
 class DocumentNotFound(LookupError):
     """No such document or version for this tenant."""
+
+
+class ReprocessInProgress(Exception):
+    """The document's newest version has not finished yet."""
+
+
+class QueueFull(Exception):
+    """Too many documents are waiting to be processed."""
 
 
 class TransientProcessingError(Exception):
@@ -90,11 +111,16 @@ class DocumentService:
         store: ObjectStore,
         pipelines: Mapping[str, Pipeline],
         enqueue: Enqueue,
+        *,
+        max_attempts: int = 5,
+        max_pending: int = 1000,
     ) -> None:
         self._sessions = sessions
         self._store = store
         self._pipelines = pipelines  # one per document type
         self._enqueue = enqueue
+        self._max_attempts = max_attempts
+        self._max_pending = max_pending
 
     @property
     def document_types(self) -> list[str]:
@@ -106,7 +132,10 @@ class DocumentService:
         self, *, tenant_id: uuid.UUID, doc_type: str, filename: str, data: bytes, actor: str
     ) -> IngestResult:
         """Record an upload. The content hash is the identity: the same bytes for the same
-        tenant return the existing document and start no new work."""
+        tenant return the existing document and start no new work.
+
+        Raises `UnknownDocumentType`, `DocumentTypeConflict` or `QueueFull`.
+        """
         if doc_type not in self._pipelines:
             raise UnknownDocumentType(f"unknown document type {doc_type!r}")
         sha256 = hashlib.sha256(data).hexdigest()
@@ -114,7 +143,10 @@ class DocumentService:
 
         with self._sessions.begin() as session:
             existing = self._by_hash(session, tenant_id, sha256)
+            inserted: uuid.UUID | None = None
             if existing is None:
+                if self._pending(session, tenant_id) >= self._max_pending:
+                    raise QueueFull("too many documents are waiting to be processed")
                 # Store before the row: an object without a row is harmless and is reused
                 # by the next upload of the same bytes; a row without its object is not.
                 if not self._store.exists(key):
@@ -136,20 +168,24 @@ class DocumentService:
                     existing = self._by_hash(session, tenant_id, sha256)
 
             if existing is not None:
-                self._audit(
-                    session, existing, actor, "document.duplicate_upload", filename=filename
-                )
+                if existing.doc_type != doc_type:
+                    raise DocumentTypeConflict(
+                        f"this file is already stored as document type {existing.doc_type!r}"
+                    )
+                if not self._store.exists(existing.storage_key):  # heal a lost original
+                    self._store.put(existing.storage_key, data, "application/pdf")
                 return IngestResult(existing, None, created=False)
 
             document = session.get_one(Document, inserted)
             version = self._new_version(session, document, version_no=1)
+            # The filename is deliberately left out: this log can never be edited, and a
+            # filename may hold personal data that has to be erasable.
             self._audit(
                 session,
                 document,
                 actor,
                 "document.received",
                 sha256=sha256,
-                filename=filename,
                 size_bytes=len(data),
                 doc_type=doc_type,
             )
@@ -159,43 +195,50 @@ class DocumentService:
     def reprocess(
         self, *, tenant_id: uuid.UUID, document_id: uuid.UUID, actor: str
     ) -> DocumentVersion:
-        """Queue a new version of an existing document. Earlier versions are kept."""
+        """Queue a new version of an existing document. Earlier versions are kept.
+
+        Raises `ReprocessInProgress` while the newest version is queued or running, so a
+        document has at most one version in flight.
+        """
         with self._sessions.begin() as session:
             document = self._document(session, tenant_id, document_id, lock=True)
-            latest = session.scalar(
-                select(func.max(DocumentVersion.version_no)).where(
-                    DocumentVersion.document_id == document.id
-                )
+            newest = session.scalar(
+                select(DocumentVersion)
+                .where(DocumentVersion.document_id == document.id)
+                .order_by(DocumentVersion.version_no.desc())
+                .limit(1)
             )
-            version = self._new_version(session, document, version_no=(latest or 0) + 1)
+            if newest is not None and newest.status in IN_FLIGHT:
+                raise ReprocessInProgress(f"version {newest.version_no} is {newest.status}")
+            version_no = (newest.version_no if newest is not None else 0) + 1
+            version = self._new_version(session, document, version_no=version_no)
             self._audit(
-                session,
-                document,
-                actor,
-                "document.reprocess_requested",
-                version_no=version.version_no,
+                session, document, actor, "document.reprocess_requested", version_no=version_no
             )
             self._enqueue(session, version)
             return version
 
     # --- processing -------------------------------------------------------------------------
 
-    def process(self, version_id: uuid.UUID, *, final_attempt: bool = False) -> Outcome:
-        """Run one version. Safe to call again for the same version.
+    def process(self, version_id: uuid.UUID) -> Outcome:
+        """Run one delivery of a version's job. Safe to call any number of times.
 
-        Raises `TransientProcessingError` when the queue should retry; with `final_attempt`
-        the version is failed instead.
+        Raises `TransientProcessingError` when the queue should deliver the job again.
         """
         with self._sessions.begin() as session:
-            version = session.get(DocumentVersion, version_id, with_for_update=True)
-            if version is None:
-                raise DocumentNotFound(f"no version {version_id}")
-            if version.status in ("succeeded", "failed"):
+            document, version = self._locked(session, version_id)
+            if version.status not in IN_FLIGHT:
                 return "skipped"
-            document = session.get_one(Document, version.document_id)
+            if version.attempts >= self._max_attempts:
+                # Every earlier attempt started and none reported back: the worker died
+                # each time. Stop here instead of killing workers forever.
+                self._mark_failed(
+                    session, document, version, "Processing was interrupted too many times."
+                )
+                return "failed"
             version.status = "running"
             version.attempts += 1
-            version.started_at = _now()
+            version.started_at = version.started_at or _now()
             version.error = None
             document.status = "processing"
             self._audit(
@@ -206,41 +249,48 @@ class DocumentService:
                 version_no=version.version_no,
                 attempt=version.attempts,
             )
-            doc_type, storage_key = document.doc_type, document.storage_key
+            turn = version.attempts
+            doc_type, storage_key, sha256 = document.doc_type, document.storage_key, document.sha256
+
+        final = turn >= self._max_attempts
+        pipeline = self._pipelines.get(doc_type)
+        if pipeline is None:
+            return self._fail(version_id, turn, "No pipeline is registered for this document type.")
 
         # The slow part runs outside any transaction.
         try:
-            result = self._pipelines[doc_type].run(self._store.get(storage_key))
-        except KeyError:
-            return self._fail(version_id, "No pipeline is registered for this document type.")
+            data = self._store.get(storage_key)
+            if hashlib.sha256(data).hexdigest() != sha256:
+                return self._fail(
+                    version_id, turn, "The stored original does not match its recorded hash."
+                )
+            result = pipeline.run(data)
         except ObjectNotFound:
-            return self._fail(version_id, "The stored original is missing.")
+            return self._fail(version_id, turn, "The stored original is missing.")
         except NoTextLayer:
-            return self._fail(version_id, "The PDF has no text layer.")
+            return self._fail(version_id, turn, "The PDF has no text layer.")
         except DocumentTooLarge as error:
-            return self._fail(version_id, f"The {error}.")
+            return self._fail(version_id, turn, f"The {error}.")
         except ParseError:
-            return self._fail(version_id, "The file could not be read as a PDF.")
+            return self._fail(version_id, turn, "The file could not be read as a PDF.")
         except ExtractionError:
-            return self._fail(version_id, "The model reply did not fit the schema.")
+            return self._fail(version_id, turn, "The model reply did not fit the schema.")
         except LLMError as error:
             logger.warning("model provider failed for version %s: %s", version_id, error)
-            return self._retry_or_fail(
-                version_id, "The model provider failed.", error, final_attempt
-            )
+            return self._retry_or_fail(version_id, turn, "The model provider failed.", error, final)
         except Exception as error:
             logger.exception("unexpected error processing version %s", version_id)
-            return self._retry_or_fail(version_id, "Internal error.", error, final_attempt)
-        return self._complete(version_id, result)
+            return self._retry_or_fail(version_id, turn, "Internal error.", error, final)
+        return self._complete(version_id, turn, result)
 
-    def _complete(self, version_id: uuid.UUID, result: PipelineResult) -> Outcome:
+    def _complete(self, version_id: uuid.UUID, turn: int, result: PipelineResult) -> Outcome:
         data = result.extraction.model_dump(mode="json")
         sha256 = hashlib.sha256(audit.canonical_json(data).encode("utf-8")).hexdigest()
         with self._sessions.begin() as session:
-            version = session.get_one(DocumentVersion, version_id, with_for_update=True)
-            if version.status == "succeeded":  # another delivery of the same job finished first
+            owned = self._owned(session, version_id, turn)
+            if owned is None:
                 return "skipped"
-            document = session.get_one(Document, version.document_id)
+            document, version = owned
             session.add(
                 ParseOutput(
                     tenant_id=version.tenant_id,
@@ -293,33 +343,25 @@ class DocumentService:
             )
         return "succeeded"
 
-    def _fail(self, version_id: uuid.UUID, message: str) -> Outcome:
+    def _fail(self, version_id: uuid.UUID, turn: int, message: str) -> Outcome:
         """A failure that retrying will not fix. `message` is safe to show to a client."""
         with self._sessions.begin() as session:
-            version = session.get_one(DocumentVersion, version_id, with_for_update=True)
-            document = session.get_one(Document, version.document_id)
-            version.status = "failed"
-            version.error = message
-            version.finished_at = _now()
-            document.status = "failed"
-            self._audit(
-                session,
-                document,
-                WORKER,
-                "processing.failed",
-                version_no=version.version_no,
-                error=message,
-            )
+            owned = self._owned(session, version_id, turn)
+            if owned is None:
+                return "skipped"
+            self._mark_failed(session, *owned, message)
         return "failed"
 
     def _retry_or_fail(
-        self, version_id: uuid.UUID, message: str, error: Exception, final_attempt: bool
+        self, version_id: uuid.UUID, turn: int, message: str, error: Exception, final: bool
     ) -> Outcome:
-        if final_attempt:
-            return self._fail(version_id, message)
+        if final:
+            return self._fail(version_id, turn, message)
         with self._sessions.begin() as session:
-            version = session.get_one(DocumentVersion, version_id, with_for_update=True)
-            document = session.get_one(Document, version.document_id)
+            owned = self._owned(session, version_id, turn)
+            if owned is None:
+                return "skipped"
+            document, version = owned
             version.status = "queued"
             version.error = message
             self._audit(
@@ -332,6 +374,24 @@ class DocumentService:
                 error=message,
             )
         raise TransientProcessingError(message) from error
+
+    def _mark_failed(
+        self, session: Session, document: Document, version: DocumentVersion, message: str
+    ) -> None:
+        version.status = "failed"
+        version.error = message
+        version.finished_at = _now()
+        # The document's status is that of its newest version; an earlier extraction, if
+        # any, is still served by `latest_extraction`.
+        document.status = "failed"
+        self._audit(
+            session,
+            document,
+            WORKER,
+            "processing.failed",
+            version_no=version.version_no,
+            error=message,
+        )
 
     # --- reads ------------------------------------------------------------------------------
 
@@ -354,7 +414,10 @@ class DocumentService:
             row = session.execute(
                 select(DocumentVersion, Extraction)
                 .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
-                .where(DocumentVersion.document_id == document.id)
+                .where(
+                    DocumentVersion.document_id == document.id,
+                    Extraction.tenant_id == tenant_id,
+                )
                 .order_by(DocumentVersion.version_no.desc())
                 .limit(1)
             ).first()
@@ -363,7 +426,7 @@ class DocumentService:
             version, extraction = row
             runs = session.scalars(
                 select(ModelRun)
-                .where(ModelRun.document_version_id == version.id)
+                .where(ModelRun.document_version_id == version.id, ModelRun.tenant_id == tenant_id)
                 .order_by(ModelRun.call_no)
             )
             return ExtractionDetail(version, extraction, list(runs))
@@ -395,14 +458,58 @@ class DocumentService:
         )
 
     @staticmethod
+    def _pending(session: Session, tenant_id: uuid.UUID) -> int:
+        return int(
+            session.scalar(
+                select(func.count())
+                .select_from(DocumentVersion)
+                .where(
+                    DocumentVersion.tenant_id == tenant_id, DocumentVersion.status.in_(IN_FLIGHT)
+                )
+            )
+            or 0
+        )
+
+    @staticmethod
     def _document(
         session: Session, tenant_id: uuid.UUID, document_id: uuid.UUID, *, lock: bool = False
     ) -> Document:
         query = select(Document).where(Document.tenant_id == tenant_id, Document.id == document_id)
-        document = session.scalar(query.with_for_update() if lock else query)
+        # FOR NO KEY UPDATE: enough to serialise writers without blocking new child rows.
+        document = session.scalar(query.with_for_update(key_share=True) if lock else query)
         if document is None:
             raise DocumentNotFound(f"no document {document_id}")
         return document
+
+    @staticmethod
+    def _locked(session: Session, version_id: uuid.UUID) -> tuple[Document, DocumentVersion]:
+        """The version and its document, both locked: the document first, then the version."""
+        document_id = session.scalar(
+            select(DocumentVersion.document_id).where(DocumentVersion.id == version_id)
+        )
+        if document_id is None:
+            raise DocumentNotFound(f"no version {version_id}")
+        document = session.execute(
+            select(Document).where(Document.id == document_id).with_for_update(key_share=True)
+        ).scalar_one()
+        version = session.execute(
+            select(DocumentVersion)
+            .where(DocumentVersion.id == version_id)
+            .with_for_update(key_share=True)
+        ).scalar_one()
+        return document, version
+
+    def _owned(
+        self, session: Session, version_id: uuid.UUID, turn: int
+    ) -> tuple[Document, DocumentVersion] | None:
+        """The locked rows if delivery `turn` is still the current one, else None."""
+        document, version = self._locked(session, version_id)
+        if version.status != "running" or version.attempts != turn:
+            logger.info(
+                "delivery %s of version %s was overtaken; discarding its result", turn, version_id
+            )
+            return None
+        return document, version
 
     @staticmethod
     def _new_version(session: Session, document: Document, version_no: int) -> DocumentVersion:

@@ -128,7 +128,7 @@ def test_killing_a_worker_mid_job_loses_nothing(
     with sessions() as session:
         assert session.scalar(select(func.count()).select_from(Extraction)) == 1
         actions = list(session.scalars(select(AuditEntry.action).order_by(AuditEntry.id)))
-        assert audit.verify_chain(session, DEFAULT_TENANT_ID).ok
+        assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
     assert actions == [
         "document.received",
         "processing.started",

@@ -10,7 +10,14 @@ from pydantic import BaseModel, ConfigDict
 
 from docforge.api.uploads import read_pdf_upload, safe_filename
 from docforge.db import DEFAULT_TENANT_ID
-from docforge.documents import DocumentNotFound, DocumentService, UnknownDocumentType
+from docforge.documents import (
+    DocumentNotFound,
+    DocumentService,
+    DocumentTypeConflict,
+    QueueFull,
+    ReprocessInProgress,
+    UnknownDocumentType,
+)
 from docforge.parsing.base import ParseError
 from docforge.parsing.pdf import pdf_page_count
 
@@ -88,7 +95,7 @@ class AuditEntryOut(_Out):
 
 
 class ChainOut(_Out):
-    ok: bool
+    consistent: bool
     entries: int
     first_bad_id: int | None
     reason: str | None
@@ -129,6 +136,10 @@ def documents_router(
             )
         except UnknownDocumentType as error:
             raise HTTPException(422, "Unknown document type.") from error
+        except DocumentTypeConflict as error:
+            raise HTTPException(409, f"{str(error).capitalize()}.") from error
+        except QueueFull as error:
+            raise HTTPException(503, "The processing queue is full. Try again later.") from error
         response.headers["Location"] = f"/v1/documents/{result.document.id}"
         if not result.created:
             response.status_code = 200
@@ -174,6 +185,8 @@ def documents_router(
             version = service.reprocess(tenant_id=TENANT, document_id=document_id, actor=ACTOR)
         except DocumentNotFound:
             raise _NOT_FOUND from None
+        except ReprocessInProgress:
+            raise HTTPException(409, "This document is still being processed.") from None
         return VersionOut.model_validate(version)
 
     @router.get("/documents/{document_id}/audit", response_model=list[AuditEntryOut])
@@ -186,7 +199,12 @@ def documents_router(
 
     @router.get("/audit/verification", response_model=ChainOut)
     def verify_audit_chain() -> ChainOut:
-        """Recompute the audit log's hash chain and report the first break, if any."""
+        """Recompute the audit log's hash chain and report the first break, if any.
+
+        `consistent` means the stored hashes agree with the stored entries. It shows that no
+        entry was edited or removed from the middle without the later hashes being redone;
+        it cannot show that the log was not rewritten by someone able to redo them.
+        """
         return ChainOut.model_validate(service.verify_audit_chain(TENANT))
 
     return router

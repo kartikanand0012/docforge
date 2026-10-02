@@ -4,6 +4,8 @@ A job is enqueued on the caller's connection, inside the transaction that create
 version it refers to, so there is never a version without a job or a job without a version.
 """
 
+import logging
+import math
 import uuid
 from typing import TYPE_CHECKING
 
@@ -12,10 +14,12 @@ from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session
 
 from docforge.db.models import DocumentVersion
-from docforge.documents import TransientProcessingError
+from docforge.documents import DocumentNotFound
 
 if TYPE_CHECKING:
     from docforge.documents import DocumentService
+
+logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "extract"
 TASK_NAME = "process_document_version"
@@ -41,24 +45,26 @@ class JobQueue:
         )
         self._service: DocumentService | None = None
 
-        # Only a transient failure is retried, with a wait that grows by `retry_wait_seconds`
-        # per attempt. On the last attempt the service fails the version instead of raising.
+        # Any exception puts the job back, with a wait that grows by `retry_wait_seconds`
+        # per attempt: an unexpected error must not strand a version. The service keeps the
+        # real budget (the version's attempts) and fails the version when it runs out, so the
+        # queue only needs to keep delivering a little longer than that.
+        wait = math.ceil(retry_wait_seconds)
+
         @self.app.task(
             name=TASK_NAME,
             queue=QUEUE_NAME,
-            pass_context=True,
             retry=procrastinate.RetryStrategy(
-                max_attempts=max_attempts,
-                wait=int(retry_wait_seconds),
-                linear_wait=int(retry_wait_seconds),
-                retry_exceptions=[TransientProcessingError],
+                max_attempts=max_attempts + 2, wait=wait, linear_wait=wait
             ),
         )
-        def process_document_version(context: procrastinate.JobContext, version_id: str) -> None:
+        def process_document_version(version_id: str) -> None:
             if self._service is None:
                 raise RuntimeError("the queue is not bound to a document service")
-            final_attempt = context.job.attempts + 1 >= self.max_attempts
-            self._service.process(uuid.UUID(version_id), final_attempt=final_attempt)
+            try:
+                self._service.process(uuid.UUID(version_id))
+            except DocumentNotFound:
+                logger.error("dropping job for version %s: it does not exist", version_id)
 
         self._task = process_document_version
 
