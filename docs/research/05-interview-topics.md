@@ -100,3 +100,19 @@ Sources used:
 
 ## Caveat
 These lists are prep-industry content, partly SEO. Frequency claims are inferred, not measured. Live-coding items ("stand up a retrieval endpoint in 40 minutes", "debug a broken agent") appear in [K].
+
+## Learned while building (tagged to the code)
+
+### C0 Foundations (2026-10-02)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| How do you build an eval set? | Generated the documents from a seeded model, so the label is the source and the PDF is derived from it. The label also stores the page box of every value, ready for provenance scoring in C3. | `src/docforge/synth/builder.py`, `src/docforge/synth/render.py` |
+| How do you know your ground truth is right? | A review found labels held values the page never prints (per-line CGST/SGST, supply type). An extractor would have been marked wrong for not reading something invisible. Each label now lists its unprinted paths, and a test walks every value so none can go unaccounted for. | `DocumentBoxes.unprinted` in `src/docforge/synth/models.py`; `tests/unit/test_synth_render.py` |
+| How do you test a calculation without repeating its bug? | The first arithmetic tests re-implemented the builder's formulas, so a shared mistake would pass. Added cases worked out by hand, including a half-paisa tie where CGST and SGST each round up and their sum is a paisa over the rate. | `TestHandComputedArithmetic` in `tests/unit/test_synth_builder.py` |
+| A test that passes but proves nothing | The bucket check used an anonymous request and expected 403. MinIO returns 403 for a missing bucket too, so it passed either way. Writing the "missing bucket" case exposed it. | `tests/integration/test_services.py` |
+| How do you make generated artefacts reproducible? | Byte-identical PDFs on macOS and Linux needed three things: fixed timestamps and document id, uncompressed streams (bytes otherwise depend on the zlib build), and a fixed month table instead of locale-dependent `%b`. | `_Page.__init__` and `_dated` in `src/docforge/synth/render.py` |
+| Idempotency key design | Content hash unique per tenant, not globally, enforced by the database with a format check. Tests cover duplicate within a tenant, same file across tenants, and a malformed hash. | `src/docforge/migrations/versions/0001_core_tables.py`; `tests/integration/test_migrations.py` |
+| How can a secret leak without being logged? | The database URL carries the password. It leaked through `repr(settings)` and through the validation error for a bad URL, which echoes the rejected input. | `hide_input_in_errors` in `src/docforge/config.py` |
+| Making a replace-in-place operation safe | The generator deleted the old set before building the new one, so a failure left a half-written fixture folder. It now builds everything in memory, then swaps, and writes the manifest last. | `generate_dataset` in `src/docforge/synth/dataset.py` |
+| Supply-chain hygiene in CI | A floating action tag did not exist and the vendor's image had been withdrawn. Actions are pinned to commit SHAs and images to digests. | `.github/workflows/ci.yml`, `docker-compose.yml` |
