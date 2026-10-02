@@ -15,6 +15,7 @@ from docforge.extraction.pipeline import InvoicePipeline
 from docforge.extraction.prompt import PROMPT_VERSION
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import ParsedDocument
+from docforge.parsing.isolation import IsolatedParser
 from docforge.wiring import build_pipeline
 from fakes import PARSED, FakeParser, ScriptedProvider
 
@@ -171,6 +172,8 @@ def test_build_pipeline_uses_the_configured_model_and_limits() -> None:
     assert pipeline.provider.model == "gemini-test"
     assert pipeline.parser.name == "docling"
     assert pipeline.max_pages == 7
+    # The real parser runs in a child process; nothing is started until a document arrives.
+    assert isinstance(pipeline.parser, IsolatedParser)
 
 
 def test_a_pdf_without_a_text_layer_is_rejected_with_a_clear_message() -> None:

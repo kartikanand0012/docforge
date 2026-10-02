@@ -39,6 +39,12 @@ class Settings(BaseSettings):
 
     max_upload_bytes: int = 10 * 1024 * 1024
     max_pages: int = 20
+    # The parser runs in a child process: replaced after this many documents, and stopped if
+    # one document takes longer or more memory than this.
+    parser_max_documents: int = 50
+    parser_timeout_seconds: float = 900.0
+    parser_max_rss_mb: int = 8192
+    parser_batch_pages: int = 10  # pages converted at a time; bounds memory on long files
 
     # `module:function` returning one pipeline per document type; lets a deployment swap
     # the parser or model without changing this package.

@@ -1,6 +1,8 @@
 """Building the real service from settings. The API and the worker both start here."""
 
+from functools import partial
 from importlib import import_module
+from importlib.metadata import version
 
 from docforge.config import Settings
 from docforge.db.session import make_engine, make_session_factory
@@ -9,6 +11,7 @@ from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.llm.gemini import GeminiProvider
 from docforge.parsing.docling_parser import DoclingParser
+from docforge.parsing.isolation import IsolatedParser
 from docforge.queue import JobQueue
 from docforge.storage import S3ObjectStore
 
@@ -17,7 +20,15 @@ def build_pipeline(settings: Settings) -> InvoicePipeline:
     if settings.gemini_api_key is None:
         raise ValueError("GEMINI_API_KEY is not set")
     provider = GeminiProvider(settings.gemini_model, settings.gemini_api_key.get_secret_value())
-    return InvoicePipeline(DoclingParser(), provider, max_pages=settings.max_pages)
+    parser = IsolatedParser(
+        partial(DoclingParser, batch_pages=settings.parser_batch_pages),
+        name=DoclingParser.name,
+        version=version("docling"),
+        max_documents=settings.parser_max_documents,
+        timeout_seconds=settings.parser_timeout_seconds,
+        max_rss_bytes=settings.parser_max_rss_mb * 1024 * 1024,
+    )
+    return InvoicePipeline(parser, provider, max_pages=settings.max_pages)
 
 
 def build_pipelines(settings: Settings) -> dict[str, Pipeline]:
