@@ -103,6 +103,25 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C3 Trust layer (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| How do you know an LLM extraction is right? | The model returns the printed string and the blocks it came from. Code checks the string is in those blocks as a whole token, runs deterministic rules, and compares the invoice with its order. A value is never corrected silently, only flagged. | `trust/verify.py`, `trust/invoice_rules.py`, `trust/match.py` |
+| How do you detect hallucination? | A value that is not in the text it cites is the definition used here. The wrong-batch seeded case is caught this way: the model's reply is altered after the fact and verification flags the field. | `tests/fixtures/seeded/case_009`, `evals/trust.py` |
+| Why no confidence score? | A number implies calibration, and there is nothing to calibrate against until reviewers have accepted or corrected fields. So two levels, accept and review, with reasons. Model-reported confidence was not used. | `trust/assess.py` docstring |
+| How do you test that checks catch errors? | A seeded-defect set: correct documents with one defect each and a stated list of findings each must produce. 9 of 9 caught, replayed offline in CI with a floor. | `synth/seeded.py`, `tests/unit/test_eval_trust.py` |
+| What is your false-positive rate? | Measured, and not flattering: 8 of 20 correct pairs go to review, all because the model cited the neighbouring cell. Reported next to the catch rate, with the two options for reducing it. | `docs/progress.md` C3 |
+| Precision and recall trade-off in a real system | Tightening verification (short numbers must be the whole block) first raised flagged values on correct documents from 21 to 51, because the parser merges cells. Replaying the eval showed it at once; the rule was refined and the number returned to 21. | `_supported` in `trust/verify.py` |
+| What does "accept" actually claim? | Only that values match their cited text and rules pass. A forged, self-consistent invoice passes, so an invoice with no order on file is review. Found in security review. | `AssessmentDetail.decision` in `documents.py` |
+| Substring matching bugs | "20" in "200", "166.40" in "1,166.40", "5" in "Qty 10 Free 5", "05/29" in "05/29/2028", "5.00" in "(5.00)". Each was a way to verify a wrong value; each has a test. | `test_trust_verify.py` |
+| Matching records across documents | Order number alone is not identity: another supplier can use the same number. Counterparts must name the same supplier and buyer and be the newest version. Duplicate product lines pair one to one by best agreement. | `_match` in `documents.py`, `match_invoice_to_order` |
+| A bug only live data showed | The parser merged the serial number into the product cell, the model copied "1 Paracetamol...", and line pairing with the order failed. Unit tests with hand-built input could not have shown it. | `product_name` in `extraction/normalize.py` |
+| How do you add a new document type? | A `DocumentSpec`: raw schema, prompt, normaliser, rules. The purchase order was added this way through the same pipeline, queue and storage. | `extraction/pipeline.py`, `extraction/purchase_order.py` |
+| Multi-tenant data integrity in the schema | Every table had a `tenant_id`, but nothing made a child row's tenant agree with its parent's. A database review found it; a test inserted a record under one tenant pointing at another's version and it succeeded. Fixed with composite foreign keys `(id, tenant_id)`, before row-level security depends on it. | `migrations/versions/0005_tenant_consistency.py`, `tests/integration/test_schema_c3.py` |
+| An index that would not have been used | The expression index was written with `->`; the ORM emitted a JSON subscript for the same lookup. Postgres treats them as different expressions. Caught by printing the compiled SQL; now one shared expression and a test that reads the plan. | `ORDER_NUMBER` in `db/models.py` |
+| Reviewing your own fix | The second review round was run on the fix commit alone and found four more faults, including one introduced by the fix (tie-breaking between duplicate lines). | `docs/progress.md` C3 review |
+
 ### C2 Async and durable (2026-10-02)
 
 | Question it answers | What happened in this project | Where to point |
