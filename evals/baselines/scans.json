@@ -89,6 +89,7 @@
         "latency_ms_p50": 14417.3,
         "latency_ms_p95": 26647.0
       },
+      "extraction_failures": 0,
       "sent_to_review": 8,
       "documents_with_errors": 0,
       "errors_sent_to_review": 0,
@@ -183,6 +184,7 @@
         "latency_ms_p50": 13050.7,
         "latency_ms_p95": 17933.0
       },
+      "extraction_failures": 0,
       "sent_to_review": 11,
       "documents_with_errors": 1,
       "errors_sent_to_review": 1,
@@ -285,6 +287,7 @@
         "latency_ms_p50": 12702.4,
         "latency_ms_p95": 17773.7
       },
+      "extraction_failures": 0,
       "sent_to_review": 12,
       "documents_with_errors": 16,
       "errors_sent_to_review": 11,

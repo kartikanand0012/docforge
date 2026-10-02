@@ -5,7 +5,9 @@ them hang, grow without bound or crash should cost that one document, not the wo
 child is also replaced after a number of documents, because the models' memory use creeps.
 """
 
+import json
 import multiprocessing
+import os
 import threading
 import time
 from collections.abc import Callable
@@ -26,12 +28,17 @@ from docforge.parsing.base import (
 _ERRORS: dict[str, type[ParseError]] = {
     error.__name__: error for error in (ParseError, DocumentTooLarge, NoTextLayer)
 }
+_SECRET_MARKERS = ("KEY", "SECRET", "TOKEN", "PASSWORD", "DATABASE_URL")
 _POLL_SECONDS = 0.2
 _GIB = 1024**3
 
 
 def _serve(factory: Callable[[], Parser], connection: Connection) -> None:
     """The child: parse each file received and send back the result or the error."""
+    # The parser needs no credentials, and it runs native code on files we did not write.
+    for name in list(os.environ):
+        if any(marker in name.upper() for marker in _SECRET_MARKERS):
+            del os.environ[name]
     parser: Parser | None = None
     while True:
         try:
@@ -46,7 +53,8 @@ def _serve(factory: Callable[[], Parser], connection: Connection) -> None:
             reply = (type(error).__name__, str(error))
         except Exception as error:
             reply = ("ParseError", f"the parser failed with {type(error).__name__}: {error}")
-        connection.send(reply)
+        # JSON, not pickle: the parent must be able to read a reply without trusting it.
+        connection.send_bytes(json.dumps(reply).encode())
 
 
 class IsolatedParser:
@@ -84,9 +92,9 @@ class IsolatedParser:
         with self._lock:
             process, connection = self._ready()
             self._served += 1
-            connection.send_bytes(pdf)
             deadline = time.monotonic() + self._timeout_seconds
             try:
+                connection.send_bytes(pdf)
                 while not connection.poll(_POLL_SECONDS):
                     if not process.is_alive():
                         raise ParserLimitExceeded(
@@ -104,23 +112,38 @@ class IsolatedParser:
                             "Parsing was stopped: it exceeded the memory limit of "
                             f"{self._max_rss_bytes // 1024**2} MB."
                         )
-                kind, payload = connection.recv()
+                kind, payload = json.loads(connection.recv_bytes())
             except ParserLimitExceeded:
                 self._stop()
                 raise
-            except (EOFError, OSError) as error:
+            except (EOFError, OSError, ValueError) as error:
                 self._stop()
                 raise ParserLimitExceeded(
                     "Parsing was stopped: the parser process stopped unexpectedly."
                 ) from error
+            except BaseException:
+                # Interrupted mid-exchange: a reply left in the pipe must never be read as
+                # the answer for the next document.
+                self._stop()
+                raise
         if kind != "ok":
             raise _ERRORS.get(kind, ParseError)(payload)
         return ParsedDocument.model_validate_json(payload)
 
     def close(self) -> None:
-        """Stop the child. The next `parse` starts a new one."""
-        with self._lock:
-            self._stop()
+        """Stop the child. The next `parse` starts a new one.
+
+        Does not wait for a parse that is under way: it kills the process, and that parse
+        fails with `ParserLimitExceeded`.
+        """
+        process = self._process
+        if process is not None and process.is_alive():
+            process.kill()
+        if self._lock.acquire(timeout=10):
+            try:
+                self._stop()
+            finally:
+                self._lock.release()
 
     def _ready(self) -> tuple[SpawnProcess, Connection]:
         """The running child, replaced first if it has died or served its share."""

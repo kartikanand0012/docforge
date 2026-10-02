@@ -11,7 +11,12 @@ from pydantic import BaseModel, ConfigDict
 
 from docforge.evals.run import Usage, run_eval
 from docforge.evals.scoring import DocumentScore, EvalSummary
-from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline, PipelineResult
+from docforge.extraction.pipeline import (
+    ExtractionError,
+    ExtractionPipeline,
+    InvoicePipeline,
+    PipelineResult,
+)
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.synth.dataset import ORDER_FILE
@@ -36,9 +41,10 @@ class Misread(_Model):
 
 class VariantResult(_Model):
     parser: str
-    source: str  # text_layer or ocr, as the parser reported for the first document
+    source: str  # text_layer or ocr, as the parser reported
     summary: EvalSummary
     usage: Usage
+    extraction_failures: int = 0  # no record at all: the model's replies never fitted
     sent_to_review: int  # by the document's own checks; the order match is not part of this
     documents_with_errors: int
     errors_sent_to_review: int
@@ -82,28 +88,28 @@ def run_scan_eval(
 
         report = run_eval(directory, pipeline, on_result=collect)
         prompt_version = report.prompt_version
-        # A document that could not be extracted at all is also one a person must see.
-        review = [r is None or r.assessment.decision == "review" for _, r in outcomes]
+        review = [r is not None and r.assessment.decision == "review" for _, r in outcomes]
+        failed = [r is None for _, r in outcomes]
         wrong = [not score.fully_correct for score, _ in outcomes]
         after_match = None
         if orders is not None:
-            mismatch = [_mismatch(score.pair_id, r, orders) for score, r in outcomes]
             after_match = sum(
-                w and not r and not m for w, r, m in zip(wrong, review, mismatch, strict=True)
+                w and not r and not f and not _mismatch(score.pair_id, result, orders)
+                for (score, result), w, r, f in zip(outcomes, wrong, review, failed, strict=True)
             )
-        first = next(iter(sorted(directory.glob("pair_*"))), None)
-        source = "text_layer"
-        if first is not None:
-            source = pipeline.parser.parse((first / "invoice.pdf").read_bytes()).source
+        sources = sorted({r.parsed.source for _, r in outcomes if r is not None})
         results[name] = VariantResult(
             parser=f"{report.parser.name} {report.parser.version}",
-            source=source,
+            source="+".join(sources) or "unknown",
+            extraction_failures=sum(failed),
             summary=report.summary,
             usage=report.usage,
             sent_to_review=sum(review),
             documents_with_errors=sum(wrong),
             errors_sent_to_review=sum(w and r for w, r in zip(wrong, review, strict=True)),
-            silent_errors=sum(w and not r for w, r in zip(wrong, review, strict=True)),
+            silent_errors=sum(
+                w and not r and not f for w, r, f in zip(wrong, review, failed, strict=True)
+            ),
             silent_errors_after_order_match=after_match,
             misreads=tuple(
                 Misread(
@@ -132,7 +138,10 @@ def _mismatch(
     if result is None:
         return True
     directory, pipeline = orders
-    order = pipeline.run((directory / pair_id / ORDER_FILE).read_bytes()).extraction
+    try:
+        order = pipeline.run((directory / pair_id / ORDER_FILE).read_bytes()).extraction
+    except ExtractionError:
+        return True  # an order that cannot be read cannot confirm anything
     found = match_invoice_to_order(result.extraction, order)
     return any(discrepancy.severity == "error" for discrepancy in found)
 

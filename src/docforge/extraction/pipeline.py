@@ -19,7 +19,7 @@ from docforge.extraction.prompt import (
     SYSTEM_INSTRUCTION,
     build_prompt,
 )
-from docforge.extraction.schema import InvoiceExtraction, RawInvoice
+from docforge.extraction.schema import InvoiceExtraction, Issue, RawInvoice
 from docforge.llm.base import LLMProvider, LLMRequest, LLMResponse
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, Parser
 from docforge.parsing.pdf import pdf_page_count
@@ -28,6 +28,7 @@ from docforge.trust.invoice_rules import INVOICE_RULES
 from docforge.trust.rules import RuleResult
 
 DEFAULT_MAX_PAGES = 20
+_MAX_PAGE_RETRIES = 2  # malformed replies retried per multi-page document
 DEFAULT_MAX_PROMPT_CHARS = 200_000  # far above any invoice; bounds model cost per request
 
 
@@ -115,9 +116,21 @@ class ExtractionPipeline[E: BaseModel]:
             )
             raw, responses = self._ask(request, ())
             prompt_version = spec.prompt_version
+            conflicts: tuple[str, ...] = ()
         else:
-            raw, responses, prompt_version = self._ask_by_page(parsed)
+            raw, responses, prompt_version, conflicts = self._ask_by_page(parsed)
         extraction = spec.normalize(raw, parsed)
+        if conflicts:
+            disagreements = tuple(
+                Issue(
+                    path=path,
+                    code="conflicting_pages",
+                    message="pages of the document give different values; the first was kept",
+                )
+                for path in conflicts
+            )
+            issues = (*getattr(extraction, "issues", ()), *disagreements)
+            extraction = extraction.model_copy(update={"issues": issues})
         return PipelineResult(
             parsed=parsed,
             extraction=extraction,
@@ -128,7 +141,7 @@ class ExtractionPipeline[E: BaseModel]:
         )
 
     def _ask(
-        self, request: LLMRequest, earlier: tuple[LLMResponse, ...]
+        self, request: LLMRequest, earlier: tuple[LLMResponse, ...], may_retry: bool = True
     ) -> tuple[BaseModel, tuple[LLMResponse, ...]]:
         """One request, retried once with the validation errors if the reply is malformed.
 
@@ -139,6 +152,10 @@ class ExtractionPipeline[E: BaseModel]:
         try:
             return schema.model_validate_json(first.text), (*earlier, first)
         except ValidationError as error:
+            if not may_retry:
+                raise ExtractionError(
+                    "too many malformed replies for one document", (*earlier, first)
+                ) from error
             retry = replace(
                 request,
                 prompt=f"{request.prompt}\n\nYour previous reply was not valid:\n"
@@ -155,7 +172,7 @@ class ExtractionPipeline[E: BaseModel]:
 
     def _ask_by_page(
         self, parsed: ParsedDocument
-    ) -> tuple[BaseModel, tuple[LLMResponse, ...], str]:
+    ) -> tuple[BaseModel, tuple[LLMResponse, ...], str, tuple[str, ...]]:
         """A request per page that has text, merged. Keeps each reply short enough to finish
         and each page's rows next to their own header.
         """
@@ -163,43 +180,61 @@ class ExtractionPipeline[E: BaseModel]:
         prompt_version = f"{spec.prompt_version}+{PAGED_VERSION}"
         replies: list[BaseModel] = []
         responses: tuple[LLMResponse, ...] = ()
-        for page in sorted({block.page for block in parsed.blocks}):
+        for asked, page in enumerate(sorted({block.page for block in parsed.blocks})):
+            # Retries are counted for the document, so a bad run cannot double its cost.
+            retried = len(responses) - asked
             request = LLMRequest(
                 system=spec.system_instruction + PAGED_INSTRUCTION,
                 prompt=build_prompt(parsed, page),
                 schema=spec.raw_schema,
                 prompt_version=prompt_version,
             )
-            reply, responses = self._ask(request, responses)
+            reply, responses = self._ask(request, responses, retried < _MAX_PAGE_RETRIES)
             replies.append(reply)
-        return merge_pages(spec.raw_schema, replies), responses, prompt_version
+        merged, conflicts = merge_pages(spec.raw_schema, replies)
+        return merged, responses, prompt_version, conflicts
 
 
-def merge_pages(schema: type[BaseModel], pages: list[BaseModel]) -> BaseModel:
-    """One reply from the replies for each page.
+def merge_pages(
+    schema: type[BaseModel], pages: list[BaseModel]
+) -> tuple[BaseModel, tuple[str, ...]]:
+    """One reply from the replies for each page, and the paths where pages disagreed.
 
     A field is taken from the first page that prints it, so a header repeated on a later
-    page does not replace the first. Line items are joined in page order. A list of plain
-    fields (licence numbers) is taken whole from the first page that has any.
+    page does not replace the first; if a later page prints a different value, the path is
+    reported. Line items are joined in page order. A list of plain fields (licence numbers)
+    is the union of the pages' lists.
     """
+    conflicts: list[str] = []
 
     def is_field(value: object) -> bool:
         return isinstance(value, dict) and set(value) == {"text", "block_ids"}
 
-    def merge(values: list[Any]) -> Any:
+    def merge(values: list[Any], path: str) -> Any:
         first = values[0]
         if is_field(first):
-            return next((value for value in values if value["text"] is not None), first)
+            printed = [value for value in values if value["text"] is not None]
+            if len({value["text"] for value in printed}) > 1:
+                conflicts.append(path)
+            return printed[0] if printed else first
         if isinstance(first, dict):
-            return {key: merge([value[key] for value in values]) for key in first}
+            return {
+                key: merge([value[key] for value in values], f"{path}.{key}" if path else key)
+                for key in first
+            }
         if isinstance(first, list):
             filled = [value for value in values if value]
             if filled and is_field(filled[0][0]):
-                return filled[0]
+                # Each printed value once, in the order first seen.
+                seen: dict[str | None, Any] = {}
+                for item in (item for value in filled for item in value):
+                    seen.setdefault(item["text"], item)
+                return list(seen.values())
             return [item for value in values for item in value]
         return first
 
-    return schema.model_validate(merge([page.model_dump() for page in pages]))
+    merged = schema.model_validate(merge([page.model_dump() for page in pages], ""))
+    return merged, tuple(conflicts)
 
 
 INVOICE_SPEC = DocumentSpec(

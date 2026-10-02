@@ -1,12 +1,16 @@
 """The parser in a child process: a file that hangs, hoards memory or crashes costs one
 document, not the worker."""
 
+import inspect
 import os
+import threading
+import time
 from collections.abc import Iterator
 
 import psutil
 import pytest
 
+from docforge.parsing import isolation
 from docforge.parsing.base import (
     DocumentTooLarge,
     NoTextLayer,
@@ -109,3 +113,43 @@ def test_closing_stops_the_process(parser: IsolatedParser) -> None:
 
     assert not psutil.pid_exists(child) or psutil.Process(child).status() == "zombie"
     assert pid(parser) != child  # and it starts again on demand
+
+
+def test_the_parser_process_does_not_inherit_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("GEMINI_API_KEY", "DATABASE_URL", "S3_SECRET_KEY", "SOME_TOKEN"):
+        monkeypatch.setenv(name, "secret-value")
+    monkeypatch.setenv("HARMLESS_SETTING", "kept")
+    isolated = IsolatedParser(CommandParser, name="command", version="0")
+    try:
+        seen = isolated.parse(b"env").blocks[0].text
+    finally:
+        isolated.close()
+
+    assert "secret-value" not in seen
+    assert "HARMLESS_SETTING" in seen
+
+
+def test_replies_cross_the_process_boundary_as_json_not_pickle() -> None:
+    """A parser process taken over by a hostile file must not be able to run code in the parent."""
+    source = inspect.getsource(isolation)
+
+    assert "connection.recv()" not in source
+    assert ".send(" not in source
+
+
+def test_closing_from_another_thread_stops_a_parse_that_is_under_way() -> None:
+    isolated = IsolatedParser(CommandParser, name="command", version="0", timeout_seconds=60.0)
+    pid(isolated)  # started
+    closer = threading.Timer(0.5, isolated.close)
+    closer.start()
+    started = time.monotonic()
+    try:
+        with pytest.raises(ParserLimitExceeded):
+            isolated.parse(b"sleep")
+    finally:
+        closer.join()
+        isolated.close()
+
+    assert time.monotonic() - started < 10

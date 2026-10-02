@@ -12,12 +12,13 @@ import numpy as np
 import pypdfium2 as pdfium
 from PIL import Image
 
-from docforge.parsing.base import ParseError
+from docforge.parsing.base import DocumentTooLarge, ParseError
 from docforge.parsing.pdf import PDFIUM_LOCK
 
 Box = tuple[float, float, float, float]  # x0, y0, x1, y1 in PDF points, origin bottom-left
 
 _EPOCH = time.gmtime(0)  # fixed dates, so the same images always give the same PDF bytes
+_MAX_PAGE_PIXELS = 60_000_000  # an A0 page at 200 dpi; a larger page is not rendered at all
 _SKEW_SEARCH = ((0.5, 5.0), (0.1, 0.5))  # (step, span) in degrees: coarse, then fine
 _SKEW_THUMBNAIL = 1000  # pixels on the long side; enough to see text lines, cheap to rotate
 
@@ -33,15 +34,22 @@ def render_pages(
         try:
             document = pdfium.PdfDocument(pdf)
             try:
-                return [
-                    page.render(scale=dpi / 72).to_pil().convert("L")
-                    for page in (
-                        document[index]
-                        for index in range(first - 1, min(last or len(document), len(document)))
-                    )
-                ]
+                images = []
+                for index in range(first - 1, min(last or len(document), len(document))):
+                    page = document[index]
+                    width, height = page.get_size()
+                    # Checked from the declared size, before any memory is taken for pixels.
+                    if width * height * (dpi / 72) ** 2 > _MAX_PAGE_PIXELS:
+                        raise DocumentTooLarge(
+                            f"page {index + 1} is too large to render "
+                            f"({width:.0f} x {height:.0f} points)"
+                        )
+                    images.append(page.render(scale=dpi / 72).to_pil().convert("L"))
+                return images
             finally:
                 document.close()
+        except DocumentTooLarge:
+            raise
         except Exception as error:  # a malformed file can fail in more ways than PdfiumError
             raise ParseError("the PDF could not be rendered") from error
 
@@ -87,6 +95,23 @@ def estimate_skew(image: Image.Image) -> float:
             if score > best_score:
                 best, best_score = float(angle), score
     return round(best, 2)
+
+
+def turn_box(box: Box, angle: float, page_width: float, page_height: float) -> Box:
+    """`box` moved to where its centre lands when the page is turned, keeping its size.
+
+    For small angles this is closer to the text than `rotate_box`, whose upright box around
+    a turned line of text is several lines tall.
+    """
+    if angle == 0.0:
+        return box
+    x0, y0, x1, y1 = box
+    centre_x, centre_y = (x0 + x1) / 2, (y0 + y1) / 2
+    moved_x, moved_y, _, _ = rotate_box(
+        (centre_x, centre_y, centre_x, centre_y), angle, page_width, page_height
+    )
+    half_width, half_height = (x1 - x0) / 2, (y1 - y0) / 2
+    return moved_x - half_width, moved_y - half_height, moved_x + half_width, moved_y + half_height
 
 
 def rotate_box(box: Box, angle: float, page_width: float, page_height: float) -> Box:

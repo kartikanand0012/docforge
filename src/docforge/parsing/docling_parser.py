@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from docforge.parsing.base import BBox, Block, NoTextLayer, Page, ParsedDocument, ParseError
 from docforge.parsing.pdf import has_text_layer, pdf_page_count
-from docforge.parsing.raster import estimate_skew, images_to_pdf, render_pages, rotate_box
+from docforge.parsing.raster import estimate_skew, images_to_pdf, render_pages, turn_box
 
 if TYPE_CHECKING:
     from docling.document_converter import DocumentConverter
@@ -164,7 +164,7 @@ class DoclingParser:
                 box = _bottom_left(bbox, size.height)
                 if page in angles:
                     box = _box(
-                        *rotate_box(
+                        *turn_box(
                             (box.x0, box.y0, box.x1, box.y1), -angles[page], size.width, size.height
                         )
                     )

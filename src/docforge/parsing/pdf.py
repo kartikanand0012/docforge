@@ -27,7 +27,7 @@ def pdf_page_count(data: bytes) -> int:
     return count
 
 
-_MIN_CHARS = 10  # fewer than this on a page and it is treated as an image of text
+_MIN_CHARS = 10  # fewer printed characters than this and the page is treated as an image
 
 
 def has_text_layer(data: bytes) -> bool:
@@ -41,7 +41,8 @@ def has_text_layer(data: bytes) -> bool:
                 for index in range(len(document)):
                     text_page = document[index].get_textpage()
                     try:
-                        if text_page.count_chars() < _MIN_CHARS:
+                        printed = "".join(text_page.get_text_range().split())
+                        if len(printed) < _MIN_CHARS:
                             return False
                     finally:
                         text_page.close()

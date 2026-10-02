@@ -178,3 +178,17 @@ def test_scan_accuracy_does_not_fall_below_what_was_measured() -> None:
 
 def test_no_wrong_value_gets_past_both_the_checks_and_the_order_match() -> None:
     assert [v.silent_errors_after_order_match for v in committed().variants.values()] == [0, 0, 0]
+
+
+def test_a_document_that_could_not_be_extracted_is_counted_as_a_failure_not_as_reviewed(
+    variant: Variant,
+) -> None:
+    parser = MappedParser()
+    parser.add((variant.directory / "pair_001" / "invoice.pdf").read_bytes(), variant.parsed)
+    pipeline = InvoicePipeline(parser, ScriptedProvider(["not json", "{}"]))
+
+    result = run_scan_eval({"scan": variant.directory}, pipeline).variants["scan"]
+
+    assert result.extraction_failures == 1
+    assert result.sent_to_review == 0
+    assert result.silent_errors == 0

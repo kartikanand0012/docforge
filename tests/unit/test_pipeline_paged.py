@@ -180,3 +180,73 @@ def test_purchase_orders_are_paged_the_same_way(raw_order_from_label: RawFromLab
     assert result.extraction.po_no.raw == whole["po_no"]["text"]
     assert len(result.extraction.lines) == len(whole["lines"])
     assert provider.requests[0].prompt_version == "purchase-order-v1+paged-1"
+
+
+def test_two_pages_that_give_different_values_for_one_field_send_the_document_to_review(
+    pages: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    first, second = pages
+    second["invoice_no"] = {"text": "ANOTHER-NUMBER", "block_ids": ["b3"]}
+    provider = ScriptedProvider([json.dumps(first), json.dumps(second)])
+
+    result = InvoicePipeline(parser=None, provider=provider).extract(TWO_PAGES)  # type: ignore[arg-type]
+
+    assert ("invoice_no", "conflicting_pages") in [
+        (issue.path, issue.code) for issue in result.extraction.issues
+    ]
+    assert result.assessment.decision == "review"
+
+
+def test_the_same_value_repeated_on_a_later_page_is_not_a_conflict(
+    pages: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    first, second = pages
+    second["invoice_no"] = dict(first["invoice_no"])
+    provider = ScriptedProvider([json.dumps(first), json.dumps(second)])
+
+    result = InvoicePipeline(parser=None, provider=provider).extract(TWO_PAGES)  # type: ignore[arg-type]
+
+    assert "conflicting_pages" not in [issue.code for issue in result.extraction.issues]
+
+
+def test_retries_are_limited_for_the_document_not_per_page(
+    pages: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    """Twenty pages that each need a retry must not double the cost of the document."""
+    many = document(*[(f"text of page {n}",) for n in range(1, 7)])
+    provider = ScriptedProvider(["not json", json.dumps(pages[0])] * 6)
+
+    with pytest.raises(ExtractionError, match="too many malformed replies") as raised:
+        InvoicePipeline(parser=None, provider=provider).extract(many)  # type: ignore[arg-type]
+
+    assert len(raised.value.responses) == 5  # two pages retried, the third refused
+
+
+def test_a_carried_forward_total_on_an_earlier_page_is_flagged_not_trusted(
+    pages: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    first, second = pages
+    first["totals"]["grand_total"] = {"text": "1,000.00", "block_ids": ["b2"]}
+    provider = ScriptedProvider([json.dumps(first), json.dumps(second)])
+
+    result = InvoicePipeline(parser=None, provider=provider).extract(TWO_PAGES)  # type: ignore[arg-type]
+
+    assert "totals.grand_total" in [issue.path for issue in result.extraction.issues]
+    assert result.assessment.decision == "review"
+
+
+def test_licence_numbers_printed_on_different_pages_are_all_kept_once(
+    pages: tuple[dict[str, Any], dict[str, Any]],
+) -> None:
+    first, second = pages
+    licences = first["seller"]["drug_licence_nos"]
+    extra = {"text": "XX-21B-000001", "block_ids": ["b3"]}
+    second["seller"]["drug_licence_nos"] = [licences[0], extra]
+    provider = ScriptedProvider([json.dumps(first), json.dumps(second)])
+
+    result = InvoicePipeline(parser=None, provider=provider).extract(TWO_PAGES)  # type: ignore[arg-type]
+
+    assert [licence.raw for licence in result.extraction.seller.drug_licence_nos] == [
+        *(licence["text"] for licence in licences),
+        "XX-21B-000001",
+    ]

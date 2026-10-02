@@ -1,12 +1,21 @@
 """Page images: rendering, skew estimation, and moving boxes between a page and its rotation."""
 
+import io
 from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
+from reportlab.pdfgen import canvas
 
+from docforge.parsing.base import DocumentTooLarge
 from docforge.parsing.pdf import has_text_layer
-from docforge.parsing.raster import estimate_skew, images_to_pdf, render_pages, rotate_box
+from docforge.parsing.raster import (
+    estimate_skew,
+    images_to_pdf,
+    render_pages,
+    rotate_box,
+    turn_box,
+)
 
 INVOICE = (
     Path(__file__).resolve().parents[1] / "fixtures" / "synthetic" / "pair_001" / "invoice.pdf"
@@ -111,3 +120,51 @@ def test_images_become_a_pdf_of_the_same_page_size_with_no_text() -> None:
 
 def test_a_born_digital_pdf_has_a_text_layer() -> None:
     assert has_text_layer(INVOICE)
+
+
+def huge_page_pdf(points: float) -> bytes:
+    out = io.BytesIO()
+    page = canvas.Canvas(out, pagesize=(points, points), invariant=1)
+    page.drawString(10, 10, "x")
+    page.showPage()
+    page.save()
+    return out.getvalue()
+
+
+def test_a_page_too_large_to_render_safely_is_refused_before_any_pixels_are_made() -> None:
+    """14,400 pt square at 200 dpi would be a 1.6 gigapixel image."""
+    with pytest.raises(DocumentTooLarge, match="too large to render"):
+        render_pages(huge_page_pdf(14400), dpi=200)
+
+
+def test_a_large_but_reasonable_page_is_rendered() -> None:
+    (page,) = render_pages(huge_page_pdf(2384), dpi=72)  # A0 width
+
+    assert page.size == (2384, 2384)
+
+
+@pytest.mark.parametrize("angle", [3.0, -2.0])
+def test_a_wide_box_turned_about_its_centre_keeps_its_size(angle: float) -> None:
+    """The upright box around a turned text line is several lines tall; this one is not."""
+    box = (20.0, 190.0, 580.0, 202.0)
+    turned = page_with_rectangle(box).rotate(
+        angle, resample=Image.Resampling.BICUBIC, fillcolor=255
+    )
+
+    x0, y0, x1, y1 = turn_box(box, angle, WIDTH, HEIGHT)
+    ink = ink_box(turned)
+
+    assert (x1 - x0, y1 - y0) == pytest.approx((560.0, 12.0))
+    assert ((x0 + x1) / 2, (y0 + y1) / 2) == pytest.approx(
+        ((ink[0] + ink[2]) / 2, (ink[1] + ink[3]) / 2), abs=1.5
+    )
+
+
+def test_spaces_alone_are_not_a_text_layer() -> None:
+    out = io.BytesIO()
+    page = canvas.Canvas(out, pagesize=(600, 400), invariant=1)
+    page.drawString(10, 10, " " * 40)
+    page.showPage()
+    page.save()
+
+    assert not has_text_layer(out.getvalue())

@@ -25,6 +25,8 @@ class CommandParser:
 
     def parse(self, pdf: bytes) -> ParsedDocument:
         command = pdf.decode()
+        if command == "env":
+            command = " ".join(f"{key}={value}" for key, value in sorted(os.environ.items()))
         if command == "exit":
             os._exit(3)
         if command == "sleep":
