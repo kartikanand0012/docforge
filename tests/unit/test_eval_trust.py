@@ -36,6 +36,11 @@ def test_every_seeded_defect_is_caught() -> None:
     assert summary.clean_pairs == 20
 
 
+def test_correct_pairs_are_not_sent_to_review_more_often_than_measured() -> None:
+    """A floor at the measured value: stricter checks must not quietly raise the review load."""
+    assert committed().summary.clean_pairs_accepted >= 12
+
+
 def test_the_text_report_names_every_case_that_went_to_review() -> None:
     report = committed()
 

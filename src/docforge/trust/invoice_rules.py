@@ -154,8 +154,9 @@ def line_taxable_value(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         qty, ptr, discount = line.qty.value, line.ptr.value, line.discount_pct.value
         taxable = line.taxable_value.value
         ok, expected = None, None
-        if qty is not None and ptr is not None and discount is not None and taxable is not None:
-            expected = _money(qty * ptr * (Decimal(100) - discount) / Decimal(100))
+        if qty is not None and ptr is not None and taxable is not None:
+            # A blank discount is read as none, which is how invoices print it.
+            expected = _money(qty * ptr * (Decimal(100) - (discount or Decimal(0))) / Decimal(100))
             ok = abs(expected - taxable) <= _TOLERANCE
         yield _result(
             "line.taxable_value",
@@ -167,6 +168,7 @@ def line_taxable_value(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_amount(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    intra = _intra_state(invoice)
     for path, line in _lines(invoice):
         taxable, rate, amount = line.taxable_value.value, line.gst_rate.value, line.amount.value
         ok, expected = None, None
@@ -174,8 +176,9 @@ def line_amount(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
             # Within a state the tax is two halves rounded separately; across states it is one.
             split = taxable + 2 * _money(taxable * rate / Decimal(200))
             whole = taxable + _money(taxable * rate / Decimal(100))
-            expected = whole
-            ok = min(abs(amount - split), abs(amount - whole)) <= _TOLERANCE
+            allowed = {True: (split,), False: (whole,), None: (split, whole)}[intra]
+            expected = allowed[0]
+            ok = min(abs(amount - value) for value in allowed) <= _TOLERANCE
         yield _result(
             "line.amount",
             "error",
@@ -268,7 +271,7 @@ def tax_matches_supply_type(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
-    required = {
+    required: dict[str, object] = {
         "invoice_no": invoice.invoice_no.value,
         "invoice_date": invoice.invoice_date.value,
         "seller.gstin": invoice.seller.gstin.value,
@@ -276,6 +279,9 @@ def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         "totals.grand_total": invoice.totals.grand_total.value,
         "lines": invoice.lines or None,
     }
+    for path, line in _lines(invoice):
+        for name in ("product_name", "batch_no", "expiry", "qty"):
+            required[f"{path}.{name}"] = getattr(line, name).value
     for path, value in required.items():
         yield _result(
             "required.present", "error", (path,), value is not None, f"{path} is missing."

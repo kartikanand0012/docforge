@@ -19,12 +19,12 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from docforge import audit
 from docforge.db.models import (
@@ -108,12 +108,24 @@ class AssessmentDetail:
     record: AssessmentRecord
     match: MatchRecord | None  # the newest comparison involving this version, if any
     counterpart_document_id: uuid.UUID | None
+    doc_type: str
+
+    @property
+    def match_status(self) -> str:
+        """`match`, `mismatch`, or `no_counterpart` when nothing is on file to compare with."""
+        return "no_counterpart" if self.match is None else self.match.decision
 
     @property
     def decision(self) -> str:
-        """`review` if the document's own checks or its match say so."""
-        mismatch = self.match is not None and self.match.decision == "mismatch"
-        return "review" if self.record.decision == "review" or mismatch else "accept"
+        """`review` if the document's own checks or its match say so.
+
+        An invoice with no order on file is also `review`: its own checks can pass on a
+        forged but self-consistent document, so nothing independent supports it yet.
+        """
+        unsupported = self.doc_type == "invoice" and self.match is None
+        mismatch = self.match_status == "mismatch"
+        own = self.record.decision == "review"
+        return "review" if own or mismatch or unsupported else "accept"
 
 
 @dataclass(frozen=True)
@@ -121,6 +133,16 @@ class ExtractionDetail:
     version: DocumentVersion
     extraction: Extraction
     model_runs: list[ModelRun]
+
+
+_MATCH_CANDIDATES = 20
+
+
+def _parties(data: Mapping[str, Any], *, invoice: bool) -> tuple[object, object]:
+    """(supplier GSTIN, buyer GSTIN) from a stored invoice or purchase-order extraction."""
+    supplier = data.get("seller", {}).get("gstin") if invoice else data.get("supplier_gstin")
+    buyer = data.get("buyer", {}).get("gstin")
+    return (supplier or {}).get("value"), (buyer or {}).get("value")
 
 
 def _now() -> datetime:
@@ -421,22 +443,43 @@ class DocumentService:
             order_number = (mine.data.get("po_no") or {}).get("value")
             if order_number is None:
                 return
-            found = session.execute(
+            # Only a document's newest version is a candidate, never a superseded one.
+            newer = aliased(DocumentVersion)
+            newest = (
+                select(func.max(newer.version_no))
+                .where(newer.document_id == Document.id)
+                .correlate(Document)
+                .scalar_subquery()
+            )
+            candidates = session.execute(
                 select(DocumentVersion, Extraction, Document)
                 .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
                 .join(Document, Document.id == DocumentVersion.document_id)
                 .where(
                     Document.tenant_id == document.tenant_id,
                     Document.doc_type == other_type,
+                    DocumentVersion.version_no == newest,
                     Extraction.data["po_no"]["value"].astext == order_number,
                 )
                 .order_by(DocumentVersion.created_at.desc())
-                .limit(1)
-            ).first()
+                .limit(_MATCH_CANDIDATES)
+            ).all()
+            is_invoice = document.doc_type == "invoice"
+            # The order number alone is whatever the document says. The two must also name
+            # the same supplier and buyer before they are treated as a pair.
+            parties = _parties(mine.data, invoice=is_invoice)
+            found = next(
+                (
+                    row
+                    for row in candidates
+                    if None not in parties
+                    and _parties(row[1].data, invoice=not is_invoice) == parties
+                ),
+                None,
+            )
             if found is None:
                 return
             other_version, theirs, other_document = found
-            is_invoice = document.doc_type == "invoice"
             invoice_side = (version, mine) if is_invoice else (other_version, theirs)
             order_side = (other_version, theirs) if is_invoice else (version, mine)
             discrepancies = match_invoice_to_order(
@@ -594,7 +637,7 @@ class DocumentService:
                 counterpart = session.scalar(
                     select(DocumentVersion.document_id).where(DocumentVersion.id == other)
                 )
-            return AssessmentDetail(version, record, match, counterpart)
+            return AssessmentDetail(version, record, match, counterpart, document.doc_type)
 
     def audit_trail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> list[AuditEntry]:
         with self._sessions() as session:

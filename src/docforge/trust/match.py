@@ -20,6 +20,11 @@ class Discrepancy(BaseModel):
     order_value: str | None
 
 
+def _key(product_name: str) -> str:
+    """Product names are compared without regard to case or spacing."""
+    return " ".join(product_name.split()).casefold()
+
+
 def _text(value: object) -> str | None:
     return None if value is None else str(value)
 
@@ -36,7 +41,7 @@ def _differs[T](
         return [
             Discrepancy(
                 code=f"{code.split('.')[0]}.unchecked" if "." in code else f"{code}.unchecked",
-                severity="warning",
+                severity="error",  # not comparable means a person must look
                 message=f"{what} could not be compared: a value is missing.",
                 invoice_path=invoice_path,
                 order_path=order_path,
@@ -89,12 +94,13 @@ def _line(
             (f"{invoice_path}.pack", billed.pack),
             (f"{order_path}.pack", ordered.pack),
         )
-    if billed.qty.value is not None and billed.free_qty.value is not None:
-        # A scheme that was printed but could not be read is unknown, not absent.
-        if ordered.scheme.raw is not None and ordered.scheme.value is None:
-            return found
+    # A scheme that was printed but could not be read is unknown, not absent.
+    if ordered.scheme.raw is not None and ordered.scheme.value is None:
+        return found
+    if billed.qty.value is not None:
         expected = _free_quantity(ordered.scheme.value, billed.qty.value)
-        if billed.free_qty.value != expected:
+        # A blank free quantity is zero, which is wrong if the order promised free goods.
+        if (billed.free_qty.value or 0) != expected:
             found.append(
                 Discrepancy(
                     code="line.free_qty",
@@ -103,7 +109,7 @@ def _line(
                     f"scheme ({ordered.scheme.value or 'none'}), which gives {expected}.",
                     invoice_path=f"{invoice_path}.free_qty",
                     order_path=f"{order_path}.scheme",
-                    invoice_value=str(billed.free_qty.value),
+                    invoice_value=_text(billed.free_qty.value),
                     order_value=ordered.scheme.value,
                 )
             )
@@ -142,15 +148,15 @@ def match_invoice_to_order(
         )
 
     # Lines are paired by product, because an invoice need not list them in order sequence.
-    ordered = {
-        line.product_name.value: (f"lines[{index}]", line)
-        for index, line in enumerate(order.lines)
-        if line.product_name.value
-    }
+    # The same product may appear on several lines (one per batch), so each name keeps a list.
+    ordered: dict[str, list[tuple[str, OrderLineExtraction]]] = {}
+    for index, line in enumerate(order.lines):
+        if line.product_name.value:
+            ordered.setdefault(_key(line.product_name.value), []).append((f"lines[{index}]", line))
     for index, billed in enumerate(invoice.lines):
         path = f"lines[{index}]"
-        pair = ordered.pop(billed.product_name.value or "", None)
-        if pair is None:
+        candidates = ordered.get(_key(billed.product_name.value or ""), [])
+        if not candidates:
             found.append(
                 Discrepancy(
                     code="line.not_ordered",
@@ -163,17 +169,21 @@ def match_invoice_to_order(
                 )
             )
             continue
-        found += _line(path, billed, *pair)
-    for order_path, line in ordered.values():
-        found.append(
-            Discrepancy(
-                code="line.not_supplied",
-                severity="warning",
-                message=f"{line.product_name.value} was ordered but is not on the invoice.",
-                invoice_path=None,
-                order_path=f"{order_path}.product_name",
-                invoice_value=None,
-                order_value=line.product_name.value,
+        same_quantity = [c for c in candidates if c[1].qty.value == billed.qty.value]
+        chosen = same_quantity[0] if same_quantity else candidates[0]
+        candidates.remove(chosen)
+        found += _line(path, billed, *chosen)
+    for remaining in ordered.values():
+        for order_path, line in remaining:
+            found.append(
+                Discrepancy(
+                    code="line.not_supplied",
+                    severity="error",  # may be a part shipment, but someone has to confirm it
+                    message=f"{line.product_name.value} was ordered but is not on the invoice.",
+                    invoice_path=None,
+                    order_path=f"{order_path}.product_name",
+                    invoice_value=None,
+                    order_value=line.product_name.value,
+                )
             )
-        )
     return tuple(found)

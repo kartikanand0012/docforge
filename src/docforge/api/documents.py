@@ -98,6 +98,7 @@ class AssessmentOut(BaseModel):
     document_id: uuid.UUID
     version_no: int
     decision: str  # accept or review, taking the match into account
+    match_status: str  # match, mismatch or no_counterpart
     assessment: dict[str, Any]  # fields with their page boxes, rule results, unreadable values
     match: MatchOut | None
 
@@ -214,6 +215,7 @@ def documents_router(
             document_id=document_id,
             version_no=detail.version.version_no,
             decision=detail.decision,
+            match_status=detail.match_status,
             assessment=detail.record.data,
             match=None
             if match is None

@@ -2,8 +2,10 @@
 
 from typing import Any
 
+from pydantic import BaseModel
+
 from docforge.extraction.normalize import normalize_invoice
-from docforge.extraction.schema import RawInvoice
+from docforge.extraction.schema import Extracted, RawInvoice
 from docforge.parsing.base import BBox, Block, Page, ParsedDocument
 from docforge.trust.verify import FieldCheck, verify_extraction
 
@@ -174,9 +176,15 @@ def test_a_value_spread_over_two_cited_blocks_is_verified() -> None:
 
 
 def test_an_empty_value_is_never_verified() -> None:
-    result = checks(parsed("Batch: "), line={"batch_no": field("  ", "b1")})
+    """The normaliser turns a blank into an absent value; the verifier must not rely on that."""
+    blank = Extracted[str](value="", raw="  ", block_ids=("b1",))
 
-    assert result["lines[0].batch_no"].status == "not_in_cited_blocks"
+    class OneField(BaseModel):
+        batch_no: Extracted[str]
+
+    (result,) = verify_extraction(OneField(batch_no=blank), parsed("Batch: "))
+
+    assert result.status == "not_in_cited_blocks"
 
 
 def test_a_short_number_must_be_the_whole_cited_block() -> None:
@@ -205,6 +213,21 @@ def test_a_number_is_not_verified_against_its_negative_or_bracketed_form() -> No
 def test_a_number_cannot_be_assembled_from_two_cited_blocks() -> None:
     document = parsed("Total 10", "5 items")
 
-    result = checks(document, invoice_no=field("10 5", "b1", "b2"), line={"qty": field("105", "b1", "b2")})
+    result = checks(
+        document, invoice_no=field("10 5", "b1", "b2"), line={"qty": field("105", "b1", "b2")}
+    )
 
     assert result["lines[0].qty"].status == "not_in_cited_blocks"
+
+
+def test_a_short_number_in_a_block_of_merged_numeric_cells_is_verified() -> None:
+    """The parser sometimes merges two cells, "2" and "12", into one block "2 12"."""
+    document = parsed("2 12", "Disc 2 GST 12")
+
+    def status(text: str, block: str) -> str:
+        return checks(document, line={"gst_rate": field(text, block)})["lines[0].gst_rate"].status
+
+    assert status("12", "b1") == "verified"
+    assert status("2", "b1") == "verified"
+    assert status("1", "b1") == "not_in_cited_blocks"
+    assert status("12", "b2") == "not_in_cited_blocks"  # labels present: which number is it?

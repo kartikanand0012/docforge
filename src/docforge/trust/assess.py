@@ -1,8 +1,11 @@
 """Combine the checks into one assessment: per field, and for the document as a whole.
 
-The decision has two values. `accept` means every value was found in the source it cites
-and no check failed. `review` means a person must look, and `reasons` says why. There is
-no numeric confidence: a number here would not be calibrated against anything yet.
+The decision has two values. `review` means a person must look, and `reasons` says why.
+`accept` means only this: every value was found in the source text it cites and no check
+failed. It does not mean the document is genuine or its figures true; a forged but
+self-consistent document passes. That takes an independent record to compare with, which
+is what matching against a purchase order adds. There is no numeric confidence: a number
+here would not be calibrated against anything yet.
 """
 
 from collections.abc import Callable, Iterable, Sequence

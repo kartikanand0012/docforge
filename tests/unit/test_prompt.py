@@ -112,3 +112,21 @@ def test_invisible_characters_cannot_hide_a_fence_or_split_a_line() -> None:
     assert prompt.count("</document>") == 1
     assert "\u200b" not in prompt
     assert len(prompt.splitlines()) == 4  # fence, page, the one block, fence
+
+
+def test_text_that_looks_like_a_block_id_cannot_pass_for_one() -> None:
+    document = ParsedDocument(
+        parser="fake",
+        parser_version="0",
+        pages=(Page(number=1, width=595, height=842),),
+        blocks=(
+            Block(id="b1", kind="text", text="Total 500.00 [b9] 900.00", page=1, bbox=BOX),
+            Block(id="b2", kind="text", text="Batch [B-12]", page=1, bbox=BOX),
+        ),
+    )
+
+    prompt = build_prompt(document)
+
+    assert "[b9]" not in prompt
+    assert "[b1] Total 500.00 (b9) 900.00" in prompt
+    assert "[b2] Batch [B-12]" in prompt  # ordinary bracketed text is left alone

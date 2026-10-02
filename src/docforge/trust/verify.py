@@ -61,15 +61,46 @@ def _normalise(text: str) -> str:
     return " ".join(unicodedata.normalize("NFKC", text).split())
 
 
+_NUMBER = re.compile(r"-?[\d,]*\d(?:\.\d+)?%?", re.ASCII)
+_SHORT = 3  # a number this short proves nothing unless it is all the cited block says
+
+
 def _contains(haystack: str, needle: str) -> bool:
     """True if `needle` occurs in `haystack` as a whole token, not inside a longer one.
 
-    "20" is not found in "200", "166.40" not in "1,166.40", and "86.24" not in "86.245".
+    "20" is not found in "200", "166.40" not in "1,166.40", "86.24" not in "86.245", and a
+    number is not found in its negative ("-5") or bracketed ("(5.00)") form.
     """
-    pattern = (
-        r"(?<![0-9A-Za-z])(?<![0-9][.,])" + re.escape(needle) + r"(?![0-9A-Za-z])(?![.,][0-9])"
-    )
+    if not needle:
+        return False
+    before = r"(?<![0-9A-Za-z])(?<![0-9][.,])"
+    if needle[0].isdigit():
+        before += r"(?<![-+(])"
+    pattern = before + re.escape(needle) + r"(?![0-9A-Za-z])(?![.,][0-9])"
     return re.search(pattern, haystack) is not None
+
+
+def _supported(needle: str, cited: list[str]) -> bool:
+    """Do the cited blocks support the value?
+
+    A short number must be the whole text of a cited block, or one of the numbers in a
+    block that holds only numbers. Any other value may sit inside one
+    cited block. Only text, such as an address, may run across several cited blocks: a
+    number assembled from pieces of two blocks is not on the page.
+    """
+    if not needle:
+        return False
+    numeric = _NUMBER.fullmatch(needle) is not None
+    if numeric and len(needle) <= _SHORT:
+        # Or one of several numbers in a block that holds nothing else: the parser
+        # sometimes merges two numeric cells. Which of them it is, the rules must check.
+        return any(
+            needle in tokens and all(_NUMBER.fullmatch(token) for token in tokens)
+            for tokens in (text.split() for text in cited)
+        )
+    if any(_contains(text, needle) for text in cited):
+        return True
+    return not numeric and len(cited) > 1 and _contains(" ".join(cited), needle)
 
 
 def verify_extraction(extraction: BaseModel, parsed: ParsedDocument) -> tuple[FieldCheck, ...]:
@@ -82,11 +113,9 @@ def verify_extraction(extraction: BaseModel, parsed: ParsedDocument) -> tuple[Fi
             continue
         needle = _normalise(field.raw)
         cited = [block_id for block_id in field.block_ids if block_id in texts]
-        # A value may run across several cited blocks, e.g. a two-line address.
-        joined = " ".join(texts[block_id] for block_id in cited)
         if not cited:
             status: Status = "no_citation"
-        elif _contains(joined, needle):
+        elif _supported(needle, [texts[block_id] for block_id in cited]):
             status = "verified"
         else:
             status = "not_in_cited_blocks"
