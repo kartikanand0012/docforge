@@ -17,6 +17,10 @@ DEFAULT_MAX_PAGES = 20
 class ExtractionError(Exception):
     """The model did not return output that fits the schema."""
 
+    def __init__(self, message: str, responses: tuple[LLMResponse, ...] = ()) -> None:
+        super().__init__(message)
+        self.responses = responses  # the calls that were made, for usage accounting
+
 
 @dataclass(frozen=True)
 class PipelineResult:
@@ -73,7 +77,7 @@ class InvoicePipeline:
                 raw = RawInvoice.model_validate_json(second.text)
             except ValidationError as second_error:
                 raise ExtractionError(
-                    "model reply did not fit the schema after one retry"
+                    "model reply did not fit the schema after one retry", responses
                 ) from second_error
         return PipelineResult(
             parsed=parsed, extraction=normalize_invoice(raw, parsed), responses=responses

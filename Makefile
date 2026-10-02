@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate api test test-unit lint format generate
+.PHONY: help install up down migrate api test test-unit lint format generate eval eval-record
 
 SYNTH_DIR := tests/fixtures/synthetic
 SYNTH_SEED := 20261002
@@ -41,3 +41,9 @@ format: ## Auto-format and fix lint
 
 generate: ## Regenerate the synthetic invoice/PO pairs with ground truth
 	uv run python -m docforge.synth --count $(SYNTH_COUNT) --seed $(SYNTH_SEED) --out $(SYNTH_DIR)
+
+eval: ## Re-run the invoice eval offline from recordings and rewrite the baseline report
+	uv run python -m docforge.evals --mode replay
+
+eval-record: ## Run the eval live for anything not yet recorded (needs GEMINI_API_KEY; resumable)
+	uv run python -m docforge.evals --mode record

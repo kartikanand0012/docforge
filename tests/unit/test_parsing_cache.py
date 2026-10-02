@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import pytest
-from docforge.parsing.cache import CachingParser
 
 from docforge.parsing.base import ParseError
+from docforge.parsing.cache import CachingParser
 from fakes import PARSED, FakeParser
 
 

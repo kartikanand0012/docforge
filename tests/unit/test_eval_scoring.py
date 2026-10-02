@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from docforge.evals.scoring import DocumentScore, score_invoice, summarize
 
+from docforge.evals.scoring import DocumentScore, score_invoice, summarize
 from docforge.extraction.normalize import normalize_invoice
 from docforge.extraction.schema import RawInvoice
 from docforge.parsing.base import BBox, Block, Page, ParsedDocument
