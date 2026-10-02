@@ -32,14 +32,14 @@ class ScriptedProvider:
     name = "fake"
     model = "fake-1"
 
-    def __init__(self, replies: list[str | Exception]) -> None:
+    def __init__(self, replies: list[str | BaseException]) -> None:
         self.replies = replies
         self.requests: list[LLMRequest] = []
 
     def generate(self, request: LLMRequest) -> LLMResponse:
         self.requests.append(request)
         reply = self.replies.pop(0)
-        if isinstance(reply, Exception):
+        if isinstance(reply, BaseException):
             raise reply
         return LLMResponse(
             text=reply,
