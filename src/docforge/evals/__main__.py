@@ -84,7 +84,11 @@ def _scans(args: argparse.Namespace, out: Path, pipeline: InvoicePipeline) -> in
         print(f"{variant} {score.pair_id}: {correct}/{len(score.scored)} correct", flush=True)
 
     try:
-        report = run_scan_eval(variants, pipeline, on_document=progress)
+        # Orders are read from recordings made by the trust eval; they are never scanned.
+        _, order_pipeline = trust_pipelines(args.recordings, args.model)
+        report = run_scan_eval(
+            variants, pipeline, on_document=progress, orders=(args.fixtures, order_pipeline)
+        )
     except LLMQuotaExhausted as error:
         print(f"Stopped: {error}", file=sys.stderr)
         print("Replies so far are recorded; run `make eval-record` again later.", file=sys.stderr)

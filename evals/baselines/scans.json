@@ -1,0 +1,633 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "invoice-v1",
+  "variants": {
+    "clean": {
+      "parser": "docling 2.132.0",
+      "source": "text_layer",
+      "summary": {
+        "documents": 20,
+        "documents_fully_correct": 20,
+        "line_count_matches": 20,
+        "extra_lines": 0,
+        "fields": {
+          "total": 2472,
+          "correct": 2472,
+          "wrong": 0,
+          "missing": 0,
+          "accuracy": 1.0
+        },
+        "by_class": {
+          "amount": {
+            "total": 682,
+            "correct": 682,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          },
+          "date": {
+            "total": 334,
+            "correct": 334,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          },
+          "identifier": {
+            "total": 474,
+            "correct": 474,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          },
+          "quantity": {
+            "total": 588,
+            "correct": 588,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          },
+          "text": {
+            "total": 394,
+            "correct": 394,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          }
+        },
+        "by_layout": {
+          "A": {
+            "total": 1355,
+            "correct": 1355,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          },
+          "B": {
+            "total": 1117,
+            "correct": 1117,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          }
+        },
+        "citations": {
+          "checked": 2472,
+          "correct": 2451,
+          "accuracy": 0.9915
+        },
+        "null_expected": {
+          "total": 26,
+          "hallucinated": 0
+        }
+      },
+      "usage": {
+        "model_calls": 20,
+        "input_tokens": 41827,
+        "output_tokens": 103333,
+        "thinking_tokens": 0,
+        "pages": 20,
+        "latency_ms_p50": 14417.3,
+        "latency_ms_p95": 26647.0
+      },
+      "sent_to_review": 8,
+      "documents_with_errors": 0,
+      "errors_sent_to_review": 0,
+      "silent_errors": 0,
+      "silent_errors_after_order_match": 0,
+      "misreads": []
+    },
+    "scan_good": {
+      "parser": "docling 2.132.0",
+      "source": "ocr",
+      "summary": {
+        "documents": 20,
+        "documents_fully_correct": 19,
+        "line_count_matches": 20,
+        "extra_lines": 0,
+        "fields": {
+          "total": 2472,
+          "correct": 2471,
+          "wrong": 1,
+          "missing": 0,
+          "accuracy": 0.9996
+        },
+        "by_class": {
+          "amount": {
+            "total": 682,
+            "correct": 682,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          },
+          "date": {
+            "total": 334,
+            "correct": 334,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          },
+          "identifier": {
+            "total": 474,
+            "correct": 474,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          },
+          "quantity": {
+            "total": 588,
+            "correct": 588,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          },
+          "text": {
+            "total": 394,
+            "correct": 393,
+            "wrong": 1,
+            "missing": 0,
+            "accuracy": 0.9975
+          }
+        },
+        "by_layout": {
+          "A": {
+            "total": 1355,
+            "correct": 1354,
+            "wrong": 1,
+            "missing": 0,
+            "accuracy": 0.9993
+          },
+          "B": {
+            "total": 1117,
+            "correct": 1117,
+            "wrong": 0,
+            "missing": 0,
+            "accuracy": 1.0
+          }
+        },
+        "citations": {
+          "checked": 2472,
+          "correct": 2456,
+          "accuracy": 0.9935
+        },
+        "null_expected": {
+          "total": 26,
+          "hallucinated": 0
+        }
+      },
+      "usage": {
+        "model_calls": 20,
+        "input_tokens": 41779,
+        "output_tokens": 103275,
+        "thinking_tokens": 0,
+        "pages": 20,
+        "latency_ms_p50": 13050.7,
+        "latency_ms_p95": 17933.0
+      },
+      "sent_to_review": 11,
+      "documents_with_errors": 1,
+      "errors_sent_to_review": 1,
+      "silent_errors": 0,
+      "silent_errors_after_order_match": 0,
+      "misreads": [
+        {
+          "pair_id": "pair_013",
+          "path": "place_of_supply",
+          "expected": "Karnataka",
+          "actual": "Kamataka",
+          "outcome": "wrong"
+        }
+      ]
+    },
+    "scan_poor": {
+      "parser": "docling 2.132.0",
+      "source": "ocr",
+      "summary": {
+        "documents": 20,
+        "documents_fully_correct": 4,
+        "line_count_matches": 20,
+        "extra_lines": 0,
+        "fields": {
+          "total": 2472,
+          "correct": 2424,
+          "wrong": 40,
+          "missing": 8,
+          "accuracy": 0.9806
+        },
+        "by_class": {
+          "amount": {
+            "total": 682,
+            "correct": 681,
+            "wrong": 1,
+            "missing": 0,
+            "accuracy": 0.9985
+          },
+          "date": {
+            "total": 334,
+            "correct": 333,
+            "wrong": 0,
+            "missing": 1,
+            "accuracy": 0.997
+          },
+          "identifier": {
+            "total": 474,
+            "correct": 472,
+            "wrong": 2,
+            "missing": 0,
+            "accuracy": 0.9958
+          },
+          "quantity": {
+            "total": 588,
+            "correct": 578,
+            "wrong": 3,
+            "missing": 7,
+            "accuracy": 0.983
+          },
+          "text": {
+            "total": 394,
+            "correct": 360,
+            "wrong": 34,
+            "missing": 0,
+            "accuracy": 0.9137
+          }
+        },
+        "by_layout": {
+          "A": {
+            "total": 1355,
+            "correct": 1349,
+            "wrong": 6,
+            "missing": 0,
+            "accuracy": 0.9956
+          },
+          "B": {
+            "total": 1117,
+            "correct": 1075,
+            "wrong": 34,
+            "missing": 8,
+            "accuracy": 0.9624
+          }
+        },
+        "citations": {
+          "checked": 2464,
+          "correct": 2444,
+          "accuracy": 0.9919
+        },
+        "null_expected": {
+          "total": 26,
+          "hallucinated": 0
+        }
+      },
+      "usage": {
+        "model_calls": 20,
+        "input_tokens": 41515,
+        "output_tokens": 103208,
+        "thinking_tokens": 0,
+        "pages": 20,
+        "latency_ms_p50": 12702.4,
+        "latency_ms_p95": 17773.7
+      },
+      "sent_to_review": 12,
+      "documents_with_errors": 16,
+      "errors_sent_to_review": 11,
+      "silent_errors": 5,
+      "silent_errors_after_order_match": 0,
+      "misreads": [
+        {
+          "pair_id": "pair_001",
+          "path": "lines[4].product_name",
+          "expected": "Insulin Injection IP 40IU/ml",
+          "actual": "Insufin Injection IP 40IU/ml",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_002",
+          "path": "seller.address",
+          "expected": "14 Market Yard Road, Pune 411037",
+          "actual": "14 Market Yard Road. Pune 411037",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_002",
+          "path": "lines[0].product_name",
+          "expected": "Atorvastatin Tablets IP 10mg",
+          "actual": "Atorvastatin Tabiets IP 10mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_002",
+          "path": "lines[1].product_name",
+          "expected": "Amlodipine Tablets IP 5mg",
+          "actual": "Ae e l dmg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_002",
+          "path": "lines[2].free_qty",
+          "expected": "0",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_002",
+          "path": "lines[3].free_qty",
+          "expected": "4",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_002",
+          "path": "lines[4].free_qty",
+          "expected": "16",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_003",
+          "path": "lines[9].product_name",
+          "expected": "Salbutamol Inhaler 100mcg",
+          "actual": "Saibutamol Inhaler 100mcg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_004",
+          "path": "lines[2].expiry",
+          "expected": "2027-10",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_004",
+          "path": "lines[3].free_qty",
+          "expected": "0",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_004",
+          "path": "lines[4].free_qty",
+          "expected": "6",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_004",
+          "path": "lines[5].product_name",
+          "expected": "Salbutamol Inhaler 100mcg",
+          "actual": "Salbutamol Inhaler 100mog",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_006",
+          "path": "lines[0].product_name",
+          "expected": "Atorvastatin Tablets IP 10mg",
+          "actual": "Atorvastatin Tabiets IP 10mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_006",
+          "path": "lines[6].product_name",
+          "expected": "Amlodipine Tablets IP 5mg",
+          "actual": "Amlaeap Tedpmg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_007",
+          "path": "lines[3].product_name",
+          "expected": "Amlodipine Tablets IP 5mg",
+          "actual": "Amiodipine Tablets IP 5mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_008",
+          "path": "lines[1].product_name",
+          "expected": "Prednisolone Tablets IP 5mg",
+          "actual": "Prednisoione Tabiets IP 5mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_008",
+          "path": "lines[2].ptr",
+          "expected": "65.66",
+          "actual": "65.68",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_008",
+          "path": "lines[3].pack",
+          "expected": "1x10ml",
+          "actual": "tx10ml",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_008",
+          "path": "lines[4].product_name",
+          "expected": "Ibuprofen Tablets IP 400mg",
+          "actual": "Ibuprofen Tabiets IP 400mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_009",
+          "path": "lines[1].product_name",
+          "expected": "Ciprofloxacin Tablets IP 500mg",
+          "actual": "Ciprofioxacin Tablets IP 500mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_010",
+          "path": "seller.address",
+          "expected": "3 Relief Road, Ahmedabad 380001",
+          "actual": "3 Relief Road. Ahmedatad 380001",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_010",
+          "path": "lines[0].product_name",
+          "expected": "Omeprazole Capsules IP 20mg",
+          "actual": "Omepe e aene Ceesmg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_010",
+          "path": "lines[2].product_name",
+          "expected": "Vitamin C Tablets 500mg",
+          "actual": "Vitarmin C Tablets 500mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_012",
+          "path": "place_of_supply",
+          "expected": "Delhi",
+          "actual": "Dethi",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_012",
+          "path": "buyer.address",
+          "expected": "64 Lajpat Nagar II, Delhi 110024",
+          "actual": "64 Lajpat Nagar II, Delithi 110024",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_012",
+          "path": "lines[1].product_name",
+          "expected": "Insulin Injection IP 40IU/ml",
+          "actual": "Insulin Injection IP 401U/ml",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_012",
+          "path": "lines[2].product_name",
+          "expected": "Amlodipine Tablets IP 5mg",
+          "actual": "Amlodipine Tablets IP Smg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_014",
+          "path": "seller.drug_licence_nos[0]",
+          "expected": "DL-20B-415960",
+          "actual": "DL-20B-415960.",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_014",
+          "path": "lines[2].pack",
+          "expected": "1x25",
+          "actual": "fx25",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_015",
+          "path": "lines[4].product_name",
+          "expected": "Prednisolone Tablets IP 5mg",
+          "actual": "Prednisoione Tablets IP 5mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_016",
+          "path": "seller.address",
+          "expected": "21 Bhagirath Palace, Delhi 110006",
+          "actual": "21 Bhagirath Palace. Delhi 110006",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_016",
+          "path": "buyer.address",
+          "expected": "5 Karol Bagh Main Road, Delhi 110005",
+          "actual": "5 Karoi Bagh Main Road, Delhi 110005",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_016",
+          "path": "lines[0].pack",
+          "expected": "10x10",
+          "actual": "10×10",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_016",
+          "path": "lines[0].free_qty",
+          "expected": "6",
+          "actual": "5",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_016",
+          "path": "lines[3].pack",
+          "expected": "10x10",
+          "actual": "10×10",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_016",
+          "path": "lines[3].free_qty",
+          "expected": "0",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_016",
+          "path": "lines[6].qty",
+          "expected": "10",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_017",
+          "path": "lines[7].product_name",
+          "expected": "Prednisolone Tablets IP 5mg",
+          "actual": "Prednisoione Tablets IP 5mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_018",
+          "path": "lines[2].discount_pct",
+          "expected": "2.5",
+          "actual": "25",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_018",
+          "path": "lines[3].product_name",
+          "expected": "Atorvastatin Tablets IP 10mg",
+          "actual": "Atorvastatin Tabiets IP 10mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_018",
+          "path": "lines[4].product_name",
+          "expected": "Prednisolone Tablets IP 5mg",
+          "actual": "Predniscione Tablets IP 5mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_018",
+          "path": "lines[5].product_name",
+          "expected": "Insulin Injection IP 40IU/ml",
+          "actual": "insulin Injection (P 40IU/ml",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_018",
+          "path": "lines[6].product_name",
+          "expected": "Ciprofloxacin Tablets IP 500mg",
+          "actual": "Ciproftoxacin Tablets IP 500mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_018",
+          "path": "lines[7].discount_pct",
+          "expected": "2.5",
+          "actual": "25",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_020",
+          "path": "place_of_supply",
+          "expected": "Karnataka",
+          "actual": "Kamataka",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_020",
+          "path": "lines[2].product_name",
+          "expected": "Amlodipine Tablets IP 5mg",
+          "actual": "Amtodipine Tablets IP 5mg",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_020",
+          "path": "lines[2].batch_no",
+          "expected": "EO0589",
+          "actual": "E00589",
+          "outcome": "wrong"
+        },
+        {
+          "pair_id": "pair_020",
+          "path": "lines[4].product_name",
+          "expected": "Prednisolone Tablets IP 5mg",
+          "actual": "Prednisolone Tabiets IP 5mg",
+          "outcome": "wrong"
+        }
+      ]
+    }
+  }
+}
