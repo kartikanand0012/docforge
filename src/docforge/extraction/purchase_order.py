@@ -14,6 +14,7 @@ from docforge.extraction.normalize import (
     parse_date,
     parse_decimal,
     parse_int,
+    product_name,
 )
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.schema import Extracted, Issue, PartyExtraction, RawField, RawParty, _Model
@@ -107,7 +108,7 @@ def normalize_purchase_order(
         lines=tuple(
             OrderLineExtraction(
                 product_name=normalizer.field(
-                    f"lines[{index}].product_name", line.product_name, clean_text
+                    f"lines[{index}].product_name", line.product_name, product_name(index + 1)
                 ),
                 pack=normalizer.field(f"lines[{index}].pack", line.pack, clean_text),
                 qty=normalizer.field(f"lines[{index}].qty", line.qty, parse_int),

@@ -1,0 +1,441 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "invoice_prompt_version": "invoice-v1",
+  "order_prompt_version": "purchase-order-v1",
+  "summary": {
+    "clean_pairs": 20,
+    "clean_pairs_accepted": 12,
+    "clean_values_flagged": 21,
+    "seeded_cases": 9,
+    "seeded_cases_caught": 9,
+    "seeded_findings_expected": 12,
+    "seeded_findings_caught": 12,
+    "seeded_unexpected_findings": 4
+  },
+  "usage": {
+    "model_calls": 58,
+    "input_tokens": 85112,
+    "output_tokens": 194636
+  },
+  "clean": [
+    {
+      "pair_id": "pair_001",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_002",
+      "invoice_decision": "review",
+      "invoice_reasons": [
+        "1 value was not found in the source text it cites"
+      ],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": false
+    },
+    {
+      "pair_id": "pair_003",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_004",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_005",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_006",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_007",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_008",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_009",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_010",
+      "invoice_decision": "review",
+      "invoice_reasons": [
+        "2 values were not found in the source text they cite"
+      ],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": false
+    },
+    {
+      "pair_id": "pair_011",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_012",
+      "invoice_decision": "review",
+      "invoice_reasons": [
+        "2 values were not found in the source text they cite"
+      ],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": false
+    },
+    {
+      "pair_id": "pair_013",
+      "invoice_decision": "review",
+      "invoice_reasons": [
+        "2 values were not found in the source text they cite"
+      ],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": false
+    },
+    {
+      "pair_id": "pair_014",
+      "invoice_decision": "review",
+      "invoice_reasons": [
+        "1 value was not found in the source text it cites"
+      ],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": false
+    },
+    {
+      "pair_id": "pair_015",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_016",
+      "invoice_decision": "review",
+      "invoice_reasons": [
+        "1 value was not found in the source text it cites"
+      ],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": false
+    },
+    {
+      "pair_id": "pair_017",
+      "invoice_decision": "review",
+      "invoice_reasons": [
+        "1 value was not found in the source text it cites"
+      ],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": false
+    },
+    {
+      "pair_id": "pair_018",
+      "invoice_decision": "review",
+      "invoice_reasons": [
+        "11 values were not found in the source text they cite"
+      ],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": false
+    },
+    {
+      "pair_id": "pair_019",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    },
+    {
+      "pair_id": "pair_020",
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
+      "order_decision": "accept",
+      "order_reasons": [],
+      "discrepancies": [],
+      "accepted": true
+    }
+  ],
+  "seeded": [
+    {
+      "case_id": "case_001",
+      "defect": "bad_line_amount",
+      "expected": [
+        [
+          "rule",
+          "line.amount"
+        ],
+        [
+          "rule",
+          "totals.tax"
+        ]
+      ],
+      "found": [
+        [
+          "rule",
+          "line.amount"
+        ],
+        [
+          "rule",
+          "totals.tax"
+        ],
+        [
+          "verification",
+          "totals.grand_total"
+        ]
+      ],
+      "caught": true,
+      "unexpected": [
+        [
+          "verification",
+          "totals.grand_total"
+        ]
+      ]
+    },
+    {
+      "case_id": "case_002",
+      "defect": "bad_grand_total",
+      "expected": [
+        [
+          "rule",
+          "totals.grand_total"
+        ]
+      ],
+      "found": [
+        [
+          "rule",
+          "totals.grand_total"
+        ]
+      ],
+      "caught": true,
+      "unexpected": []
+    },
+    {
+      "case_id": "case_003",
+      "defect": "expired_stock",
+      "expected": [
+        [
+          "rule",
+          "line.not_expired"
+        ]
+      ],
+      "found": [
+        [
+          "rule",
+          "line.not_expired"
+        ]
+      ],
+      "caught": true,
+      "unexpected": []
+    },
+    {
+      "case_id": "case_004",
+      "defect": "ptr_above_mrp",
+      "expected": [
+        [
+          "discrepancy",
+          "line.rate"
+        ],
+        [
+          "rule",
+          "line.ptr_not_above_mrp"
+        ]
+      ],
+      "found": [
+        [
+          "discrepancy",
+          "line.rate"
+        ],
+        [
+          "rule",
+          "line.ptr_not_above_mrp"
+        ]
+      ],
+      "caught": true,
+      "unexpected": []
+    },
+    {
+      "case_id": "case_005",
+      "defect": "bad_gstin",
+      "expected": [
+        [
+          "discrepancy",
+          "supplier.gstin"
+        ],
+        [
+          "rule",
+          "gstin.checksum"
+        ]
+      ],
+      "found": [
+        [
+          "discrepancy",
+          "supplier.gstin"
+        ],
+        [
+          "rule",
+          "gstin.checksum"
+        ]
+      ],
+      "caught": true,
+      "unexpected": []
+    },
+    {
+      "case_id": "case_006",
+      "defect": "qty_over_order",
+      "expected": [
+        [
+          "discrepancy",
+          "line.qty"
+        ]
+      ],
+      "found": [
+        [
+          "discrepancy",
+          "line.qty"
+        ],
+        [
+          "verification",
+          "totals.grand_total"
+        ]
+      ],
+      "caught": true,
+      "unexpected": [
+        [
+          "verification",
+          "totals.grand_total"
+        ]
+      ]
+    },
+    {
+      "case_id": "case_007",
+      "defect": "rate_over_order",
+      "expected": [
+        [
+          "discrepancy",
+          "line.rate"
+        ]
+      ],
+      "found": [
+        [
+          "discrepancy",
+          "line.rate"
+        ]
+      ],
+      "caught": true,
+      "unexpected": []
+    },
+    {
+      "case_id": "case_008",
+      "defect": "free_qty_short",
+      "expected": [
+        [
+          "discrepancy",
+          "line.free_qty"
+        ]
+      ],
+      "found": [
+        [
+          "discrepancy",
+          "line.free_qty"
+        ]
+      ],
+      "caught": true,
+      "unexpected": []
+    },
+    {
+      "case_id": "case_009",
+      "defect": "wrong_batch",
+      "expected": [
+        [
+          "verification",
+          "lines[0].batch_no"
+        ]
+      ],
+      "found": [
+        [
+          "verification",
+          "lines[0].batch_no"
+        ],
+        [
+          "verification",
+          "totals.grand_total"
+        ],
+        [
+          "verification",
+          "totals.round_off"
+        ]
+      ],
+      "caught": true,
+      "unexpected": [
+        [
+          "verification",
+          "totals.grand_total"
+        ],
+        [
+          "verification",
+          "totals.round_off"
+        ]
+      ]
+    }
+  ]
+}

@@ -72,3 +72,27 @@ def test_the_invoice_pipeline_is_the_same_pipeline_with_the_invoice_spec() -> No
     assert isinstance(pipeline, ExtractionPipeline)
     assert pipeline.spec.doc_type == "invoice"
     assert PURCHASE_ORDER_SPEC.doc_type == "purchase_order"
+
+
+def test_a_serial_number_left_in_the_product_cell_is_removed_from_the_value(
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    """The parser merges "1" and the product into one cell, and the model may copy both."""
+    raw = raw_order_from_label(LABEL)
+    first, second = raw["lines"][0]["product_name"], raw["lines"][1]["product_name"]
+    names = (first["text"], second["text"])
+    first["text"], second["text"] = f"1 {names[0]}", f"2 {names[1]}"
+
+    order = extract(raw)
+
+    assert [line.product_name.value for line in order.lines[:2]] == list(names)
+    assert order.lines[0].product_name.raw == f"1 {names[0]}"  # what the model returned is kept
+
+
+def test_a_leading_number_that_is_not_the_lines_own_position_is_kept(
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    raw = raw_order_from_label(LABEL)
+    raw["lines"][0]["product_name"]["text"] = "5 Fluorouracil Injection"
+
+    assert extract(raw).lines[0].product_name.value == "5 Fluorouracil Injection"
