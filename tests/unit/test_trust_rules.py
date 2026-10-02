@@ -191,3 +191,33 @@ def test_an_inter_state_invoice_must_not_carry_cgst(raw_invoice_from_label: RawF
     raw["totals"]["cgst"] = {"text": "10.00", "block_ids": []}
 
     assert ("tax.matches_supply_type", ("totals.cgst",)) in failures(run(raw))
+
+
+def test_every_line_must_carry_its_batch_number(raw_invoice_from_label: RawFromLabel) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][1]["batch_no"] = {"text": None, "block_ids": []}
+
+    assert ("required.present", ("lines[1].batch_no",)) in failures(run(raw))
+
+
+def test_a_blank_discount_is_read_as_no_discount(raw_invoice_from_label: RawFromLabel) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_002")))  # line 0 has no discount
+    raw["lines"][0]["discount_pct"] = {"text": None, "block_ids": []}
+
+    assert failures(run(raw)) == []
+
+
+def test_line_tax_must_be_split_within_a_state_and_whole_between_states(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # 10 x 10.02 at 5%: split halves round to 2.51 each (105.22); one whole tax is 5.01 (105.21).
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))  # intra-state
+    line = raw["lines"][0]
+    for name, text in (("qty", "10"), ("ptr", "10.02"), ("discount_pct", "0"), ("gst_rate", "5")):
+        line[name]["text"] = text
+    line["taxable_value"]["text"] = "100.20"
+    line["amount"]["text"] = "105.24"
+
+    assert ("line.amount", ("lines[0].amount",)) in failures(run(raw))
+    line["amount"]["text"] = "105.22"
+    assert ("line.amount", ("lines[0].amount",)) not in failures(run(raw))

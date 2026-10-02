@@ -111,7 +111,8 @@ def test_a_correct_invoice_is_stored_as_accepted(world: World) -> None:
     assert detail.record.decision == "accept"
     assert detail.record.data["reasons"] == []
     assert detail.match is None
-    assert detail.decision == "accept"
+    # Correct on its own, but nothing independent corroborates it yet.
+    assert (detail.decision, detail.match_status) == ("review", "no_counterpart")
     assert world.actions(document_id)[-2:] == ["extraction.created", "assessment.created"]
 
 
@@ -199,6 +200,26 @@ def test_a_quantity_that_differs_from_the_order_is_a_mismatch(world: World) -> N
 
 def test_an_invoice_with_no_order_on_file_has_no_match(world: World) -> None:
     assert world.assessment(world.process("invoice")).match is None
+
+
+def test_an_order_on_its_own_is_accepted(world: World) -> None:
+    detail = world.assessment(world.process("purchase_order"))
+
+    assert (detail.decision, detail.match_status) == ("accept", "no_counterpart")
+
+
+def test_an_order_from_another_supplier_with_the_same_number_is_not_the_counterpart(
+    world: World,
+) -> None:
+    world.order_parsed = reprint(
+        world.order_parsed, world.order_raw, "supplier_gstin", "27AAPFU0939F1ZV"
+    )
+    world.process("purchase_order")
+
+    detail = world.assessment(world.process("invoice"))
+
+    assert detail.match is None
+    assert detail.match_status == "no_counterpart"
 
 
 def test_reprocessing_an_invoice_matches_its_new_version_too(world: World) -> None:

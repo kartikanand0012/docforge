@@ -127,5 +127,43 @@ def test_a_missing_value_is_reported_as_unchecked_not_as_a_mismatch(pair: Pair) 
 
     (found,) = pair.match()
 
-    assert (found.code, found.severity) == ("line.unchecked", "warning")
+    assert found.code == "line.unchecked"
     assert found.invoice_path == "lines[0].qty"
+
+
+def test_two_lines_of_the_same_product_are_each_paired(pair: Pair) -> None:
+    """The same product in two batches is two lines on both documents."""
+    for document in (pair.invoice, pair.order):
+        document["lines"].append(copy.deepcopy(document["lines"][0]))
+    pair.invoice["lines"][-1]["qty"]["text"] = "40"
+    pair.order["lines"][-1]["qty"]["text"] = "40"
+
+    assert pair.match() == ()
+
+
+def test_product_names_are_paired_whatever_their_case_or_spacing(pair: Pair) -> None:
+    name = pair.invoice["lines"][0]["product_name"]["text"]
+    pair.invoice["lines"][0]["product_name"]["text"] = name.upper().replace(" ", "  ")
+
+    assert pair.match() == ()
+
+
+def test_an_ordered_line_missing_from_the_invoice_needs_review(pair: Pair) -> None:
+    pair.invoice["lines"].pop()
+
+    (found,) = pair.match()
+
+    assert (found.code, found.severity) == ("line.not_supplied", "error")
+
+
+def test_a_value_that_cannot_be_compared_needs_review(pair: Pair) -> None:
+    pair.invoice["lines"][0]["qty"] = {"text": None, "block_ids": []}
+
+    assert {d.severity for d in pair.match()} == {"error"}
+
+
+def test_a_blank_free_quantity_against_an_ordered_scheme_is_reported(pair: Pair) -> None:
+    schemed = next(i for i, line in enumerate(pair.order["lines"]) if line["scheme"]["text"])
+    pair.invoice["lines"][schemed]["free_qty"] = {"text": None, "block_ids": []}
+
+    assert "line.free_qty" in pair.codes()

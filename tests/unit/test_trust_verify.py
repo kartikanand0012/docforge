@@ -171,3 +171,40 @@ def test_a_value_spread_over_two_cited_blocks_is_verified() -> None:
 
     assert result.status == "verified"
     assert len(result.boxes) == 2
+
+
+def test_an_empty_value_is_never_verified() -> None:
+    result = checks(parsed("Batch: "), line={"batch_no": field("  ", "b1")})
+
+    assert result["lines[0].batch_no"].status == "not_in_cited_blocks"
+
+
+def test_a_short_number_must_be_the_whole_cited_block() -> None:
+    """ "5" inside "Qty 10 Free 5" proves nothing about which value it is."""
+    document = parsed("Qty 10 Free 5", "5", "-5", "(5.00)")
+
+    def status(text: str, block: str) -> str:
+        return checks(document, line={"free_qty": field(text, block)})["lines[0].free_qty"].status
+
+    assert status("5", "b1") == "not_in_cited_blocks"
+    assert status("5", "b2") == "verified"
+    assert status("5", "b3") == "not_in_cited_blocks"  # the sign was dropped
+
+
+def test_a_number_is_not_verified_against_its_negative_or_bracketed_form() -> None:
+    document = parsed("Round Off -0.23", "(125.00)")
+
+    result = checks(
+        document,
+        line={"mrp": field("0.23", "b1"), "ptr": field("125.00", "b2")},
+    )
+
+    assert {check.status for check in result.values()} == {"not_in_cited_blocks"}
+
+
+def test_a_number_cannot_be_assembled_from_two_cited_blocks() -> None:
+    document = parsed("Total 10", "5 items")
+
+    result = checks(document, invoice_no=field("10 5", "b1", "b2"), line={"qty": field("105", "b1", "b2")})
+
+    assert result["lines[0].qty"].status == "not_in_cited_blocks"
