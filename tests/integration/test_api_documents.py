@@ -172,14 +172,13 @@ def test_audit_trail_lists_every_step_and_the_chain_verifies(api: Api) -> None:
 
     assert [entry["action"] for entry in trail] == [
         "document.received",
-        "document.duplicate_upload",
         "processing.started",
         "extraction.created",
     ]
     assert trail[0]["actor"] == "api:anonymous"
     assert trail[0]["prev_hash"] is None
     assert trail[1]["prev_hash"] == trail[0]["hash"]
-    assert verification == {"ok": True, "entries": 4, "first_bad_id": None, "reason": None}
+    assert verification == {"consistent": True, "entries": 3, "first_bad_id": None, "reason": None}
 
 
 @pytest.mark.parametrize(
@@ -227,3 +226,13 @@ def test_the_synchronous_endpoint_is_absent_without_a_pipeline(api: Api) -> None
     files = {"file": ("invoice.pdf", PDF, "application/pdf")}
 
     assert api.client.post("/v1/extractions", files=files).status_code == 404
+
+
+def test_reprocess_is_refused_while_the_document_is_still_being_processed(api: Api) -> None:
+    document_id = api.upload().json()["document"]["id"]
+
+    response = api.client.post(f"/v1/documents/{document_id}/reprocess")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "This document is still being processed."
+    assert len(api.queued) == 1

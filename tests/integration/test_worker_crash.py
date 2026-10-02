@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.engine import Engine
 
 from docforge import audit
@@ -135,6 +135,10 @@ def test_killing_a_worker_mid_job_loses_nothing(
         "processing.started",
         "extraction.created",
     ]
+
+    with engine.connect() as conn:
+        jobs = conn.execute(text("SELECT status::text FROM procrastinate_jobs")).scalars().all()
+    assert jobs == ["succeeded"]
 
     second.send_signal(signal.SIGTERM)  # and a worker asked to stop does so cleanly
     assert second.wait(timeout=20) == 0

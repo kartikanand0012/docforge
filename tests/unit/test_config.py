@@ -19,6 +19,7 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "S3_BUCKET",
         "S3_SECRET_KEY",
         "GEMINI_API_KEY",
+        "PIPELINE_FACTORY",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -104,3 +105,25 @@ def test_production_accepts_explicit_credentials(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
 
     assert make_settings().environment == "production"
+
+
+@pytest.mark.parametrize("value", ["no-colon", ":function", "module:", "a b:c"])
+def test_pipeline_factory_must_name_a_module_and_a_function(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("PIPELINE_FACTORY", value)
+
+    with pytest.raises(ValueError, match="module:function"):
+        make_settings()
+
+
+def test_production_only_loads_pipelines_from_this_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("PIPELINE_FACTORY", "somewhere_else:build")
+
+    with pytest.raises(ValueError, match="PIPELINE_FACTORY"):
+        make_settings()

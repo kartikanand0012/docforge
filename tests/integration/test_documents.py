@@ -4,6 +4,7 @@ import hashlib
 import json
 import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -25,10 +26,13 @@ from docforge.db.session import SessionFactory
 from docforge.documents import (
     DocumentNotFound,
     DocumentService,
+    DocumentTypeConflict,
+    QueueFull,
+    ReprocessInProgress,
     TransientProcessingError,
     UnknownDocumentType,
 )
-from docforge.extraction.pipeline import InvoicePipeline
+from docforge.extraction.pipeline import InvoicePipeline, PipelineResult
 from docforge.llm.base import LLMError
 from docforge.parsing.base import ParsedDocument
 from docforge.storage import MemoryObjectStore, original_key
@@ -49,19 +53,45 @@ class Killed(BaseException):
     """Stands in for a worker process dying: nothing gets a chance to handle it."""
 
 
+class HookedPipeline:
+    """Runs a callback in the middle of the pipeline run, to interleave another delivery."""
+
+    def __init__(self, inner: InvoicePipeline, during_run: Callable[[], None] | None) -> None:
+        self.inner = inner
+        self.during_run = during_run
+
+    def run(self, pdf: bytes) -> PipelineResult:
+        if self.during_run is not None:
+            hook, self.during_run = self.during_run, None  # only the first run is interrupted
+            hook()
+        return self.inner.run(pdf)
+
+
 class Harness:
-    def __init__(self, sessions: SessionFactory, replies: list[str | BaseException]) -> None:
+    def __init__(
+        self,
+        sessions: SessionFactory,
+        replies: list[str | BaseException],
+        *,
+        max_attempts: int = 5,
+        max_pending: int = 1000,
+        during_run: Callable[[], None] | None = None,
+    ) -> None:
         self.sessions = sessions
         self.store = MemoryObjectStore()
         self.provider = ScriptedProvider(replies)
         self.parser = FakeParser()
         self.enqueued: list[uuid.UUID] = []
         self.fail_enqueue = False
+        pipeline = HookedPipeline(InvoicePipeline(self.parser, self.provider), during_run)
+        self.pipeline = pipeline
         self.service = DocumentService(
             sessions,
             self.store,
-            {"invoice": InvoicePipeline(self.parser, self.provider)},
+            {"invoice": pipeline, "purchase_order": pipeline},
             self._enqueue,
+            max_attempts=max_attempts,
+            max_pending=max_pending,
         )
 
     def _enqueue(self, session: Session, version: DocumentVersion) -> None:
@@ -136,7 +166,7 @@ def test_the_same_file_twice_is_one_document_one_job_one_object(
     assert harness.count(DocumentVersion) == 1
     assert len(harness.enqueued) == 1
     assert len(harness.store.keys()) == 1
-    assert harness.actions() == ["document.received", "document.duplicate_upload"]
+    assert harness.actions() == ["document.received"]  # a duplicate changes nothing
 
 
 def test_different_files_are_different_documents(sessions: SessionFactory) -> None:
@@ -310,10 +340,10 @@ def test_a_provider_failure_is_handed_back_to_the_queue_to_retry(
 def test_a_provider_failure_on_the_last_attempt_fails_the_version(
     sessions: SessionFactory,
 ) -> None:
-    harness = Harness(sessions, [LLMError("status 503 UNAVAILABLE")])
+    harness = Harness(sessions, [LLMError("status 503 UNAVAILABLE")], max_attempts=1)
     ingested = harness.ingest()
 
-    outcome = harness.service.process(ingested.version.id, final_attempt=True)
+    outcome = harness.service.process(ingested.version.id)
 
     assert outcome == "failed"
     version = harness.version(ingested.version.id)
@@ -379,6 +409,7 @@ def test_reprocessing_adds_a_version_and_keeps_the_earlier_extraction(
 def test_detail_lists_the_versions_in_order(sessions: SessionFactory, perfect: str) -> None:
     harness = Harness(sessions, [perfect])
     ingested = harness.ingest()
+    harness.service.process(ingested.version.id)
     harness.service.reprocess(
         tenant_id=DEFAULT_TENANT_ID, document_id=ingested.document.id, actor="api:reprocess"
     )
@@ -412,3 +443,166 @@ def test_another_tenant_cannot_read_or_reprocess_a_document(
         harness.service.reprocess(
             tenant_id=other_tenant, document_id=ingested.document.id, actor="api:reprocess"
         )
+
+
+# --- review follow-ups: races, bounds and integrity -----------------------------------------
+
+
+def test_the_audit_log_does_not_record_the_filename(sessions: SessionFactory) -> None:
+    """The log can never be edited, so it must not hold what may need erasing later."""
+    harness = Harness(sessions, [])
+    harness.ingest()
+
+    with sessions() as session:
+        details = session.scalars(select(AuditEntry.details)).one()
+    assert set(details) == {"sha256", "size_bytes", "doc_type"}
+
+
+def test_a_duplicate_upload_restores_a_lost_original(sessions: SessionFactory) -> None:
+    harness = Harness(sessions, [])
+    first = harness.ingest()
+    harness.store.delete(first.document.storage_key)
+
+    harness.ingest()
+
+    assert harness.store.get(first.document.storage_key) == PDF
+
+
+def test_the_same_file_as_a_different_document_type_is_a_conflict(
+    sessions: SessionFactory,
+) -> None:
+    harness = Harness(sessions, [])
+    harness.ingest()
+
+    with pytest.raises(DocumentTypeConflict, match="invoice"):
+        harness.service.ingest(
+            tenant_id=DEFAULT_TENANT_ID,
+            doc_type="purchase_order",
+            filename="po.pdf",
+            data=PDF,
+            actor="api:upload",
+        )
+
+
+def test_uploads_are_refused_while_too_many_documents_are_waiting(
+    sessions: SessionFactory,
+) -> None:
+    harness = Harness(sessions, [], max_pending=1)
+    harness.ingest(PDF)
+
+    with pytest.raises(QueueFull):
+        harness.ingest(OTHER_PDF)
+
+    assert harness.count(Document) == 1
+    assert not harness.ingest(PDF).created  # a duplicate is still answered
+
+
+def test_a_changed_original_is_not_extracted(sessions: SessionFactory, perfect: str) -> None:
+    harness = Harness(sessions, [perfect])
+    ingested = harness.ingest()
+    harness.store.put(ingested.document.storage_key, OTHER_PDF, "application/pdf")
+
+    assert harness.service.process(ingested.version.id) == "failed"
+    assert harness.version(ingested.version.id).error == (
+        "The stored original does not match its recorded hash."
+    )
+    assert harness.provider.requests == []
+
+
+def test_a_bug_inside_a_pipeline_is_not_reported_as_an_unknown_document_type(
+    sessions: SessionFactory,
+) -> None:
+    harness = Harness(sessions, [KeyError("some internal key")], max_attempts=1)
+    ingested = harness.ingest()
+
+    assert harness.service.process(ingested.version.id) == "failed"
+    assert harness.version(ingested.version.id).error == "Internal error."
+
+
+def test_reprocessing_is_refused_while_a_version_is_still_in_flight(
+    sessions: SessionFactory,
+) -> None:
+    harness = Harness(sessions, [])
+    ingested = harness.ingest()
+
+    with pytest.raises(ReprocessInProgress):
+        harness.service.reprocess(
+            tenant_id=DEFAULT_TENANT_ID, document_id=ingested.document.id, actor="api:reprocess"
+        )
+
+    assert harness.count(DocumentVersion) == 1
+
+
+def test_a_late_failure_cannot_undo_a_version_another_delivery_finished(
+    sessions: SessionFactory, perfect: str
+) -> None:
+    """Delivery A stalls, the job is redelivered as B and succeeds, then A fails."""
+    harness = Harness(sessions, [perfect, LLMError("status 503")], max_attempts=5)
+    ingested = harness.ingest()
+    version_id = ingested.version.id
+    harness.pipeline.during_run = lambda: harness.service.process(version_id)  # delivery B
+
+    outcome = harness.service.process(version_id)  # delivery A
+
+    assert outcome == "skipped"
+    version = harness.version(version_id)
+    assert (version.status, version.error) == ("succeeded", None)
+    assert harness.document(ingested.document.id).status == "extracted"
+    assert harness.count(Extraction) == 1
+    assert harness.actions()[-1] == "extraction.created"
+
+
+def test_a_late_success_does_not_write_a_second_extraction(
+    sessions: SessionFactory, perfect: str
+) -> None:
+    harness = Harness(sessions, [perfect, perfect])
+    ingested = harness.ingest()
+    version_id = ingested.version.id
+    harness.pipeline.during_run = lambda: harness.service.process(version_id)
+
+    assert harness.service.process(version_id) == "skipped"
+    assert harness.count(Extraction) == 1
+    assert harness.count(ModelRun) == 1
+    assert harness.actions().count("extraction.created") == 1
+
+
+def test_a_document_that_keeps_killing_its_worker_is_failed_not_retried_forever(
+    sessions: SessionFactory, perfect: str
+) -> None:
+    harness = Harness(sessions, [Killed(), Killed(), perfect], max_attempts=2)
+    ingested = harness.ingest()
+    for _ in range(2):
+        with pytest.raises(Killed):
+            harness.service.process(ingested.version.id)
+
+    outcome = harness.service.process(ingested.version.id)  # the third delivery
+
+    assert outcome == "failed"
+    version = harness.version(ingested.version.id)
+    assert (version.status, version.attempts) == ("failed", 2)
+    assert version.error == "Processing was interrupted too many times."
+    assert len(harness.provider.requests) == 2  # the third delivery did not run the pipeline
+
+
+def test_many_documents_processed_at_once_all_finish_and_the_chain_holds(
+    sessions: SessionFactory, raw_invoice_from_label: RawFromLabel
+) -> None:
+    pairs = [f"pair_{n:03d}" for n in range(1, 9)]
+    replies: list[str | BaseException] = []
+    harness = Harness(sessions, replies)
+    version_ids = []
+    for pair in pairs:
+        label = json.loads((FIXTURES / pair / "label.json").read_text(encoding="utf-8"))
+        replies.append(json.dumps(raw_invoice_from_label(label)))
+        ingested = harness.ingest((FIXTURES / pair / "invoice.pdf").read_bytes())
+        version_ids.append(ingested.version.id)
+    harness.provider.replies = [replies[0]] * len(pairs)  # any valid reply will do
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(harness.service.process, version_ids))
+
+    assert outcomes == ["succeeded"] * len(pairs)
+    assert harness.count(Extraction) == len(pairs)
+    with sessions() as session:
+        report = audit.verify_chain(session, DEFAULT_TENANT_ID)
+    assert (report.consistent, report.entries) == (True, 3 * len(pairs))

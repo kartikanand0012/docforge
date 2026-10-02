@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 
 from docforge import audit
 from docforge.db import DEFAULT_TENANT_ID
@@ -59,14 +60,14 @@ def test_an_untouched_chain_verifies(sessions: SessionFactory) -> None:
     with sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
 
-    assert (report.ok, report.entries, report.first_bad_id) == (True, 5, None)
+    assert (report.consistent, report.entries, report.first_bad_id) == (True, 5, None)
 
 
 def test_an_empty_chain_verifies(sessions: SessionFactory) -> None:
     with sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
 
-    assert (report.ok, report.entries) == (True, 0)
+    assert (report.consistent, report.entries) == (True, 0)
 
 
 def test_each_tenant_has_its_own_chain(sessions: SessionFactory, other_tenant: uuid.UUID) -> None:
@@ -79,7 +80,7 @@ def test_each_tenant_has_its_own_chain(sessions: SessionFactory, other_tenant: u
     assert mine[2].prev_hash == mine[1].hash
     with sessions() as session:
         assert audit.verify_chain(session, DEFAULT_TENANT_ID).ok
-        assert audit.verify_chain(session, other_tenant).ok
+        assert audit.verify_chain(session, other_tenant).consistent
 
 
 @pytest.mark.parametrize(
@@ -99,7 +100,7 @@ def test_an_edited_entry_is_detected(sessions: SessionFactory, engine: Engine, c
 
     with sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
-    assert not report.ok
+    assert not report.consistent
     assert report.first_bad_id == edited.id
     assert report.reason == "hash does not match the entry's contents"
 
@@ -114,7 +115,7 @@ def test_a_removed_entry_is_detected_at_the_next_one(
 
     with sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
-    assert not report.ok
+    assert not report.consistent
     assert report.first_bad_id == after_removed.id
     assert report.reason == "does not link to the previous entry"
 
@@ -144,7 +145,7 @@ def test_a_rewritten_entry_with_a_recomputed_hash_breaks_the_link_after_it(
 
     with sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
-    assert not report.ok
+    assert not report.consistent
     assert report.first_bad_id == following.id
 
 
@@ -180,3 +181,46 @@ def test_an_append_that_is_rolled_back_leaves_no_gap_in_the_chain(
     assert len(entries(sessions)) == 2
     with sessions() as session:
         assert audit.verify_chain(session, DEFAULT_TENANT_ID).ok
+
+
+def test_the_database_refuses_a_second_entry_with_the_same_parent(
+    sessions: SessionFactory, engine: Engine
+) -> None:
+    """A fork of the chain is impossible even for a writer that bypasses `audit.append`."""
+    append(sessions, 2)
+    first = entries(sessions)[0]
+
+    with pytest.raises(IntegrityError), engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO audit_log (tenant_id, occurred_at, actor, action, target_type, "
+                "target_id, details, prev_hash, hash) VALUES (:tenant, now(), 'x', 'fork', "
+                "'document', 'd', '{}'::jsonb, :prev, :hash)"
+            ),
+            {"tenant": DEFAULT_TENANT_ID, "prev": first.hash, "hash": "f" * 64},
+        )
+
+
+def test_the_database_refuses_a_second_first_entry(
+    sessions: SessionFactory, engine: Engine
+) -> None:
+    append(sessions, 1)
+
+    with pytest.raises(IntegrityError), engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO audit_log (tenant_id, occurred_at, actor, action, target_type, "
+                "target_id, details, prev_hash, hash) VALUES (:tenant, now(), 'x', 'genesis', "
+                "'document', 'd', '{}'::jsonb, NULL, :hash)"
+            ),
+            {"tenant": DEFAULT_TENANT_ID, "hash": "e" * 64},
+        )
+
+
+def test_timestamps_never_run_backwards_along_the_chain(sessions: SessionFactory) -> None:
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(lambda _: append(sessions, 5), range(4)))
+
+    times = [entry.occurred_at for entry in entries(sessions)]
+
+    assert times == sorted(times)

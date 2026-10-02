@@ -170,3 +170,83 @@ def test_audit_hashes_are_unique(db: Engine) -> None:
 
     with pytest.raises(IntegrityError):
         append_audit(db, "1")
+
+
+def test_extractions_cannot_be_truncated(db: Engine) -> None:
+    new_extraction(db, new_version(db))
+
+    with pytest.raises(DBAPIError, match="append-only"), db.begin() as conn:
+        conn.execute(text("TRUNCATE extractions"))
+
+
+def test_append_only_triggers_fire_even_in_replica_mode(db: Engine) -> None:
+    modes = scalar(
+        db,
+        "SELECT string_agg(DISTINCT tgenabled::text, '') FROM pg_trigger "
+        "WHERE tgname LIKE '%append_only' OR tgname LIKE '%no_truncate'",
+    )
+
+    assert modes == "A"  # ALWAYS: session_replication_role = replica does not skip them
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "INSERT INTO audit_log (tenant_id, occurred_at, actor, action, target_type, target_id, "
+        "details, hash) VALUES (:tenant, now(), 'a', 'b', 'c', 'd', '{}'::jsonb, 'not-a-hash')",
+        "INSERT INTO extractions (tenant_id, document_version_id, schema_version, data, sha256) "
+        "SELECT tenant_id, id, 'x', '{}'::jsonb, 'not-a-hash' FROM document_versions",
+    ],
+)
+def test_malformed_hashes_are_rejected(db: Engine, statement: str) -> None:
+    new_version(db)
+
+    with pytest.raises(IntegrityError), db.begin() as conn:
+        conn.execute(text(statement), {"tenant": DEFAULT_TENANT_ID})
+
+
+def test_tenant_columns_are_indexed_for_row_level_security(db: Engine) -> None:
+    for table in ("document_versions", "parse_outputs", "extractions", "model_runs"):
+        leading = {index["column_names"][0] for index in inspect(db).get_indexes(table)}
+        assert "tenant_id" in leading, table
+
+
+def test_downgrade_refuses_to_discard_audit_records(empty_database_url: URL) -> None:
+    config = alembic_config(empty_database_url)
+    command.upgrade(config, "head")
+    engine = create_engine(empty_database_url)
+    append_audit(engine)
+
+    with pytest.raises(Exception, match="audit_log"):
+        command.downgrade(config, "0001")
+
+    assert scalar(engine, "SELECT count(*) FROM audit_log") == 1
+    engine.dispose()
+
+
+def test_upgrade_works_on_a_database_that_already_has_documents(empty_database_url: URL) -> None:
+    config = alembic_config(empty_database_url)
+    command.upgrade(config, "0001")
+    engine = create_engine(empty_database_url)
+    tenant = scalar(engine, "INSERT INTO tenants (name) VALUES ('early') RETURNING id")
+    document = scalar(
+        engine,
+        "INSERT INTO documents (tenant_id, sha256, storage_key, filename) "
+        "VALUES (:tenant, :sha, 'k', 'old.pdf') RETURNING id",
+        tenant=tenant,
+        sha=SHA,
+    )
+    scalar(
+        engine,
+        "INSERT INTO document_versions (document_id, version_no) VALUES (:document, 1) "
+        "RETURNING id",
+        document=document,
+    )
+
+    command.upgrade(config, "head")
+
+    assert scalar(engine, "SELECT tenant_id FROM document_versions") == tenant
+    assert scalar(engine, "SELECT doc_type FROM documents") == "invoice"
+    # No job exists for a version created before the queue did, so it must not look queued.
+    assert scalar(engine, "SELECT status FROM document_versions") == "failed"
+    engine.dispose()

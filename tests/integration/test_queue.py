@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from docforge.db import DEFAULT_TENANT_ID
@@ -46,6 +47,7 @@ class Setup:
             MemoryObjectStore(),
             {"invoice": InvoicePipeline(FakeParser(), self.provider)},
             self._enqueue,
+            max_attempts=MAX_ATTEMPTS,
         )
         self.queue.bind(self.service)
 
@@ -213,3 +215,42 @@ def test_a_job_with_a_live_worker_is_left_alone(engine: Engine, sessions: Sessio
 
     assert asyncio.run(recover()) == 0
     assert [job["status"] for job in setup.jobs()] == ["doing"]
+
+
+def test_a_database_error_in_the_task_is_retried_not_dropped(
+    engine: Engine, sessions: SessionFactory, perfect: str
+) -> None:
+    """Anything unexpected must leave the job on the queue, or the version would be stuck."""
+    setup = Setup(engine, sessions, [perfect])
+    ingested = setup.ingest()
+    real_process, calls = setup.service.process, []
+
+    def flaky(version_id: Any) -> Any:
+        calls.append(version_id)
+        if len(calls) == 1:
+            raise OperationalError("SELECT 1", {}, Exception("connection reset"))
+        return real_process(version_id)
+
+    setup.service.process = flaky  # type: ignore[method-assign]
+
+    for _ in range(MAX_ATTEMPTS):
+        setup.work()
+
+    assert len(calls) == 2
+    assert setup.version(ingested).status == "succeeded"
+
+
+def test_a_job_for_a_version_that_no_longer_exists_is_dropped(
+    engine: Engine, sessions: SessionFactory
+) -> None:
+    setup = Setup(engine, sessions, [])
+    setup.ingest()
+    with engine.begin() as conn:
+        conn.execute(
+            text("UPDATE procrastinate_jobs SET args = jsonb_build_object('version_id', :id)"),
+            {"id": "00000000-0000-0000-0000-00000000dead"},
+        )
+
+    setup.work()
+
+    assert [job["status"] for job in setup.jobs()] == ["succeeded"]  # nothing left to retry
