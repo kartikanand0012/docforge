@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 
 from docforge.extraction.pipeline import INVOICE_SPEC
-from docforge.extraction.schema import RawInvoice
+from docforge.extraction.schema import InvoiceExtraction, RawInvoice
 from docforge.review.revise import Correction, apply_corrections, reassess
 from docforge.review.signing import approval_draft, hash_pin, record_hash, verify_pin
 from fakes import cited
@@ -68,6 +68,7 @@ def test_the_corrected_record_is_read_again_and_its_checks_run_again(
     after = reassess(INVOICE_SPEC, raw, parsed, [Correction(path="lines[0].qty", text="20")])
 
     assert before.assessment.decision == "review"
+    assert isinstance(after.extraction, InvoiceExtraction)
     assert after.extraction.lines[0].qty.value == 20
     assert after.assessment.decision == "accept"
     (field,) = [f for f in after.assessment.fields if f.path == "lines[0].qty"]
@@ -101,6 +102,7 @@ def test_a_correction_that_cannot_be_read_is_reported(raw_invoice_from_label: Ra
         [Correction(path="lines[0].qty", text="twenty")],
     )
 
+    assert isinstance(result.extraction, InvoiceExtraction)
     assert ("lines[0].qty", "unparseable") in [(i.path, i.code) for i in result.extraction.issues]
     assert result.assessment.decision == "review"
 
@@ -134,6 +136,7 @@ def test_an_approved_invoice_becomes_a_payment_approval_draft(
     printed = raw_invoice_from_label(LABEL)
     parsed = cited(LABEL, "invoice", printed)
     extraction = reassess(INVOICE_SPEC, RawInvoice.model_validate(printed), parsed, []).extraction
+    assert isinstance(extraction, InvoiceExtraction)
     signed_at = datetime(2026, 10, 3, 9, 30, tzinfo=UTC)
 
     draft = approval_draft(

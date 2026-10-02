@@ -15,7 +15,8 @@ from pydantic import BaseModel, ConfigDict
 from docforge.extraction.schema import Extracted
 from docforge.parsing.base import ParsedDocument
 
-Status = Literal["verified", "not_in_cited_blocks", "no_citation"]
+# "confirmed": a reviewer entered or confirmed the value; set by the assessment, not here.
+Status = Literal["verified", "confirmed", "not_in_cited_blocks", "no_citation"]
 
 
 class Box(BaseModel):
