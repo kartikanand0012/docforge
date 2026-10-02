@@ -29,7 +29,7 @@ Rules:
 """
 
 _FENCE = re.compile(r"<\s*/?\s*document\s*>", re.IGNORECASE)
-_BLOCK_ID = re.compile(r"\[(b\d+)\]")
+_BLOCK_ID = re.compile(r"\[\s*b\s*(\d+)\s*\]", re.IGNORECASE)
 _LINE_BREAKING = {"Cc", "Zl", "Zp"}  # control characters and Unicode line separators
 
 
@@ -47,7 +47,7 @@ def _text(block: Block) -> str:
     )
     text = _FENCE.sub(lambda match: match[0].replace("<", "< "), " ".join(visible.split()))
     # Text on the page that looks like a block id must not pass for one.
-    return _BLOCK_ID.sub(r"(\1)", text)
+    return _BLOCK_ID.sub(r"(b\1)", text)
 
 
 def render_blocks(parsed: ParsedDocument) -> str:

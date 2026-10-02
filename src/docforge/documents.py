@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -140,9 +140,9 @@ _MATCH_CANDIDATES = 20
 
 def _parties(data: Mapping[str, Any], *, invoice: bool) -> tuple[object, object]:
     """(supplier GSTIN, buyer GSTIN) from a stored invoice or purchase-order extraction."""
-    supplier = data.get("seller", {}).get("gstin") if invoice else data.get("supplier_gstin")
-    buyer = data.get("buyer", {}).get("gstin")
-    return (supplier or {}).get("value"), (buyer or {}).get("value")
+    supplier = (data.get("seller") or {}).get("gstin") if invoice else data.get("supplier_gstin")
+    buyer = (data.get("buyer") or {}).get("gstin")
+    return (supplier or {}).get("value") or None, (buyer or {}).get("value") or None
 
 
 def _now() -> datetime:
@@ -617,26 +617,36 @@ class DocumentService:
             if row is None:
                 return None
             version, record = row
-            match = session.scalar(
-                select(MatchRecord)
+            # A comparison counts only while the other side is still that document's newest
+            # version: once the counterpart is read again, the old comparison is history.
+            other = aliased(DocumentVersion)
+            newer = aliased(DocumentVersion)
+            found = session.execute(
+                select(MatchRecord, other.document_id)
+                .join(
+                    other,
+                    other.id
+                    == case(
+                        (
+                            MatchRecord.invoice_version_id == version.id,
+                            MatchRecord.order_version_id,
+                        ),
+                        else_=MatchRecord.invoice_version_id,
+                    ),
+                )
                 .where(
                     MatchRecord.tenant_id == tenant_id,
                     (MatchRecord.invoice_version_id == version.id)
                     | (MatchRecord.order_version_id == version.id),
+                    other.version_no
+                    == select(func.max(newer.version_no))
+                    .where(newer.document_id == other.document_id)
+                    .scalar_subquery(),
                 )
                 .order_by(MatchRecord.created_at.desc())
                 .limit(1)
-            )
-            counterpart = None
-            if match is not None:
-                other = (
-                    match.order_version_id
-                    if match.invoice_version_id == version.id
-                    else match.invoice_version_id
-                )
-                counterpart = session.scalar(
-                    select(DocumentVersion.document_id).where(DocumentVersion.id == other)
-                )
+            ).first()
+            match, counterpart = found if found is not None else (None, None)
             return AssessmentDetail(version, record, match, counterpart, document.doc_type)
 
     def audit_trail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> list[AuditEntry]:

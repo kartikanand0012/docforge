@@ -105,8 +105,8 @@ def _line(
                 Discrepancy(
                     code="line.free_qty",
                     severity="error",
-                    message=f"Free quantity {billed.free_qty.value} does not follow the ordered "
-                    f"scheme ({ordered.scheme.value or 'none'}), which gives {expected}.",
+                    message=f"Free quantity {billed.free_qty.value or 0} does not follow the "
+                    f"ordered scheme ({ordered.scheme.value or 'none'}), which gives {expected}.",
                     invoice_path=f"{invoice_path}.free_qty",
                     order_path=f"{order_path}.scheme",
                     invoice_value=_text(billed.free_qty.value),
@@ -153,6 +153,18 @@ def match_invoice_to_order(
     for index, line in enumerate(order.lines):
         if line.product_name.value:
             ordered.setdefault(_key(line.product_name.value), []).append((f"lines[{index}]", line))
+        else:
+            found.append(
+                Discrepancy(
+                    code="line.unchecked",
+                    severity="error",
+                    message="An order line has no readable product, so it could not be compared.",
+                    invoice_path=None,
+                    order_path=f"lines[{index}].product_name",
+                    invoice_value=None,
+                    order_value=None,
+                )
+            )
     for index, billed in enumerate(invoice.lines):
         path = f"lines[{index}]"
         candidates = ordered.get(_key(billed.product_name.value or ""), [])
@@ -169,10 +181,11 @@ def match_invoice_to_order(
                 )
             )
             continue
-        same_quantity = [c for c in candidates if c[1].qty.value == billed.qty.value]
-        chosen = same_quantity[0] if same_quantity else candidates[0]
-        candidates.remove(chosen)
-        found += _line(path, billed, *chosen)
+        # Of several order lines for this product, take the one this line agrees with most.
+        differences = [_line(path, billed, *candidate) for candidate in candidates]
+        best = min(range(len(candidates)), key=lambda i: len(differences[i]))
+        candidates.pop(best)
+        found += differences[best]
     for remaining in ordered.values():
         for order_path, line in remaining:
             found.append(

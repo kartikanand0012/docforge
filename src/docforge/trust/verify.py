@@ -68,15 +68,16 @@ _SHORT = 3  # a number this short proves nothing unless it is all the cited bloc
 def _contains(haystack: str, needle: str) -> bool:
     """True if `needle` occurs in `haystack` as a whole token, not inside a longer one.
 
-    "20" is not found in "200", "166.40" not in "1,166.40", "86.24" not in "86.245", and a
+    "20" is not found in "200", "166.40" not in "1,166.40", "86.24" not in "86.245", "05/29"
+    not in "05/29/2028", and a
     number is not found in its negative ("-5") or bracketed ("(5.00)") form.
     """
     if not needle:
         return False
-    before = r"(?<![0-9A-Za-z])(?<![0-9][.,])"
+    before = r"(?<![0-9A-Za-z])(?<![0-9][.,/-])"
     if needle[0].isdigit():
         before += r"(?<![-+(])"
-    pattern = before + re.escape(needle) + r"(?![0-9A-Za-z])(?![.,][0-9])"
+    pattern = before + re.escape(needle) + r"(?![0-9A-Za-z])(?![.,/-][0-9])"
     return re.search(pattern, haystack) is not None
 
 
