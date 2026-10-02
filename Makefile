@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate api worker test test-unit lint format generate eval eval-record
+.PHONY: help install up down migrate api worker test test-unit lint format generate generate-scans eval eval-record
 
 SYNTH_DIR := tests/fixtures/synthetic
 SYNTH_SEED := 20261002
@@ -45,6 +45,9 @@ format: ## Auto-format and fix lint
 generate: ## Regenerate the synthetic invoice/PO pairs with ground truth
 	uv run python -m docforge.synth --count $(SYNTH_COUNT) --seed $(SYNTH_SEED) --out $(SYNTH_DIR)
 	uv run python -m docforge.synth --seeded --out tests/fixtures/seeded
+
+generate-scans: ## Rewrite the scanned variants (their recorded parses must then be re-recorded)
+	uv run python -m docforge.synth --scans-from $(SYNTH_DIR) --out tests/fixtures/scanned
 
 eval: ## Re-run the invoice eval offline from recordings and rewrite the baseline report
 	uv run python -m docforge.evals --mode replay

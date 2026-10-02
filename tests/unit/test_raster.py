@@ -27,7 +27,9 @@ def page_with_rectangle(box: tuple[float, float, float, float]) -> Image.Image:
 
 def ink_box(image: Image.Image) -> tuple[float, float, float, float]:
     """The box around every dark pixel, in PDF points."""
-    left, top, right, bottom = image.point(lambda value: 255 if value < 128 else 0).getbbox()
+    found = image.point(lambda value: 255 if value < 128 else 0).getbbox()
+    assert found is not None
+    left, top, right, bottom = found
     return left / SCALE, HEIGHT - bottom / SCALE, right / SCALE, HEIGHT - top / SCALE
 
 

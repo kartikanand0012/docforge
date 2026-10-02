@@ -6,13 +6,14 @@ import pypdfium2 as pdfium
 
 from docforge.parsing.base import ParseError
 
-# PDFium is not thread-safe and the API calls this from a thread pool.
-_PDFIUM_LOCK = threading.Lock()
+# PDFium is not thread-safe and the API calls this from a thread pool. Every use of PDFium
+# in the package takes this lock.
+PDFIUM_LOCK = threading.Lock()
 
 
 def pdf_page_count(data: bytes) -> int:
     """Number of pages. Raises `ParseError` if `data` is not a readable PDF."""
-    with _PDFIUM_LOCK:
+    with PDFIUM_LOCK:
         try:
             document = pdfium.PdfDocument(data)
             try:
@@ -24,3 +25,28 @@ def pdf_page_count(data: bytes) -> int:
     if count < 1:
         raise ParseError("PDF has no pages")
     return count
+
+
+_MIN_CHARS = 10  # fewer than this on a page and it is treated as an image of text
+
+
+def has_text_layer(data: bytes) -> bool:
+    """True if every page carries extractable text. A scan, or a file with one scanned page,
+    does not. Raises `ParseError` if `data` is not a readable PDF.
+    """
+    with PDFIUM_LOCK:
+        try:
+            document = pdfium.PdfDocument(data)
+            try:
+                for index in range(len(document)):
+                    text_page = document[index].get_textpage()
+                    try:
+                        if text_page.count_chars() < _MIN_CHARS:
+                            return False
+                    finally:
+                        text_page.close()
+                return len(document) > 0
+            finally:
+                document.close()
+        except Exception as error:
+            raise ParseError("not a readable PDF") from error

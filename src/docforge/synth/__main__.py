@@ -6,6 +6,7 @@ from pathlib import Path
 
 from docforge.synth import DEFAULT_COUNT, DEFAULT_SEED
 from docforge.synth.dataset import generate_dataset
+from docforge.synth.scans import generate_scans
 from docforge.synth.seeded import generate_seeded
 
 
@@ -25,10 +26,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="write the seeded-defect cases (case_NNN) instead of the clean pairs",
     )
+    parser.add_argument(
+        "--scans-from",
+        type=Path,
+        default=None,
+        help="write scanned variants of the pairs in this directory instead of new pairs",
+    )
     parser.add_argument("--count", type=int, default=DEFAULT_COUNT)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = parser.parse_args(argv)
 
+    if args.scans_from is not None:
+        written = generate_scans(args.scans_from, args.out)
+        print(f"Wrote {written} scanned invoices to {args.out}")
+        return 0
     if args.seeded:
         cases = generate_seeded(args.out, seed=args.seed)
         print(f"Wrote {len(cases)} seeded cases to {args.out}")

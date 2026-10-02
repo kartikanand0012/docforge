@@ -1,12 +1,14 @@
 """Scanned variants of the synthetic invoices, with labels moved to where the ink now is."""
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
 
 from docforge.parsing.pdf import has_text_layer, pdf_page_count
 from docforge.parsing.raster import render_pages, rotate_box
+from docforge.synth.__main__ import main
 from docforge.synth.models import PairLabel
 from docforge.synth.scans import PROFILES, generate_scans, scan_pdf
 
@@ -85,3 +87,14 @@ def test_the_committed_scans_cover_every_synthetic_pair(profile: str) -> None:
     for pair in manifest["pairs"]:
         assert (SCANNED / profile / pair / "invoice.pdf").is_file()
         assert (SCANNED / profile / pair / "label.json").is_file()
+
+
+def test_the_command_line_writes_scans_of_an_existing_set(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    shutil.copytree(SYNTHETIC / "pair_001", source / "pair_001")
+    manifest = {"schema_version": "1", "seed": 5, "count": 1, "pairs": ["pair_001"]}
+    (source / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    assert main(["--scans-from", str(source), "--out", str(tmp_path / "out")]) == 0
+
+    assert (tmp_path / "out" / "scan_poor" / "pair_001" / "invoice.pdf").is_file()
