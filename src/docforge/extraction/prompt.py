@@ -50,12 +50,17 @@ def _text(block: Block) -> str:
     return _BLOCK_ID.sub(r"(b\1)", text)
 
 
-def render_blocks(parsed: ParsedDocument) -> str:
-    """Blocks in reading order: `[b1] text`, with each table row on one line."""
+def render_blocks(parsed: ParsedDocument, only_page: int | None = None) -> str:
+    """Blocks in reading order: `[b1] text`, with each table row on one line.
+
+    With `only_page`, just that page's blocks, under the ids they have in the whole document.
+    """
     lines: list[str] = []
     page: int | None = None
     row: tuple[int | None, int | None] | None = None
     for block in parsed.blocks:
+        if only_page is not None and block.page != only_page:
+            continue
         if block.page != page:
             page = block.page
             row = None
@@ -73,5 +78,21 @@ def render_blocks(parsed: ParsedDocument) -> str:
     return "\n".join(lines)
 
 
-def build_prompt(parsed: ParsedDocument) -> str:
-    return f"<document>\n{render_blocks(parsed)}\n</document>"
+def build_prompt(parsed: ParsedDocument, page: int | None = None) -> str:
+    """The whole document, or one page of it headed by which page it is."""
+    if page is None:
+        return f"<document>\n{render_blocks(parsed)}\n</document>"
+    heading = f"Page {page} of {len(parsed.pages)}."
+    return f"{heading}\n<document>\n{render_blocks(parsed, page)}\n</document>"
+
+
+# Added to a document type's instruction when a document is sent a page at a time.
+PAGED_VERSION = "paged-1"
+PAGED_INSTRUCTION = """
+This document is longer than one page and the user message contains one page of it, named in
+its first line. Extract only what is printed on this page:
+- Return null, with an empty list of block ids, for every field that is not printed on this
+  page, even if you can guess it from what is.
+- Return line items only for the rows printed on this page, in printed order. A page may
+  have none.
+"""

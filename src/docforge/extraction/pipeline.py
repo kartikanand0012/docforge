@@ -12,7 +12,13 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from docforge.extraction.normalize import normalize_invoice
-from docforge.extraction.prompt import PROMPT_VERSION, SYSTEM_INSTRUCTION, build_prompt
+from docforge.extraction.prompt import (
+    PAGED_INSTRUCTION,
+    PAGED_VERSION,
+    PROMPT_VERSION,
+    SYSTEM_INSTRUCTION,
+    build_prompt,
+)
 from docforge.extraction.schema import InvoiceExtraction, RawInvoice
 from docforge.llm.base import LLMProvider, LLMRequest, LLMResponse
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, Parser
@@ -100,39 +106,100 @@ class ExtractionPipeline[E: BaseModel]:
                 f"document text is {len(prompt)} characters; the limit is {self.max_prompt_chars}"
             )
         spec = self.spec
-        request = LLMRequest(
-            system=spec.system_instruction,
-            prompt=prompt,
-            schema=spec.raw_schema,
-            prompt_version=spec.prompt_version,
+        if len(parsed.pages) <= 1:
+            request = LLMRequest(
+                system=spec.system_instruction,
+                prompt=prompt,
+                schema=spec.raw_schema,
+                prompt_version=spec.prompt_version,
+            )
+            raw, responses = self._ask(request, ())
+            prompt_version = spec.prompt_version
+        else:
+            raw, responses, prompt_version = self._ask_by_page(parsed)
+        extraction = spec.normalize(raw, parsed)
+        return PipelineResult(
+            parsed=parsed,
+            extraction=extraction,
+            responses=responses,
+            prompt_version=prompt_version,
+            schema_version=spec.schema_version,
+            assessment=assess(extraction, parsed, spec.rules),
         )
+
+    def _ask(
+        self, request: LLMRequest, earlier: tuple[LLMResponse, ...]
+    ) -> tuple[BaseModel, tuple[LLMResponse, ...]]:
+        """One request, retried once with the validation errors if the reply is malformed.
+
+        Returns the reply and every call made so far, `earlier` included.
+        """
+        schema = self.spec.raw_schema
         first = self.provider.generate(request)
         try:
-            raw = spec.raw_schema.model_validate_json(first.text)
-            responses: tuple[LLMResponse, ...] = (first,)
+            return schema.model_validate_json(first.text), (*earlier, first)
         except ValidationError as error:
             retry = replace(
                 request,
                 prompt=f"{request.prompt}\n\nYour previous reply was not valid:\n"
                 f"{_describe(error)}\nReply again with JSON that fits the schema.",
             )
-            second = self.provider.generate(retry)
-            responses = (first, second)
-            try:
-                raw = spec.raw_schema.model_validate_json(second.text)
-            except ValidationError as second_error:
-                raise ExtractionError(
-                    "model reply did not fit the schema after one retry", responses
-                ) from second_error
-        extraction = spec.normalize(raw, parsed)
-        return PipelineResult(
-            parsed=parsed,
-            extraction=extraction,
-            responses=responses,
-            prompt_version=spec.prompt_version,
-            schema_version=spec.schema_version,
-            assessment=assess(extraction, parsed, spec.rules),
-        )
+        second = self.provider.generate(retry)
+        responses = (*earlier, first, second)
+        try:
+            return schema.model_validate_json(second.text), responses
+        except ValidationError as second_error:
+            raise ExtractionError(
+                "model reply did not fit the schema after one retry", responses
+            ) from second_error
+
+    def _ask_by_page(
+        self, parsed: ParsedDocument
+    ) -> tuple[BaseModel, tuple[LLMResponse, ...], str]:
+        """A request per page that has text, merged. Keeps each reply short enough to finish
+        and each page's rows next to their own header.
+        """
+        spec = self.spec
+        prompt_version = f"{spec.prompt_version}+{PAGED_VERSION}"
+        replies: list[BaseModel] = []
+        responses: tuple[LLMResponse, ...] = ()
+        for page in sorted({block.page for block in parsed.blocks}):
+            request = LLMRequest(
+                system=spec.system_instruction + PAGED_INSTRUCTION,
+                prompt=build_prompt(parsed, page),
+                schema=spec.raw_schema,
+                prompt_version=prompt_version,
+            )
+            reply, responses = self._ask(request, responses)
+            replies.append(reply)
+        return merge_pages(spec.raw_schema, replies), responses, prompt_version
+
+
+def merge_pages(schema: type[BaseModel], pages: list[BaseModel]) -> BaseModel:
+    """One reply from the replies for each page.
+
+    A field is taken from the first page that prints it, so a header repeated on a later
+    page does not replace the first. Line items are joined in page order. A list of plain
+    fields (licence numbers) is taken whole from the first page that has any.
+    """
+
+    def is_field(value: object) -> bool:
+        return isinstance(value, dict) and set(value) == {"text", "block_ids"}
+
+    def merge(values: list[Any]) -> Any:
+        first = values[0]
+        if is_field(first):
+            return next((value for value in values if value["text"] is not None), first)
+        if isinstance(first, dict):
+            return {key: merge([value[key] for value in values]) for key in first}
+        if isinstance(first, list):
+            filled = [value for value in values if value]
+            if filled and is_field(filled[0][0]):
+                return filled[0]
+            return [item for value in values for item in value]
+        return first
+
+    return schema.model_validate(merge([page.model_dump() for page in pages]))
 
 
 INVOICE_SPEC = DocumentSpec(
