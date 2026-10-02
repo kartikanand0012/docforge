@@ -6,6 +6,7 @@ from pathlib import Path
 
 from docforge.synth import DEFAULT_COUNT, DEFAULT_SEED
 from docforge.synth.dataset import generate_dataset
+from docforge.synth.seeded import generate_seeded
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -19,10 +20,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         required=True,
         help="output directory; existing pair_NNN folders in it are replaced",
     )
+    parser.add_argument(
+        "--seeded",
+        action="store_true",
+        help="write the seeded-defect cases (case_NNN) instead of the clean pairs",
+    )
     parser.add_argument("--count", type=int, default=DEFAULT_COUNT)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     args = parser.parse_args(argv)
 
+    if args.seeded:
+        cases = generate_seeded(args.out, seed=args.seed)
+        print(f"Wrote {len(cases)} seeded cases to {args.out}")
+        return 0
     try:
         labels = generate_dataset(args.out, count=args.count, seed=args.seed)
     except ValueError as error:

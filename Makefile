@@ -44,6 +44,7 @@ format: ## Auto-format and fix lint
 
 generate: ## Regenerate the synthetic invoice/PO pairs with ground truth
 	uv run python -m docforge.synth --count $(SYNTH_COUNT) --seed $(SYNTH_SEED) --out $(SYNTH_DIR)
+	uv run python -m docforge.synth --seeded --out tests/fixtures/seeded
 
 eval: ## Re-run the invoice eval offline from recordings and rewrite the baseline report
 	uv run python -m docforge.evals --mode replay

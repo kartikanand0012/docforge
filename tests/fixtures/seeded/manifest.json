@@ -1,0 +1,16 @@
+{
+  "schema_version": "1",
+  "seed": 20261002,
+  "count": 9,
+  "pairs": [
+    "case_001",
+    "case_002",
+    "case_003",
+    "case_004",
+    "case_005",
+    "case_006",
+    "case_007",
+    "case_008",
+    "case_009"
+  ]
+}
