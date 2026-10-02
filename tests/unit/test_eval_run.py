@@ -162,3 +162,26 @@ def test_report_counts_thinking_tokens(
     report = run_eval(two_pairs, InvoicePipeline(FakeParser(), provider))
 
     assert report.usage.thinking_tokens == 0
+
+
+MULTIPAGE = REPO / "tests" / "fixtures" / "multipage"
+MULTIPAGE_BASELINE = REPO / "evals" / "baselines" / "multipage.json"
+
+
+def test_the_committed_multipage_report_is_reproduced_offline() -> None:
+    report = EvalReport.model_validate_json(MULTIPAGE_BASELINE.read_text(encoding="utf-8"))
+
+    replayed = run_eval(MULTIPAGE, replay_pipeline(RECORDINGS, report.model))
+
+    assert replayed == report
+
+
+def test_long_invoices_are_read_a_page_at_a_time_and_stay_at_the_measured_accuracy() -> None:
+    """Two of three are fully correct; the third loses one of 120 lines to a merged table
+    row in the parse, which shifts every later line. Lowering this is a decision."""
+    report = EvalReport.model_validate_json(MULTIPAGE_BASELINE.read_text(encoding="utf-8"))
+
+    assert report.usage.model_calls == report.usage.pages == 8
+    assert report.summary.documents_fully_correct >= 2
+    assert report.summary.extra_lines == 0
+    assert [d.extracted_lines for d in report.documents] == [45, 80, 119]
