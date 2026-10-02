@@ -1,6 +1,6 @@
 # DocForge build plan (v0.1, for sign-off)
 
-2026-10-01. Companion to `architecture.md`. Nothing here has been started.
+2026-10-01. Companion to `architecture.md`. Status per checkpoint is in `progress.md`.
 
 ## How each checkpoint runs
 
@@ -14,8 +14,17 @@ Every checkpoint is a working end-to-end slice. We do not start the next one unt
 6. **Record:** update `docs/progress.md` (what passed, measured numbers) and
    `docs/research/05-interview-topics.md` (what you learned, tagged to the code).
 
-ECC must be loaded in the session (it is installed but only activates in a new session). The exact ECC
-command names get filled in once it is running.
+ECC must be loaded in the session (it is installed but only activates in a new session). Commands as
+used in C0:
+
+| Step | ECC command or agent |
+| --- | --- |
+| Plan | `/ecc:plan` (waits for approval before any code) |
+| Test first, Build | `ecc:tdd-workflow` skill: RED commit, GREEN commit, evidence report in `docs/tdd/` |
+| Review | `ecc:python-reviewer` and `ecc:security-reviewer` agents on the branch diff |
+| Gate | `make up`, `make lint`, `make test` locally and in CI |
+
+The GateGuard hook blocks the first write of every new file until its callers and purpose are stated.
 
 ## Checkpoints
 
