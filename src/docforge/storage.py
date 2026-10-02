@@ -5,7 +5,7 @@ from typing import Any, Protocol
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 
 from docforge.config import Settings
 
@@ -14,6 +14,10 @@ _MISSING = {"404", "NoSuchKey", "NotFound"}
 
 class ObjectNotFound(Exception):
     """No object is stored under the key."""
+
+
+class StorageUnavailable(Exception):
+    """The store could not be reached or refused the request. Trying again later may work."""
 
 
 class ObjectStore(Protocol):
@@ -49,7 +53,12 @@ class S3ObjectStore:
         return cls(client, settings.s3_bucket)
 
     def put(self, key: str, data: bytes, content_type: str) -> None:
-        self._client.put_object(Bucket=self._bucket, Key=key, Body=data, ContentType=content_type)
+        try:
+            self._client.put_object(
+                Bucket=self._bucket, Key=key, Body=data, ContentType=content_type
+            )
+        except (BotoCoreError, ClientError) as error:
+            raise StorageUnavailable("could not store the object") from error
 
     def get(self, key: str) -> bytes:
         try:
@@ -57,7 +66,9 @@ class S3ObjectStore:
         except ClientError as error:
             if error.response["Error"]["Code"] in _MISSING:
                 raise ObjectNotFound(key) from error
-            raise
+            raise StorageUnavailable("could not read the object") from error
+        except BotoCoreError as error:  # connection refused, timeouts
+            raise StorageUnavailable("could not read the object") from error
         return body
 
     def exists(self, key: str) -> bool:
@@ -66,7 +77,9 @@ class S3ObjectStore:
         except ClientError as error:
             if error.response["Error"]["Code"] in _MISSING:
                 return False
-            raise
+            raise StorageUnavailable("could not check for the object") from error
+        except BotoCoreError as error:
+            raise StorageUnavailable("could not check for the object") from error
         return True
 
 

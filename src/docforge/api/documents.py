@@ -20,6 +20,7 @@ from docforge.documents import (
 )
 from docforge.parsing.base import ParseError
 from docforge.parsing.pdf import pdf_page_count
+from docforge.storage import StorageUnavailable
 
 # Until authentication arrives in C6 there is one tenant and one, unnamed, caller.
 TENANT = DEFAULT_TENANT_ID
@@ -140,6 +141,8 @@ def documents_router(
             raise HTTPException(409, f"{str(error).capitalize()}.") from error
         except QueueFull as error:
             raise HTTPException(503, "The processing queue is full. Try again later.") from error
+        except StorageUnavailable as error:
+            raise HTTPException(503, "Storage is unavailable. Try again later.") from error
         response.headers["Location"] = f"/v1/documents/{result.document.id}"
         if not result.created:
             response.status_code = 200

@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.exc import OperationalError
 
 from docforge import __version__
 from docforge.api.documents import documents_router
@@ -94,6 +95,13 @@ def create_app(
         if declared.isdigit() and int(declared) > max_upload_bytes + MULTIPART_OVERHEAD:
             return JSONResponse({"detail": too_large_message(max_upload_bytes)}, status_code=413)
         return await call_next(request)
+
+    @app.exception_handler(OperationalError)
+    async def database_unavailable(request: Request, error: OperationalError) -> JSONResponse:
+        logger.error("database unavailable on %s: %s", request.url.path, type(error.orig).__name__)
+        return JSONResponse(
+            {"detail": "The database is unavailable. Try again later."}, status_code=503
+        )
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, error: Exception) -> JSONResponse:

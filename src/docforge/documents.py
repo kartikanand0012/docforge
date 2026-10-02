@@ -38,7 +38,7 @@ from docforge.db.session import SessionFactory
 from docforge.extraction.pipeline import ExtractionError, PipelineResult
 from docforge.llm.base import LLMError
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParseError
-from docforge.storage import ObjectNotFound, ObjectStore, original_key
+from docforge.storage import ObjectNotFound, ObjectStore, StorageUnavailable, original_key
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,8 @@ class DocumentService:
         """Record an upload. The content hash is the identity: the same bytes for the same
         tenant return the existing document and start no new work.
 
-        Raises `UnknownDocumentType`, `DocumentTypeConflict` or `QueueFull`.
+        Raises `UnknownDocumentType`, `DocumentTypeConflict`, `QueueFull` or
+        `StorageUnavailable`. Nothing is recorded when it raises.
         """
         if doc_type not in self._pipelines:
             raise UnknownDocumentType(f"unknown document type {doc_type!r}")
@@ -275,6 +276,11 @@ class DocumentService:
             return self._fail(version_id, turn, "The file could not be read as a PDF.")
         except ExtractionError:
             return self._fail(version_id, turn, "The model reply did not fit the schema.")
+        except StorageUnavailable as error:
+            logger.warning("object storage unavailable for version %s: %s", version_id, error)
+            return self._retry_or_fail(
+                version_id, turn, "Object storage was unavailable.", error, final
+            )
         except LLMError as error:
             logger.warning("model provider failed for version %s: %s", version_id, error)
             return self._retry_or_fail(version_id, turn, "The model provider failed.", error, final)
