@@ -167,3 +167,23 @@ def test_a_blank_free_quantity_against_an_ordered_scheme_is_reported(pair: Pair)
     pair.invoice["lines"][schemed]["free_qty"] = {"text": None, "block_ids": []}
 
     assert "line.free_qty" in pair.codes()
+
+
+def test_two_lines_of_one_product_pair_with_the_order_line_they_agree_with(pair: Pair) -> None:
+    """Same product, same quantity, different rates, listed in the opposite order."""
+    for document in (pair.invoice, pair.order):
+        document["lines"].append(copy.deepcopy(document["lines"][0]))
+    pair.invoice["lines"][-1]["ptr"]["text"] = "1.00"
+    pair.order["lines"][0]["rate"]["text"] = "1.00"
+
+    assert pair.match() == ()
+
+
+def test_an_order_line_with_no_readable_product_is_reported(pair: Pair) -> None:
+    pair.order["lines"][0]["product_name"] = {"text": None, "block_ids": []}
+
+    found = pair.match()
+
+    assert ("line.unchecked", "error", "lines[0].product_name") in [
+        (d.code, d.severity, d.order_path) for d in found
+    ]

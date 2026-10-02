@@ -231,3 +231,15 @@ def test_a_short_number_in_a_block_of_merged_numeric_cells_is_verified() -> None
     assert status("2", "b1") == "verified"
     assert status("1", "b1") == "not_in_cited_blocks"
     assert status("12", "b2") == "not_in_cited_blocks"  # labels present: which number is it?
+
+
+def test_part_of_a_date_or_a_hyphenated_number_does_not_count() -> None:
+    document = parsed("Exp 05/29/2028", "Exp 05/29", "NVM/26-27/32001")
+
+    def status(text: str, block: str) -> str:
+        return checks(document, line={"expiry": field(text, block)})["lines[0].expiry"].status
+
+    assert status("05/29", "b1") == "not_in_cited_blocks"
+    assert status("05/29", "b2") == "verified"
+    assert status("32001", "b3") == "not_in_cited_blocks"
+    assert status("NVM/26-27/32001", "b3") == "verified"

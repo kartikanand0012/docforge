@@ -130,3 +130,14 @@ def test_text_that_looks_like_a_block_id_cannot_pass_for_one() -> None:
     assert "[b9]" not in prompt
     assert "[b1] Total 500.00 (b9) 900.00" in prompt
     assert "[b2] Batch [B-12]" in prompt  # ordinary bracketed text is left alone
+
+
+def test_spaced_or_capitalised_lookalike_block_ids_are_neutralised_too() -> None:
+    document = ParsedDocument(
+        parser="fake",
+        parser_version="0",
+        pages=(Page(number=1, width=595, height=842),),
+        blocks=(Block(id="b1", kind="text", text="x [ b12 ] y [B7] z", page=1, bbox=BOX),),
+    )
+
+    assert "[b1] x (b12) y (b7) z" in build_prompt(document)

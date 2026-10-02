@@ -46,6 +46,7 @@ class World:
         self.invoice_parsed: ParsedDocument = cited(label, "invoice", self.invoice_raw)
         self.order_parsed: ParsedDocument = cited(label, "purchase_order", self.order_raw)
         self.queued: list[uuid.UUID] = []
+        self.store = MemoryObjectStore()  # kept across rebuilds, so reprocessing finds the file
         self.service: DocumentService | None = None
 
     def reprint_invoice(self, path: str, value: str) -> None:
@@ -62,7 +63,7 @@ class World:
         )
         self.service = DocumentService(
             self.sessions,
-            MemoryObjectStore(),
+            self.store,
             {
                 "invoice": InvoicePipeline(parser, ScriptedProvider(replies)),
                 "purchase_order": order_pipeline,
@@ -237,6 +238,25 @@ def test_reprocessing_an_invoice_matches_its_new_version_too(world: World) -> No
     assert len(matches) == 2
     assert len(assessments) == 3  # order, invoice v1, invoice v2
     assert world.assessment(document_id).match.invoice_version_id == version.id
+
+
+def test_a_match_with_an_order_version_that_was_replaced_no_longer_counts(world: World) -> None:
+    order_id = world.process("purchase_order")
+    invoice_id = world.process("invoice")
+    assert world.assessment(invoice_id).match_status == "match"
+
+    # The order is read again and now names another supplier, so it is no longer this
+    # invoice's order. The comparison with the old reading must not keep the invoice accepted.
+    world.order_parsed = reprint(
+        world.order_parsed, world.order_raw, "supplier_gstin", "27AAPFU0939F1ZV"
+    )
+    service = world.build()
+    version = service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=order_id, actor="api:x")
+    assert service.process(version.id) == "succeeded"
+
+    detail = world.assessment(invoice_id)
+    assert (detail.decision, detail.match_status) == ("review", "no_counterpart")
+    assert detail.counterpart_document_id is None
 
 
 @pytest.mark.parametrize("table", ["assessments", "matches"])
