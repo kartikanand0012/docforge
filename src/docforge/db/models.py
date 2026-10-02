@@ -4,7 +4,18 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, Identity, Integer, Text, text
+from sqlalchemy import (
+    BigInteger,
+    ColumnElement,
+    DateTime,
+    Float,
+    ForeignKey,
+    Identity,
+    Integer,
+    Text,
+    literal_column,
+    text,
+)
 from sqlalchemy.dialects.postgresql import CHAR, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -117,6 +128,13 @@ class ModelRun(Base):
     thinking_tokens: Mapped[int | None] = mapped_column(Integer)
     latency_ms: Mapped[float] = mapped_column(Float)
     created_at: Mapped[datetime] = _created_at()
+
+
+# The order number inside a stored extraction. Spelled exactly as in the expression index
+# `ix_extractions_po_no` (migration 0005); a different spelling would not use the index.
+ORDER_NUMBER: ColumnElement[str] = literal_column(
+    "((extractions.data -> 'po_no') ->> 'value')", type_=Text
+)
 
 
 class AssessmentRecord(Base):

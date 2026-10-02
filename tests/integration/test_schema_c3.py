@@ -4,11 +4,12 @@ import uuid
 
 import pytest
 from alembic import command
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.engine import URL, Engine
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from docforge.db import DEFAULT_TENANT_ID, alembic_config
+from docforge.db.models import ORDER_NUMBER, Extraction
 
 pytestmark = pytest.mark.integration
 
@@ -137,3 +138,17 @@ def test_it_applies_to_a_database_that_already_has_records_and_can_be_undone(
 
     assert scalar(engine, "SELECT count(*) FROM matches") == 1
     engine.dispose()
+
+
+def test_the_counterpart_lookup_as_the_service_writes_it_can_use_the_index(engine: Engine) -> None:
+    """The index is on an expression, so the query must spell that expression the same way."""
+    query = select(Extraction.id).where(
+        Extraction.tenant_id == DEFAULT_TENANT_ID, ORDER_NUMBER == "PO-1"
+    )
+
+    with engine.begin() as conn:
+        conn.execute(text("SET LOCAL enable_seqscan = off"))
+        sql = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+        plan = "\n".join(row[0] for row in conn.execute(text(f"EXPLAIN {sql}")))
+
+    assert "ix_extractions_po_no" in plan

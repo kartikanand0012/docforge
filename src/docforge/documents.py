@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session, aliased
 
 from docforge import audit
 from docforge.db.models import (
+    ORDER_NUMBER,
     AssessmentRecord,
     AuditEntry,
     Document,
@@ -459,7 +460,7 @@ class DocumentService:
                     Document.tenant_id == document.tenant_id,
                     Document.doc_type == other_type,
                     DocumentVersion.version_no == newest,
-                    Extraction.data["po_no"]["value"].astext == order_number,
+                    order_number == ORDER_NUMBER,
                 )
                 .order_by(DocumentVersion.created_at.desc())
                 .limit(_MATCH_CANDIDATES)
