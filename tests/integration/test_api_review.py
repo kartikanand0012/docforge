@@ -99,7 +99,9 @@ def test_a_correction_with_a_wrong_pin_is_refused_without_saying_why(
     for _ in range(4):
         api.post(f"/v1/documents/{invoice_id}/corrections", json={**payload, "pin": "000000"})
     locked = api.post(f"/v1/documents/{invoice_id}/corrections", json={**payload, "pin": "482913"})
-    assert locked.status_code == 423
+    # A locked account answers like a wrong PIN, so the reply does not say the email exists.
+    assert locked.status_code == 401
+    assert locked.json() == wrong.json()
 
 
 def test_a_correction_returns_the_reassessed_record(world: World, api: TestClient) -> None:
@@ -134,7 +136,9 @@ def test_signing_blocked_then_overridden_produces_the_draft_once(
     world: World, api: TestClient
 ) -> None:
     invoice_id = world.process("invoice")
+    seen = api.get(f"/v1/documents/{invoice_id}/review").json()["record_sha256"]
     payload = {
+        "expected_record_sha256": seen,
         "outcome": "approved",
         "meaning": "I approve this invoice for payment",
         "reason": "checked",
@@ -165,7 +169,13 @@ def test_an_unknown_outcome_is_a_validation_error(world: World, api: TestClient)
 
     response = api.post(
         f"/v1/documents/{invoice_id}/review",
-        json={"outcome": "maybe", "meaning": "m", "reason": "r", **CREDENTIALS},
+        json={
+            "outcome": "maybe",
+            "meaning": "m",
+            "reason": "r",
+            "expected_record_sha256": "0" * 64,
+            **CREDENTIALS,
+        },
     )
 
     assert response.status_code == 422
@@ -217,3 +227,39 @@ def test_the_web_app_origin_is_allowed_and_others_are_not(api: TestClient) -> No
 
     assert allowed.headers.get("access-control-allow-origin") == "http://localhost:3000"
     assert "access-control-allow-origin" not in other.headers
+
+
+def test_signing_a_record_that_changed_since_it_was_shown_is_a_conflict(
+    world: World, api: TestClient
+) -> None:
+    invoice_id = world.process("invoice")
+
+    response = api.post(
+        f"/v1/documents/{invoice_id}/review",
+        json={
+            "expected_record_sha256": "0" * 64,
+            "outcome": "rejected",
+            "meaning": "I reject this invoice",
+            "reason": "duplicate",
+            **CREDENTIALS,
+        },
+    )
+
+    assert response.status_code == 409
+    assert "changed" in response.json()["detail"]
+
+
+def test_an_internal_lookup_error_is_not_reported_as_a_missing_document(
+    world: World, api: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    invoice_id = world.process("invoice")
+
+    def broken(*args: object, **kwargs: object) -> None:
+        raise KeyError("internal")
+
+    monkeypatch.setattr(ReviewService, "detail", broken)
+    response = TestClient(api.app, raise_server_exceptions=False).get(
+        f"/v1/documents/{invoice_id}/review"
+    )
+
+    assert response.status_code == 500

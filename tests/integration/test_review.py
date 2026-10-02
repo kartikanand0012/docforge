@@ -20,6 +20,8 @@ from docforge.review.service import (
     AlreadySigned,
     ApprovalBlocked,
     NotAuthenticated,
+    NotReviewable,
+    RecordChanged,
     ReviewerLocked,
     ReviewService,
 )
@@ -31,6 +33,7 @@ pytestmark = pytest.mark.integration
 RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 EMAIL, PIN = "asha@example.com", "482913"
 MEANING = "I approve this invoice for payment"
+REJECTION = "I reject this invoice"
 
 
 @pytest.fixture
@@ -75,6 +78,7 @@ def correct(
 def sign(
     review: ReviewService, document_id: uuid.UUID, outcome: str = "approved", **kw: Any
 ) -> Any:
+    seen = kw.get("seen") or review.detail(DEFAULT_TENANT_ID, document_id).record_sha256
     return review.sign(
         DEFAULT_TENANT_ID,
         document_id,
@@ -82,6 +86,7 @@ def sign(
         meaning=kw.get("meaning", MEANING),
         reason=kw.get("reason", "matches the order"),
         override_reason=kw.get("override_reason"),
+        expected_record_sha256=seen,
         email=kw.get("email", EMAIL),
         pin=kw.get("pin", PIN),
     )
@@ -187,7 +192,7 @@ def test_a_wrong_pin_changes_nothing_and_five_lock_the_reviewer(
     with pytest.raises(ReviewerLocked):
         correct(review, invoice_id, "invoice_no", "X")  # even the right PIN, for now
 
-    assert actions(sessions) == before
+    assert actions(sessions) == [*before, *["reviewer.pin_failed"] * 5]
     with sessions() as session:
         assert session.scalar(select(func.count()).select_from(CorrectionRow)) == 0
 
@@ -247,9 +252,7 @@ def test_a_rejection_needs_only_a_reason_and_produces_no_draft(
 ) -> None:
     invoice_id = world.process("invoice")
 
-    signed = sign(
-        review, invoice_id, outcome="rejected", meaning="I reject this invoice", reason="duplicate"
-    )
+    signed = sign(review, invoice_id, outcome="rejected", meaning=REJECTION, reason="duplicate")
 
     assert (signed.outcome, signed.draft) == ("rejected", None)
 
@@ -355,3 +358,132 @@ def test_the_command_line_adds_a_reviewer_reading_the_pin_from_standard_input(
     with sessions() as session:
         stored = session.scalars(select(Reviewer).where(Reviewer.email == "ravi@example.com")).one()
     assert verify_pin("135790", stored.pin_hash)
+
+
+def test_a_signature_is_refused_if_the_record_changed_since_the_reviewer_saw_it(
+    world: World, review: ReviewService
+) -> None:
+    world.process("purchase_order")
+    invoice_id = world.process("invoice")
+    seen = review.detail(DEFAULT_TENANT_ID, invoice_id).record_sha256
+    correct(review, invoice_id, "invoice_no", "CHANGED-ELSEWHERE")  # another tab, another reviewer
+
+    with pytest.raises(RecordChanged):
+        sign(review, invoice_id, seen=seen, override_reason="x")
+
+
+def test_a_superseded_version_cannot_be_corrected_or_signed_while_a_new_one_is_pending(
+    world: World, review: ReviewService
+) -> None:
+    world.process("purchase_order")
+    invoice_id = world.process("invoice")
+    seen = review.detail(DEFAULT_TENANT_ID, invoice_id).record_sha256
+    assert world.service is not None
+    world.service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=invoice_id, actor="api:x")
+
+    with pytest.raises(NotReviewable, match="newer version"):
+        sign(review, invoice_id, seen=seen)
+    with pytest.raises(NotReviewable, match="newer version"):
+        correct(review, invoice_id, "invoice_no", "X")
+
+
+def test_corrections_to_the_order_count_when_the_invoice_is_checked_against_it(
+    world: World, review: ReviewService
+) -> None:
+    order_id = world.process("purchase_order")
+    invoice_id = world.process("invoice")
+    assert review.detail(DEFAULT_TENANT_ID, invoice_id).match_status == "match"
+
+    correct(review, order_id, "lines[0].qty", "9999")
+
+    assert review.detail(DEFAULT_TENANT_ID, invoice_id).match_status == "mismatch"
+
+
+def test_a_correction_path_must_be_written_the_one_way(world: World, review: ReviewService) -> None:
+    invoice_id = world.process("invoice")
+
+    with pytest.raises(ValueError, match="not a field"):
+        correct(review, invoice_id, "lines[00].qty", "20")
+
+
+def test_the_signature_covers_who_signed_why_and_when_not_only_the_record(
+    world: World, review: ReviewService, engine: Engine
+) -> None:
+    invoice_id = world.process("invoice")
+    sign(review, invoice_id, override_reason="order placed by phone")
+
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE reviews DISABLE TRIGGER reviews_append_only"))
+        conn.execute(text("UPDATE reviews SET override_reason = 'something else'"))
+        conn.execute(text("ALTER TABLE reviews ENABLE ALWAYS TRIGGER reviews_append_only"))
+
+    assert review.detail(DEFAULT_TENANT_ID, invoice_id).signature_valid is False
+
+
+def test_only_the_stated_meanings_can_be_signed(world: World, review: ReviewService) -> None:
+    invoice_id = world.process("invoice")
+    detail = review.detail(DEFAULT_TENANT_ID, invoice_id)
+
+    assert detail.meanings == {"approved": MEANING, "rejected": REJECTION}
+    with pytest.raises(ValueError, match="meaning"):
+        sign(review, invoice_id, outcome="rejected", meaning="I have read nothing")
+
+
+def test_the_database_refuses_a_correction_to_a_signed_version(
+    world: World, review: ReviewService, engine: Engine
+) -> None:
+    world.process("purchase_order")
+    invoice_id = world.process("invoice")
+    sign(review, invoice_id)
+
+    with pytest.raises(DBAPIError, match="signed"), engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO corrections (tenant_id, document_version_id, reviewer_id, path, "
+                "old_text, new_text, reason) SELECT tenant_id, document_version_id, reviewer_id, "
+                "'invoice_no', 'a', 'b', 'late' FROM reviews"
+            )
+        )
+
+
+def test_the_database_refuses_an_approval_over_open_checks_without_an_override(
+    world: World, review: ReviewService, engine: Engine
+) -> None:
+    invoice_id = world.process("invoice")
+    sign(review, invoice_id, override_reason="order placed by phone")
+
+    with pytest.raises(DBAPIError), engine.begin() as conn:
+        conn.execute(text("ALTER TABLE reviews DISABLE TRIGGER reviews_append_only"))
+        conn.execute(text("UPDATE reviews SET override_reason = NULL"))
+
+
+def test_a_reviewer_cannot_be_deleted_or_renamed_once_created(
+    review: ReviewService, engine: Engine
+) -> None:
+    for statement in ("DELETE FROM reviewers", "UPDATE reviewers SET name = 'Someone else'"):
+        with pytest.raises(DBAPIError), engine.begin() as conn:
+            conn.execute(text(statement))
+
+
+def test_a_deactivated_reviewer_cannot_correct_or_sign(world: World, review: ReviewService) -> None:
+    invoice_id = world.process("invoice")
+    review.deactivate_reviewer(DEFAULT_TENANT_ID, EMAIL)
+
+    with pytest.raises(NotAuthenticated):
+        correct(review, invoice_id, "invoice_no", "X")
+
+
+def test_the_queue_finds_a_flagged_document_behind_ones_that_need_nobody(
+    world: World, sessions: SessionFactory
+) -> None:
+    world.process("purchase_order")  # older and accepted
+    world.reprint_invoice("lines[0].qty", "25")
+    invoice_id = world.process("invoice")
+    review = ReviewService(
+        sessions,
+        world.store,
+        {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC},
+        queue_limit=1,
+    )
+
+    assert [item.document_id for item in review.queue(DEFAULT_TENANT_ID)] == [invoice_id]
