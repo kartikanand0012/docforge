@@ -110,6 +110,14 @@ holding its discrepancies. Both are immutable. The per-field `fields`, `validati
 history. The decision has two levels with reasons; there is no numeric confidence until there are
 reviewer outcomes to calibrate one against.
 
+As built in C4: the parser runs in a child process started fresh (not forked), replaced after
+50 documents and stopped if one document exceeds a time or memory limit; replies cross the pipe
+as JSON, and the child gets no credentials. A file whose every page has a text layer is read from
+it; otherwise every page is rendered at 200 dpi, straightened, and read by OCR (RapidOCR through
+Docling), and block boxes are mapped back onto the page as uploaded. Documents of more than one
+page are sent to the model one page per request and merged in code; a field that two pages give
+differently is flagged for review.
+
 `audit_log` is append-only and hash-chained per tenant. As built in C2: database triggers reject
 UPDATE, DELETE and TRUNCATE, each entry may have only one successor, and each entry stores the hash
 of the one before it, so an entry edited or removed from the middle is evident when the chain is

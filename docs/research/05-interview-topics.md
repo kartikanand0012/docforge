@@ -103,6 +103,19 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C4 Scans and tables (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| OCR vs vision model | Kept OCR plus the same text-only model: one pipeline, citations still point at boxes. Measured: 99.96% on a clean scan, 98.06% on a poor one. A vision model is the next thing to compare, on the misreads OCR makes. | `evals/baselines/scans.json` |
+| How do you handle skewed scans? | Estimate the angle from the sharpness of the row ink profile, rotate, OCR, then map boxes back. Without it the table rows of a 1.8° scan were scrambled; with it they were intact. | `parsing/raster.py`, `_read_scan` |
+| Does OCR error matter if the rules pass? | Yes: 5 poor scans had a misread product name that no rule on the invoice can see. Comparing with the order caught all 5. The metric reported is "wrong value accepted", not only accuracy. | `evals/scans.py` |
+| Long tables and output limits | One request per page bounds the reply (about 6,000 tokens a page). Fields given differently by two pages go to review rather than first-wins. | `_ask_by_page`, `merge_pages` |
+| Memory and backpressure for big files | Measured rather than assumed: batching cut the peak from 4.2 to 3.4 GB on 301 pages. The real protection is the parser in its own process with limits. | `parsing/isolation.py`, `evals/long_document.py` |
+| Isolating native code | Child process started fresh; JSON over the pipe (a review found pickle would let a compromised child attack the parent); secrets removed from its environment; killed on time or memory. | `parsing/isolation.py` |
+| A flaky test you tracked down | An intermittent real-parser failure was the model hub dropping a connection when a converter checked its files. Fixed by using the cached models, and an offline setting for production. | `tests/conftest.py`, `PARSER_OFFLINE` |
+| Decompression bombs | A PDF can declare a page of any size; rendering it at 200 dpi could take gigabytes. Pages are checked from their declared size first. | `render_pages` |
+
 ### C3 Trust layer (2026-10-03)
 
 | Question it answers | What happened in this project | Where to point |

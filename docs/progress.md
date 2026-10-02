@@ -2,6 +2,110 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C4 Scans and tables (2026-10-03): gate passed
+
+Branch `c4-scans-tables`, PR #5 (stacked on C3).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Accuracy on the scanned variants is measured and reported next to the clean baseline | Pass | `evals/baselines/scans.json`, replayed offline in CI with floors (`tests/unit/test_eval_scans.py`) |
+| A 300-page file does not exhaust memory | Pass | 301 pages parsed in the isolated process, peak 3.4 GB against an 8 GB limit (`python -m docforge.evals.long_document`, one local run) |
+
+### Measured
+
+| Variant (20 invoices) | Fields correct | Fully correct | Sent to review by own checks | Wrong value accepted by own checks | ...and also agreeing with its order |
+| --- | --- | --- | --- | --- | --- |
+| Clean PDF | 2472 / 2472 | 20 | 8 | 0 | 0 |
+| Good scan (150 dpi) | 2471 / 2472 | 19 | 11 | 0 | 0 |
+| Poor scan (110 dpi, 1.8°, blur, noise) | 2424 / 2472 (98.06%) | 4 | 12 | 5 | 0 |
+
+Poor-scan errors: 23 of 48 are a letter in a product name ("Tabiets", "Insufin"), the rest
+addresses, pack sizes, free quantities read as blank, two discounts read as "25" for "2.5", one
+batch number ("E00589" for "EO0589"). Citations stay above 99% on every variant.
+
+| Long documents | Result |
+| --- | --- |
+| 3 invoices, 45 / 80 / 120 lines, 2 / 2 / 4 pages | 45 and 80 lines fully correct; 120 lines: one line lost where the parser merged two table rows, every later line shifted; the checks sent it to review |
+| Model calls | 8 (one per page); output about 6,000 tokens per page; p50 140 s per document |
+| 301-page born-digital invoice, 155,000 blocks | 24 min, peak 3.4 GB in batches of 10 pages; 23 min, 4.2 GB unbatched |
+| 31-page scan | 7 min (about 14 s a page), peak 4.0 GB |
+
+Tests: 1,188 passed (996 unit, 150 integration, 42 real-parser), coverage 94%.
+
+These are synthetic documents with known degradations. Real scans (photos, stamps, handwriting,
+fax artefacts, rotated pages) are not measured.
+
+### What was built
+
+- Scanned variants of the 20 invoices in two profiles (`synth/scans.py`), with label boxes moved
+  by the page rotation; the rotation maths is checked against pixels.
+- OCR path in `DoclingParser`: a PDF without a text layer on every page is rendered at 200 dpi,
+  each page's skew estimated from its text lines and corrected, read by OCR, and its boxes mapped
+  back to the page as uploaded. Without deskewing, the crooked scan's table rows were scrambled.
+- Conversion in page batches; long invoices and orders in the generator (`--multipage`).
+- Page-by-page extraction for documents of more than one page, merged in code; one-page
+  requests are unchanged, so existing recordings still replay.
+- `IsolatedParser`: the parser in a spawned child process with a time limit, a memory limit,
+  recycling after 50 documents, JSON replies and no credentials in its environment. A limit
+  exceeded fails that document with a reason the uploader can read.
+- Scan, multi-page and long-document measurements (`make eval`, `python -m docforge.evals.long_document`).
+
+### Departures from the plan
+
+- Table-by-table extraction became page-by-page: simpler, and it bounds each reply.
+- Batching was expected to be what keeps memory bounded. Measured, Docling already streams pages:
+  batching lowered the peak from 4.2 to 3.4 GB, and time did not change. The isolation limits are
+  what protect the worker.
+- No per-block OCR confidence: Docling does not expose it in the form used here.
+
+### Review (ECC python-reviewer and security-reviewer)
+
+Fixed, tests first:
+
+- A page with a huge declared size would have been rendered into gigabytes of pixels. Pages are
+  now checked from their declared size before rendering and refused above 60 megapixels.
+- Replies from the parser process were unpickled; a process taken over through a native-code bug
+  could have run code in the parent, which holds the credentials. Replies are JSON now, and the
+  child starts with secrets removed from its environment.
+- Merging pages took the first value printed on any page, so a carried-forward subtotal on page 1
+  would have become the grand total. Pages that disagree on a field now send the document to
+  review; licence numbers from several pages are all kept.
+- A retry per malformed page could double the cost of a long document; retries are now counted
+  per document (two).
+- An interrupted exchange could leave a reply in the pipe to be read as the next document's;
+  `close()` waited for a parse of up to 15 minutes. Both fixed.
+- Boxes mapped back from a crooked scan were the upright box around the turned line, several
+  lines tall; they now keep their size around the moved centre.
+- The scan eval counted a document whose extraction failed as "sent to review", and an order that
+  could not be read aborted the run.
+- `has_text_layer` counted spaces as text.
+
+Found while testing: a real-parser test failed intermittently because a new converter asked the
+model hub whether its files were current. Tests now use the models on disk; the service can do the
+same with `PARSER_OFFLINE=true` after `make models`.
+
+Recorded, not fixed:
+
+- The text-layer decision trusts any text layer of 10 or more printed characters per page. A PDF
+  whose hidden text differs from its visible image would be read from the hidden text, and a scan
+  with a text footer would not be OCRed. A cross-check (OCR a sample, compare) is the fix; until
+  then the review screen (C5) must show the rendered page, not the extracted text.
+- Pages rotated by 90 or 180 degrees are not detected; skew beyond 5 degrees is not corrected.
+- The memory limit is polled every 0.2 s; fast allocation can outrun it. The deployed worker
+  needs a container memory limit as the hard stop (C9).
+- One slow document holds the worker's parser for up to the time limit.
+- No per-tenant limit on documents or pages (C6).
+- A line item split across a page break would become two partial lines; the rules would flag the
+  incomplete one, but nothing merges them.
+
+### Not verified
+
+- Real scans, phone photos, rotated pages.
+- OCR and parser throughput on server CPUs or GPUs; all timings are one laptop CPU.
+- The isolated parser under the real worker for long periods (only tests and single runs).
+
 ## C3 Trust layer (2026-10-03): gate passed
 
 Branch `c3-trust-layer`, PR #4.
