@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     max_upload_bytes: int = 10 * 1024 * 1024
     max_pages: int = 20
 
+    # `module:function` returning one pipeline per document type; lets a deployment swap
+    # the parser or model without changing this package.
+    pipeline_factory: str = "docforge.wiring:build_pipelines"
+
+    job_max_attempts: int = 5
+    job_retry_wait_seconds: float = 5
+    worker_heartbeat_seconds: float = 10
+    worker_stalled_after_seconds: float = 30
+
     @field_validator("database_url")
     @classmethod
     def _require_postgres_psycopg(cls, value: SecretStr) -> SecretStr:

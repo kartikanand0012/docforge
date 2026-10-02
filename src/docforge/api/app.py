@@ -1,10 +1,12 @@
-"""The FastAPI application: one synchronous extraction endpoint."""
+"""The FastAPI application.
+
+`/v1/documents` is the durable path: upload, queue, worker, stored extraction, audit trail.
+`/v1/extractions` is a stateless preview that extracts in the request and stores nothing.
+"""
 
 import hashlib
 import logging
-import unicodedata
 from collections.abc import Awaitable, Callable
-from pathlib import PurePosixPath, PureWindowsPath
 
 from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -12,17 +14,21 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from docforge import __version__
-from docforge.extraction.pipeline import ExtractionError, InvoicePipeline
+from docforge.api.documents import documents_router
+from docforge.api.uploads import (
+    DEFAULT_MAX_UPLOAD_BYTES,
+    MULTIPART_OVERHEAD,
+    read_pdf_upload,
+    safe_filename,
+    too_large_message,
+)
+from docforge.documents import DocumentService
+from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, InvoicePipeline
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-_PDF_MAGIC = b"%PDF-"
-_MULTIPART_OVERHEAD = 64 * 1024  # boundaries and part headers around the file
-_MAX_FILENAME = 255
 
 
 class DocumentInfo(BaseModel):
@@ -68,34 +74,25 @@ _ERRORS: dict[int | str, dict[str, object]] = {
 }
 
 
-def safe_filename(name: str | None) -> str | None:
-    """The client-supplied name reduced to a base name without control characters.
-
-    It is untrusted: it is only echoed back, never used as a path.
-    """
-    if not name:
-        return None
-    base = PurePosixPath(PureWindowsPath(name).name).name
-    printable = "".join(char for char in base if unicodedata.category(char)[0] != "C")
-    return printable[:_MAX_FILENAME] or None
-
-
 def create_app(
-    pipeline: InvoicePipeline, max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES
+    pipeline: InvoicePipeline | None,
+    max_upload_bytes: int = DEFAULT_MAX_UPLOAD_BYTES,
+    *,
+    service: DocumentService | None = None,
+    max_pages: int = DEFAULT_MAX_PAGES,
 ) -> FastAPI:
+    """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     app = FastAPI(title="DocForge", version=__version__)
-
-    too_large = f"The file is larger than the limit of {max_upload_bytes} bytes."
 
     @app.middleware("http")
     async def refuse_oversized_requests(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         # Refuse from the declared length, before the body is spooled to disk. A request
-        # without a length is still capped by the read below; a proxy must cap it in production.
+        # without a length is still capped when read; a proxy must cap it in production.
         declared = request.headers.get("content-length", "")
-        if declared.isdigit() and int(declared) > max_upload_bytes + _MULTIPART_OVERHEAD:
-            return JSONResponse({"detail": too_large}, status_code=413)
+        if declared.isdigit() and int(declared) > max_upload_bytes + MULTIPART_OVERHEAD:
+            return JSONResponse({"detail": too_large_message(max_upload_bytes)}, status_code=413)
         return await call_next(request)
 
     @app.exception_handler(Exception)
@@ -107,17 +104,22 @@ def create_app(
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
+    if service is not None:
+        app.include_router(
+            documents_router(service, max_upload_bytes=max_upload_bytes, max_pages=max_pages)
+        )
+    if pipeline is not None:
+        _add_preview_endpoint(app, pipeline, max_upload_bytes)
+    return app
+
+
+def _add_preview_endpoint(app: FastAPI, pipeline: InvoicePipeline, max_upload_bytes: int) -> None:
     @app.post("/v1/extractions", response_model=ExtractionResponse, responses=_ERRORS)
     async def create_extraction(
         file: UploadFile, include_blocks: bool = False
     ) -> ExtractionResponse:
-        """Extract one born-digital invoice PDF. Returns when the extraction is done."""
-        # The server has already received the body; a reverse proxy must cap request size.
-        data = await file.read(max_upload_bytes + 1)
-        if len(data) > max_upload_bytes:
-            raise HTTPException(413, too_large)
-        if not data.startswith(_PDF_MAGIC):
-            raise HTTPException(415, "Only PDF files are accepted.")
+        """Extract one born-digital invoice PDF in the request. Nothing is stored."""
+        data = await read_pdf_upload(file, max_upload_bytes)
 
         # Error details stay in the log: provider messages are not for API clients.
         try:
@@ -158,5 +160,3 @@ def create_app(
             extraction=result.extraction,
             blocks=list(result.parsed.blocks) if include_blocks else None,
         )
-
-    return app
