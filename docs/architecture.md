@@ -68,7 +68,7 @@ upload ─▶ ingest ─▶ classify ─▶ parse ─▶ extract ─▶ validate
 | Queue | Procrastinate (Postgres-backed) | Taskiq + SQS | No extra infrastructure; enqueue in the same transaction as the row |
 | Born-digital parsing | Docling (MIT) | pdfplumber / pypdfium2 | Permissive licence, good tables |
 | OCR for scans | **v1: Docling's built-in OCR.** A hosted adapter (AWS Textract) and self-hosted PaddleOCR-VL come at later checkpoints | Tesseract | Departure from research (which put PaddleOCR-VL first): it needs a GPU and its throughput on our hardware is unmeasured. We add it once the eval set can show whether it earns its cost. |
-| LLM | Provider interface. Development default: Gemini API (free tier, synthetic data only). Production default chosen per client | Any structured-output model, hosted or local | Client can pick the provider that meets their data-retention terms |
+| LLM | Provider interface. Development default: Gemini API, model `gemini-3.5-flash-lite` (free tier, synthetic data only). Production default chosen per client | Any structured-output model, hosted or local | Client can pick the provider that meets their data-retention terms |
 | Extraction library | Pydantic schemas + native structured output, Instructor for retries | BAML | Provenance by schema design |
 | Embeddings | Provider interface; default a hosted embedding model | Local model | Swappable for VPC installs |
 | Object storage | S3 with Object Lock for originals (MinIO locally) | | Unaltered originals |

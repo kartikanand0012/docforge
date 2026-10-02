@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate test test-unit lint format generate
+.PHONY: help install up down migrate api test test-unit lint format generate eval eval-record
 
 SYNTH_DIR := tests/fixtures/synthetic
 SYNTH_SEED := 20261002
@@ -21,11 +21,14 @@ down: ## Stop services (keeps volumes)
 migrate: ## Apply database migrations
 	uv run alembic upgrade head
 
+api: ## Run the API on http://127.0.0.1:8000 (needs GEMINI_API_KEY; no auth yet, local only)
+	uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port 8000
+
 test: ## Run all tests (integration tests need `make up`)
 	uv run pytest
 
-test-unit: ## Run tests that need no services
-	uv run pytest -m "not integration" --no-cov
+test-unit: ## Run fast tests that need no services or models
+	uv run pytest -m "not integration and not docling" --no-cov
 
 lint: ## Lint, format check and type check
 	uv run ruff check .
@@ -38,3 +41,9 @@ format: ## Auto-format and fix lint
 
 generate: ## Regenerate the synthetic invoice/PO pairs with ground truth
 	uv run python -m docforge.synth --count $(SYNTH_COUNT) --seed $(SYNTH_SEED) --out $(SYNTH_DIR)
+
+eval: ## Re-run the invoice eval offline from recordings and rewrite the baseline report
+	uv run python -m docforge.evals --mode replay
+
+eval-record: ## Run the eval live for anything not yet recorded (needs GEMINI_API_KEY; resumable)
+	uv run python -m docforge.evals --mode record
