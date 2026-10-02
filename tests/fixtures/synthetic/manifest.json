@@ -1,0 +1,27 @@
+{
+  "schema_version": "1",
+  "seed": 20261002,
+  "count": 20,
+  "pairs": [
+    "pair_001",
+    "pair_002",
+    "pair_003",
+    "pair_004",
+    "pair_005",
+    "pair_006",
+    "pair_007",
+    "pair_008",
+    "pair_009",
+    "pair_010",
+    "pair_011",
+    "pair_012",
+    "pair_013",
+    "pair_014",
+    "pair_015",
+    "pair_016",
+    "pair_017",
+    "pair_018",
+    "pair_019",
+    "pair_020"
+  ]
+}

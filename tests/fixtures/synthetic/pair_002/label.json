@@ -1,0 +1,1510 @@
+{
+  "schema_version": "1",
+  "pair_id": "pair_002",
+  "seed": 20261002,
+  "layout": "B",
+  "invoice": {
+    "invoice_no": "SRP/26-27/40002",
+    "invoice_date": "2026-06-05",
+    "po_no": "PO-SWC-62002",
+    "po_date": "2026-05-29",
+    "seller": {
+      "name": "Shreeram Pharma Distributors",
+      "address": "14 Market Yard Road, Pune 411037",
+      "state": "Maharashtra",
+      "state_code": "27",
+      "gstin": "27AAKCS4821M1ZW",
+      "drug_licence_nos": [
+        "MH-20B-104512",
+        "MH-21B-104513"
+      ]
+    },
+    "buyer": {
+      "name": "Sanjeevani Wellness Chemist",
+      "address": "112 Linking Road, Mumbai 400050",
+      "state": "Maharashtra",
+      "state_code": "27",
+      "gstin": "27AAVFS2087J1ZF",
+      "drug_licence_nos": [
+        "MH-20-623377",
+        "MH-21-623378"
+      ]
+    },
+    "place_of_supply": "Maharashtra",
+    "place_of_supply_code": "27",
+    "supply_type": "intra_state",
+    "lines": [
+      {
+        "sl_no": 1,
+        "product_name": "Atorvastatin Tablets IP 10mg",
+        "pack": "10x10",
+        "hsn": "30049099",
+        "batch_no": "UNL2812",
+        "mfg": "2025-08",
+        "expiry": "2027-02",
+        "qty": 20,
+        "free_qty": 2,
+        "mrp": "104.64",
+        "ptr": "76.39",
+        "discount_pct": "0",
+        "taxable_value": "1527.80",
+        "gst_rate": "5",
+        "cgst": "38.20",
+        "sgst": "38.20",
+        "igst": "0.00",
+        "amount": "1604.20"
+      },
+      {
+        "sl_no": 2,
+        "product_name": "Amlodipine Tablets IP 5mg",
+        "pack": "10x10",
+        "hsn": "30049099",
+        "batch_no": "HF043111",
+        "mfg": "2025-07",
+        "expiry": "2028-07",
+        "qty": 100,
+        "free_qty": 0,
+        "mrp": "36.96",
+        "ptr": "27.35",
+        "discount_pct": "2",
+        "taxable_value": "2680.30",
+        "gst_rate": "5",
+        "cgst": "67.01",
+        "sgst": "67.01",
+        "igst": "0.00",
+        "amount": "2814.32"
+      },
+      {
+        "sl_no": 3,
+        "product_name": "Cetirizine Tablets IP 10mg",
+        "pack": "10x10",
+        "hsn": "30049099",
+        "batch_no": "ID697407",
+        "mfg": "2026-02",
+        "expiry": "2027-08",
+        "qty": 200,
+        "free_qty": 0,
+        "mrp": "23.06",
+        "ptr": "17.53",
+        "discount_pct": "0",
+        "taxable_value": "3506.00",
+        "gst_rate": "12",
+        "cgst": "210.36",
+        "sgst": "210.36",
+        "igst": "0.00",
+        "amount": "3926.72"
+      },
+      {
+        "sl_no": 4,
+        "product_name": "Amoxicillin Capsules IP 250mg",
+        "pack": "10x10",
+        "hsn": "30041030",
+        "batch_no": "IMS28539",
+        "mfg": "2025-12",
+        "expiry": "2027-06",
+        "qty": 50,
+        "free_qty": 4,
+        "mrp": "75.26",
+        "ptr": "51.93",
+        "discount_pct": "0",
+        "taxable_value": "2596.50",
+        "gst_rate": "12",
+        "cgst": "155.79",
+        "sgst": "155.79",
+        "igst": "0.00",
+        "amount": "2908.08"
+      },
+      {
+        "sl_no": 5,
+        "product_name": "Omeprazole Capsules IP 20mg",
+        "pack": "10x10",
+        "hsn": "30049099",
+        "batch_no": "FOY35864",
+        "mfg": "2026-01",
+        "expiry": "2028-01",
+        "qty": 200,
+        "free_qty": 16,
+        "mrp": "66.23",
+        "ptr": "46.36",
+        "discount_pct": "0",
+        "taxable_value": "9272.00",
+        "gst_rate": "12",
+        "cgst": "556.32",
+        "sgst": "556.32",
+        "igst": "0.00",
+        "amount": "10384.64"
+      },
+      {
+        "sl_no": 6,
+        "product_name": "ORS Powder WHO Formula 21g",
+        "pack": "1x25",
+        "hsn": "30049099",
+        "batch_no": "AY9838",
+        "mfg": "2025-05",
+        "expiry": "2026-11",
+        "qty": 200,
+        "free_qty": 0,
+        "mrp": "23.33",
+        "ptr": "17.26",
+        "discount_pct": "0",
+        "taxable_value": "3452.00",
+        "gst_rate": "5",
+        "cgst": "86.30",
+        "sgst": "86.30",
+        "igst": "0.00",
+        "amount": "3624.60"
+      }
+    ],
+    "totals": {
+      "taxable_value": "23034.60",
+      "cgst": "1113.98",
+      "sgst": "1113.98",
+      "igst": "0.00",
+      "round_off": "0.44",
+      "grand_total": "25263.00"
+    }
+  },
+  "purchase_order": {
+    "po_no": "PO-SWC-62002",
+    "po_date": "2026-05-29",
+    "buyer": {
+      "name": "Sanjeevani Wellness Chemist",
+      "address": "112 Linking Road, Mumbai 400050",
+      "state": "Maharashtra",
+      "state_code": "27",
+      "gstin": "27AAVFS2087J1ZF",
+      "drug_licence_nos": [
+        "MH-20-623377",
+        "MH-21-623378"
+      ]
+    },
+    "supplier_name": "Shreeram Pharma Distributors",
+    "supplier_gstin": "27AAKCS4821M1ZW",
+    "lines": [
+      {
+        "sl_no": 1,
+        "product_name": "Atorvastatin Tablets IP 10mg",
+        "pack": "10x10",
+        "qty": 20,
+        "scheme": "10+1",
+        "rate": "76.39"
+      },
+      {
+        "sl_no": 2,
+        "product_name": "Amlodipine Tablets IP 5mg",
+        "pack": "10x10",
+        "qty": 100,
+        "scheme": null,
+        "rate": "27.35"
+      },
+      {
+        "sl_no": 3,
+        "product_name": "Cetirizine Tablets IP 10mg",
+        "pack": "10x10",
+        "qty": 200,
+        "scheme": null,
+        "rate": "17.53"
+      },
+      {
+        "sl_no": 4,
+        "product_name": "Amoxicillin Capsules IP 250mg",
+        "pack": "10x10",
+        "qty": 50,
+        "scheme": "12+1",
+        "rate": "51.93"
+      },
+      {
+        "sl_no": 5,
+        "product_name": "Omeprazole Capsules IP 20mg",
+        "pack": "10x10",
+        "qty": 200,
+        "scheme": "12+1",
+        "rate": "46.36"
+      },
+      {
+        "sl_no": 6,
+        "product_name": "ORS Powder WHO Formula 21g",
+        "pack": "1x25",
+        "qty": 200,
+        "scheme": null,
+        "rate": "17.26"
+      }
+    ]
+  },
+  "documents": {
+    "invoice": {
+      "file": "invoice.pdf",
+      "page_width": 595.2755905511812,
+      "page_height": 841.8897637795277,
+      "boxes": [
+        {
+          "path": "seller.name",
+          "text": "Shreeram Pharma Distributors",
+          "page": 1,
+          "x0": 307.64,
+          "y0": 806.03,
+          "x1": 438.17,
+          "y1": 814.35
+        },
+        {
+          "path": "seller.address",
+          "text": "14 Market Yard Road, Pune 411037",
+          "page": 1,
+          "x0": 307.64,
+          "y0": 795.54,
+          "x1": 411.7,
+          "y1": 801.56
+        },
+        {
+          "path": "seller.gstin",
+          "text": "27AAKCS4821M1ZW",
+          "page": 1,
+          "x0": 332.31,
+          "y0": 784.54,
+          "x1": 395.16,
+          "y1": 790.56
+        },
+        {
+          "path": "seller.drug_licence_nos[0]",
+          "text": "MH-20B-104512",
+          "page": 1,
+          "x0": 336.29,
+          "y0": 773.54,
+          "x1": 383.97,
+          "y1": 779.56
+        },
+        {
+          "path": "seller.drug_licence_nos[1]",
+          "text": "MH-21B-104513",
+          "page": 1,
+          "x0": 388.78,
+          "y0": 773.54,
+          "x1": 436.46,
+          "y1": 779.56
+        },
+        {
+          "path": "invoice_no",
+          "text": "SRP/26-27/40002",
+          "page": 1,
+          "x0": 68.4,
+          "y0": 786.54,
+          "x1": 120.07,
+          "y1": 792.56
+        },
+        {
+          "path": "invoice_date",
+          "text": "05/06/2026",
+          "page": 1,
+          "x0": 59.01,
+          "y0": 775.54,
+          "x1": 91.54,
+          "y1": 781.56
+        },
+        {
+          "path": "po_no",
+          "text": "PO-SWC-62002",
+          "page": 1,
+          "x0": 63.34,
+          "y0": 764.54,
+          "x1": 110.3,
+          "y1": 770.56
+        },
+        {
+          "path": "po_date",
+          "text": "29/05/2026",
+          "page": 1,
+          "x0": 65.15,
+          "y0": 753.54,
+          "x1": 97.68,
+          "y1": 759.56
+        },
+        {
+          "path": "place_of_supply",
+          "text": "Maharashtra (27)",
+          "page": 1,
+          "x0": 79.97,
+          "y0": 742.54,
+          "x1": 129.82,
+          "y1": 748.56
+        },
+        {
+          "path": "buyer.name",
+          "text": "Sanjeevani Wellness Chemist",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 712.03,
+          "x1": 156.55,
+          "y1": 720.35
+        },
+        {
+          "path": "buyer.address",
+          "text": "112 Linking Road, Mumbai 400050",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 701.54,
+          "x1": 130.8,
+          "y1": 707.56
+        },
+        {
+          "path": "buyer.gstin",
+          "text": "27AAVFS2087J1ZF",
+          "page": 1,
+          "x0": 54.67,
+          "y0": 690.54,
+          "x1": 112.48,
+          "y1": 696.56
+        },
+        {
+          "path": "buyer.drug_licence_nos[0]",
+          "text": "MH-20-623377",
+          "page": 1,
+          "x0": 58.65,
+          "y0": 679.54,
+          "x1": 102.0,
+          "y1": 685.56
+        },
+        {
+          "path": "buyer.drug_licence_nos[1]",
+          "text": "MH-21-623378",
+          "page": 1,
+          "x0": 106.8,
+          "y0": 679.54,
+          "x1": 150.15,
+          "y1": 685.56
+        },
+        {
+          "path": "lines[0].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 45.67,
+          "y0": 642.54,
+          "x1": 74.59,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].product_name",
+          "text": "Atorvastatin Tablets IP 10mg",
+          "page": 1,
+          "x0": 82.79,
+          "y0": 642.54,
+          "x1": 166.25,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].batch_no",
+          "text": "UNL2812",
+          "page": 1,
+          "x0": 192.19,
+          "y0": 642.54,
+          "x1": 219.65,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].expiry",
+          "text": "02/27",
+          "page": 1,
+          "x0": 237.12,
+          "y0": 642.54,
+          "x1": 253.39,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].mfg",
+          "text": "08/25",
+          "page": 1,
+          "x0": 262.52,
+          "y0": 642.54,
+          "x1": 278.78,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 287.92,
+          "y0": 642.54,
+          "x1": 305.62,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].mrp",
+          "text": "104.64",
+          "page": 1,
+          "x0": 330.46,
+          "y0": 642.54,
+          "x1": 350.34,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].qty",
+          "text": "20",
+          "page": 1,
+          "x0": 364.6,
+          "y0": 642.54,
+          "x1": 371.83,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].free_qty",
+          "text": "2",
+          "page": 1,
+          "x0": 387.75,
+          "y0": 642.54,
+          "x1": 391.36,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].ptr",
+          "text": "76.39",
+          "page": 1,
+          "x0": 410.26,
+          "y0": 642.54,
+          "x1": 426.53,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].discount_pct",
+          "text": "0",
+          "page": 1,
+          "x0": 442.45,
+          "y0": 642.54,
+          "x1": 446.06,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].gst_rate",
+          "text": "5",
+          "page": 1,
+          "x0": 463.94,
+          "y0": 642.54,
+          "x1": 467.55,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].taxable_value",
+          "text": "1527.80",
+          "page": 1,
+          "x0": 490.95,
+          "y0": 642.54,
+          "x1": 514.44,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[0].amount",
+          "text": "1604.20",
+          "page": 1,
+          "x0": 539.78,
+          "y0": 642.54,
+          "x1": 563.28,
+          "y1": 648.56
+        },
+        {
+          "path": "lines[1].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 45.67,
+          "y0": 629.54,
+          "x1": 74.59,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].product_name",
+          "text": "Amlodipine Tablets IP 5mg",
+          "page": 1,
+          "x0": 82.79,
+          "y0": 629.54,
+          "x1": 160.46,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].batch_no",
+          "text": "HF043111",
+          "page": 1,
+          "x0": 192.19,
+          "y0": 629.54,
+          "x1": 222.54,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].expiry",
+          "text": "07/28",
+          "page": 1,
+          "x0": 237.12,
+          "y0": 629.54,
+          "x1": 253.39,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].mfg",
+          "text": "07/25",
+          "page": 1,
+          "x0": 262.52,
+          "y0": 629.54,
+          "x1": 278.78,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 287.92,
+          "y0": 629.54,
+          "x1": 305.62,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].mrp",
+          "text": "36.96",
+          "page": 1,
+          "x0": 334.07,
+          "y0": 629.54,
+          "x1": 350.34,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].qty",
+          "text": "100",
+          "page": 1,
+          "x0": 360.98,
+          "y0": 629.54,
+          "x1": 371.83,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].free_qty",
+          "text": "0",
+          "page": 1,
+          "x0": 387.75,
+          "y0": 629.54,
+          "x1": 391.36,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].ptr",
+          "text": "27.35",
+          "page": 1,
+          "x0": 410.26,
+          "y0": 629.54,
+          "x1": 426.53,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].discount_pct",
+          "text": "2",
+          "page": 1,
+          "x0": 442.45,
+          "y0": 629.54,
+          "x1": 446.06,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].gst_rate",
+          "text": "5",
+          "page": 1,
+          "x0": 463.94,
+          "y0": 629.54,
+          "x1": 467.55,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].taxable_value",
+          "text": "2680.30",
+          "page": 1,
+          "x0": 490.95,
+          "y0": 629.54,
+          "x1": 514.44,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[1].amount",
+          "text": "2814.32",
+          "page": 1,
+          "x0": 539.78,
+          "y0": 629.54,
+          "x1": 563.28,
+          "y1": 635.56
+        },
+        {
+          "path": "lines[2].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 45.67,
+          "y0": 616.54,
+          "x1": 74.59,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].product_name",
+          "text": "Cetirizine Tablets IP 10mg",
+          "page": 1,
+          "x0": 82.79,
+          "y0": 616.54,
+          "x1": 159.01,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].batch_no",
+          "text": "ID697407",
+          "page": 1,
+          "x0": 192.19,
+          "y0": 616.54,
+          "x1": 220.38,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].expiry",
+          "text": "08/27",
+          "page": 1,
+          "x0": 237.12,
+          "y0": 616.54,
+          "x1": 253.39,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].mfg",
+          "text": "02/26",
+          "page": 1,
+          "x0": 262.52,
+          "y0": 616.54,
+          "x1": 278.78,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 287.92,
+          "y0": 616.54,
+          "x1": 305.62,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].mrp",
+          "text": "23.06",
+          "page": 1,
+          "x0": 334.07,
+          "y0": 616.54,
+          "x1": 350.34,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].qty",
+          "text": "200",
+          "page": 1,
+          "x0": 360.98,
+          "y0": 616.54,
+          "x1": 371.83,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].free_qty",
+          "text": "0",
+          "page": 1,
+          "x0": 387.75,
+          "y0": 616.54,
+          "x1": 391.36,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].ptr",
+          "text": "17.53",
+          "page": 1,
+          "x0": 410.26,
+          "y0": 616.54,
+          "x1": 426.53,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].discount_pct",
+          "text": "0",
+          "page": 1,
+          "x0": 442.45,
+          "y0": 616.54,
+          "x1": 446.06,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].gst_rate",
+          "text": "12",
+          "page": 1,
+          "x0": 460.32,
+          "y0": 616.54,
+          "x1": 467.55,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].taxable_value",
+          "text": "3506.00",
+          "page": 1,
+          "x0": 490.95,
+          "y0": 616.54,
+          "x1": 514.44,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[2].amount",
+          "text": "3926.72",
+          "page": 1,
+          "x0": 539.78,
+          "y0": 616.54,
+          "x1": 563.28,
+          "y1": 622.56
+        },
+        {
+          "path": "lines[3].hsn",
+          "text": "30041030",
+          "page": 1,
+          "x0": 45.67,
+          "y0": 603.54,
+          "x1": 74.59,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].product_name",
+          "text": "Amoxicillin Capsules IP 250mg",
+          "page": 1,
+          "x0": 82.79,
+          "y0": 603.54,
+          "x1": 172.01,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].batch_no",
+          "text": "IMS28539",
+          "page": 1,
+          "x0": 192.19,
+          "y0": 603.54,
+          "x1": 221.82,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].expiry",
+          "text": "06/27",
+          "page": 1,
+          "x0": 237.12,
+          "y0": 603.54,
+          "x1": 253.39,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].mfg",
+          "text": "12/25",
+          "page": 1,
+          "x0": 262.52,
+          "y0": 603.54,
+          "x1": 278.78,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 287.92,
+          "y0": 603.54,
+          "x1": 305.62,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].mrp",
+          "text": "75.26",
+          "page": 1,
+          "x0": 334.07,
+          "y0": 603.54,
+          "x1": 350.34,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].qty",
+          "text": "50",
+          "page": 1,
+          "x0": 364.6,
+          "y0": 603.54,
+          "x1": 371.83,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].free_qty",
+          "text": "4",
+          "page": 1,
+          "x0": 387.75,
+          "y0": 603.54,
+          "x1": 391.36,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].ptr",
+          "text": "51.93",
+          "page": 1,
+          "x0": 410.26,
+          "y0": 603.54,
+          "x1": 426.53,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].discount_pct",
+          "text": "0",
+          "page": 1,
+          "x0": 442.45,
+          "y0": 603.54,
+          "x1": 446.06,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].gst_rate",
+          "text": "12",
+          "page": 1,
+          "x0": 460.32,
+          "y0": 603.54,
+          "x1": 467.55,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].taxable_value",
+          "text": "2596.50",
+          "page": 1,
+          "x0": 490.95,
+          "y0": 603.54,
+          "x1": 514.44,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[3].amount",
+          "text": "2908.08",
+          "page": 1,
+          "x0": 539.78,
+          "y0": 603.54,
+          "x1": 563.28,
+          "y1": 609.56
+        },
+        {
+          "path": "lines[4].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 45.67,
+          "y0": 590.54,
+          "x1": 74.59,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].product_name",
+          "text": "Omeprazole Capsules IP 20mg",
+          "page": 1,
+          "x0": 82.79,
+          "y0": 590.54,
+          "x1": 173.1,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].batch_no",
+          "text": "FOY35864",
+          "page": 1,
+          "x0": 192.19,
+          "y0": 590.54,
+          "x1": 223.63,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].expiry",
+          "text": "01/28",
+          "page": 1,
+          "x0": 237.12,
+          "y0": 590.54,
+          "x1": 253.39,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].mfg",
+          "text": "01/26",
+          "page": 1,
+          "x0": 262.52,
+          "y0": 590.54,
+          "x1": 278.78,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 287.92,
+          "y0": 590.54,
+          "x1": 305.62,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].mrp",
+          "text": "66.23",
+          "page": 1,
+          "x0": 334.07,
+          "y0": 590.54,
+          "x1": 350.34,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].qty",
+          "text": "200",
+          "page": 1,
+          "x0": 360.98,
+          "y0": 590.54,
+          "x1": 371.83,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].free_qty",
+          "text": "16",
+          "page": 1,
+          "x0": 384.13,
+          "y0": 590.54,
+          "x1": 391.36,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].ptr",
+          "text": "46.36",
+          "page": 1,
+          "x0": 410.26,
+          "y0": 590.54,
+          "x1": 426.53,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].discount_pct",
+          "text": "0",
+          "page": 1,
+          "x0": 442.45,
+          "y0": 590.54,
+          "x1": 446.06,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].gst_rate",
+          "text": "12",
+          "page": 1,
+          "x0": 460.32,
+          "y0": 590.54,
+          "x1": 467.55,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].taxable_value",
+          "text": "9272.00",
+          "page": 1,
+          "x0": 490.95,
+          "y0": 590.54,
+          "x1": 514.44,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[4].amount",
+          "text": "10384.64",
+          "page": 1,
+          "x0": 536.17,
+          "y0": 590.54,
+          "x1": 563.28,
+          "y1": 596.56
+        },
+        {
+          "path": "lines[5].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 45.67,
+          "y0": 577.54,
+          "x1": 74.59,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].product_name",
+          "text": "ORS Powder WHO Formula 21g",
+          "page": 1,
+          "x0": 82.79,
+          "y0": 577.54,
+          "x1": 176.7,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].batch_no",
+          "text": "AY9838",
+          "page": 1,
+          "x0": 192.19,
+          "y0": 577.54,
+          "x1": 215.32,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].expiry",
+          "text": "11/26",
+          "page": 1,
+          "x0": 237.12,
+          "y0": 577.54,
+          "x1": 253.39,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].mfg",
+          "text": "05/25",
+          "page": 1,
+          "x0": 262.52,
+          "y0": 577.54,
+          "x1": 278.78,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].pack",
+          "text": "1x25",
+          "page": 1,
+          "x0": 287.92,
+          "y0": 577.54,
+          "x1": 302.01,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].mrp",
+          "text": "23.33",
+          "page": 1,
+          "x0": 334.07,
+          "y0": 577.54,
+          "x1": 350.34,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].qty",
+          "text": "200",
+          "page": 1,
+          "x0": 360.98,
+          "y0": 577.54,
+          "x1": 371.83,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].free_qty",
+          "text": "0",
+          "page": 1,
+          "x0": 387.75,
+          "y0": 577.54,
+          "x1": 391.36,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].ptr",
+          "text": "17.26",
+          "page": 1,
+          "x0": 410.26,
+          "y0": 577.54,
+          "x1": 426.53,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].discount_pct",
+          "text": "0",
+          "page": 1,
+          "x0": 442.45,
+          "y0": 577.54,
+          "x1": 446.06,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].gst_rate",
+          "text": "5",
+          "page": 1,
+          "x0": 463.94,
+          "y0": 577.54,
+          "x1": 467.55,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].taxable_value",
+          "text": "3452.00",
+          "page": 1,
+          "x0": 490.95,
+          "y0": 577.54,
+          "x1": 514.44,
+          "y1": 583.56
+        },
+        {
+          "path": "lines[5].amount",
+          "text": "3624.60",
+          "page": 1,
+          "x0": 539.78,
+          "y0": 577.54,
+          "x1": 563.28,
+          "y1": 583.56
+        },
+        {
+          "path": "totals.taxable_value",
+          "text": "23034.60",
+          "page": 1,
+          "x0": 172.9,
+          "y0": 557.99,
+          "x1": 200.0,
+          "y1": 564.01
+        },
+        {
+          "path": "totals.cgst",
+          "text": "1113.98",
+          "page": 1,
+          "x0": 176.51,
+          "y0": 546.99,
+          "x1": 200.0,
+          "y1": 553.01
+        },
+        {
+          "path": "totals.sgst",
+          "text": "1113.98",
+          "page": 1,
+          "x0": 176.51,
+          "y0": 535.99,
+          "x1": 200.0,
+          "y1": 542.01
+        },
+        {
+          "path": "totals.round_off",
+          "text": "0.44",
+          "page": 1,
+          "x0": 187.35,
+          "y0": 524.99,
+          "x1": 200.0,
+          "y1": 531.01
+        },
+        {
+          "path": "totals.grand_total",
+          "text": "25263.00",
+          "page": 1,
+          "x0": 172.9,
+          "y0": 513.99,
+          "x1": 200.0,
+          "y1": 520.01
+        }
+      ]
+    },
+    "purchase_order": {
+      "file": "purchase_order.pdf",
+      "page_width": 595.2755905511812,
+      "page_height": 841.8897637795277,
+      "boxes": [
+        {
+          "path": "po_no",
+          "text": "PO-SWC-62002",
+          "page": 1,
+          "x0": 84.12,
+          "y0": 784.23,
+          "x1": 141.91,
+          "y1": 791.63
+        },
+        {
+          "path": "po_date",
+          "text": "29/05/2026",
+          "page": 1,
+          "x0": 321.98,
+          "y0": 784.23,
+          "x1": 362.01,
+          "y1": 791.63
+        },
+        {
+          "path": "buyer.name",
+          "text": "Sanjeevani Wellness Chemist",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 758.72,
+          "x1": 177.64,
+          "y1": 768.43
+        },
+        {
+          "path": "buyer.address",
+          "text": "112 Linking Road, Mumbai 400050",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 746.73,
+          "x1": 154.06,
+          "y1": 754.13
+        },
+        {
+          "path": "buyer.gstin",
+          "text": "27AAVFS2087J1ZF",
+          "page": 1,
+          "x0": 59.67,
+          "y0": 734.23,
+          "x1": 130.82,
+          "y1": 741.63
+        },
+        {
+          "path": "buyer.drug_licence_nos[0]",
+          "text": "MH-20-623377",
+          "page": 1,
+          "x0": 64.57,
+          "y0": 721.73,
+          "x1": 117.92,
+          "y1": 729.13
+        },
+        {
+          "path": "buyer.drug_licence_nos[1]",
+          "text": "MH-21-623378",
+          "page": 1,
+          "x0": 123.14,
+          "y0": 721.73,
+          "x1": 176.5,
+          "y1": 729.13
+        },
+        {
+          "path": "supplier_name",
+          "text": "Shreeram Pharma Distributors",
+          "page": 1,
+          "x0": 80.0,
+          "y0": 701.23,
+          "x1": 196.03,
+          "y1": 708.63
+        },
+        {
+          "path": "supplier_gstin",
+          "text": "27AAKCS4821M1ZW",
+          "page": 1,
+          "x0": 109.67,
+          "y0": 688.73,
+          "x1": 187.03,
+          "y1": 696.13
+        },
+        {
+          "path": "lines[0].product_name",
+          "text": "Atorvastatin Tablets IP 10mg",
+          "page": 1,
+          "x0": 57.49,
+          "y0": 648.23,
+          "x1": 160.2,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[0].qty",
+          "text": "20",
+          "page": 1,
+          "x0": 331.35,
+          "y0": 648.23,
+          "x1": 340.24,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[0].scheme",
+          "text": "10+1",
+          "page": 1,
+          "x0": 396.57,
+          "y0": 648.23,
+          "x1": 414.59,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[0].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 418.59,
+          "y0": 648.23,
+          "x1": 440.38,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[0].rate",
+          "text": "76.39",
+          "page": 1,
+          "x0": 543.26,
+          "y0": 648.23,
+          "x1": 563.28,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[1].product_name",
+          "text": "Amlodipine Tablets IP 5mg",
+          "page": 1,
+          "x0": 57.49,
+          "y0": 634.23,
+          "x1": 153.08,
+          "y1": 641.63
+        },
+        {
+          "path": "lines[1].qty",
+          "text": "100",
+          "page": 1,
+          "x0": 326.9,
+          "y0": 634.23,
+          "x1": 340.24,
+          "y1": 641.63
+        },
+        {
+          "path": "lines[1].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 418.59,
+          "y0": 634.23,
+          "x1": 440.38,
+          "y1": 641.63
+        },
+        {
+          "path": "lines[1].rate",
+          "text": "27.35",
+          "page": 1,
+          "x0": 543.26,
+          "y0": 634.23,
+          "x1": 563.28,
+          "y1": 641.63
+        },
+        {
+          "path": "lines[2].product_name",
+          "text": "Cetirizine Tablets IP 10mg",
+          "page": 1,
+          "x0": 57.49,
+          "y0": 620.23,
+          "x1": 151.3,
+          "y1": 627.63
+        },
+        {
+          "path": "lines[2].qty",
+          "text": "200",
+          "page": 1,
+          "x0": 326.9,
+          "y0": 620.23,
+          "x1": 340.24,
+          "y1": 627.63
+        },
+        {
+          "path": "lines[2].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 418.59,
+          "y0": 620.23,
+          "x1": 440.38,
+          "y1": 627.63
+        },
+        {
+          "path": "lines[2].rate",
+          "text": "17.53",
+          "page": 1,
+          "x0": 543.26,
+          "y0": 620.23,
+          "x1": 563.28,
+          "y1": 627.63
+        },
+        {
+          "path": "lines[3].product_name",
+          "text": "Amoxicillin Capsules IP 250mg",
+          "page": 1,
+          "x0": 57.49,
+          "y0": 606.23,
+          "x1": 167.3,
+          "y1": 613.63
+        },
+        {
+          "path": "lines[3].qty",
+          "text": "50",
+          "page": 1,
+          "x0": 331.35,
+          "y0": 606.23,
+          "x1": 340.24,
+          "y1": 613.63
+        },
+        {
+          "path": "lines[3].scheme",
+          "text": "12+1",
+          "page": 1,
+          "x0": 396.57,
+          "y0": 606.23,
+          "x1": 414.59,
+          "y1": 613.63
+        },
+        {
+          "path": "lines[3].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 418.59,
+          "y0": 606.23,
+          "x1": 440.38,
+          "y1": 613.63
+        },
+        {
+          "path": "lines[3].rate",
+          "text": "51.93",
+          "page": 1,
+          "x0": 543.26,
+          "y0": 606.23,
+          "x1": 563.28,
+          "y1": 613.63
+        },
+        {
+          "path": "lines[4].product_name",
+          "text": "Omeprazole Capsules IP 20mg",
+          "page": 1,
+          "x0": 57.49,
+          "y0": 592.23,
+          "x1": 168.64,
+          "y1": 599.63
+        },
+        {
+          "path": "lines[4].qty",
+          "text": "200",
+          "page": 1,
+          "x0": 326.9,
+          "y0": 592.23,
+          "x1": 340.24,
+          "y1": 599.63
+        },
+        {
+          "path": "lines[4].scheme",
+          "text": "12+1",
+          "page": 1,
+          "x0": 396.57,
+          "y0": 592.23,
+          "x1": 414.59,
+          "y1": 599.63
+        },
+        {
+          "path": "lines[4].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 418.59,
+          "y0": 592.23,
+          "x1": 440.38,
+          "y1": 599.63
+        },
+        {
+          "path": "lines[4].rate",
+          "text": "46.36",
+          "page": 1,
+          "x0": 543.26,
+          "y0": 592.23,
+          "x1": 563.28,
+          "y1": 599.63
+        },
+        {
+          "path": "lines[5].product_name",
+          "text": "ORS Powder WHO Formula 21g",
+          "page": 1,
+          "x0": 57.49,
+          "y0": 578.23,
+          "x1": 173.07,
+          "y1": 585.63
+        },
+        {
+          "path": "lines[5].qty",
+          "text": "200",
+          "page": 1,
+          "x0": 326.9,
+          "y0": 578.23,
+          "x1": 340.24,
+          "y1": 585.63
+        },
+        {
+          "path": "lines[5].pack",
+          "text": "1x25",
+          "page": 1,
+          "x0": 418.59,
+          "y0": 578.23,
+          "x1": 435.93,
+          "y1": 585.63
+        },
+        {
+          "path": "lines[5].rate",
+          "text": "17.26",
+          "page": 1,
+          "x0": 543.26,
+          "y0": 578.23,
+          "x1": 563.28,
+          "y1": 585.63
+        }
+      ]
+    }
+  }
+}
