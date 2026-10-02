@@ -3,13 +3,16 @@
 from functools import partial
 from importlib import import_module
 from importlib.metadata import version
+from pathlib import Path
 
 from docforge.config import Settings
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService, Pipeline
 from docforge.extraction.pipeline import INVOICE_SPEC, ExtractionPipeline, InvoicePipeline
-from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
+from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
 from docforge.llm.gemini import GeminiProvider
+from docforge.llm.replay import RecordingProvider
+from docforge.parsing.cache import CachingParser
 from docforge.parsing.docling_parser import DoclingParser
 from docforge.parsing.isolation import IsolatedParser
 from docforge.queue import JobQueue
@@ -41,6 +44,24 @@ def build_pipelines(settings: Settings) -> dict[str, Pipeline]:
         invoice.parser, invoice.provider, PURCHASE_ORDER_SPEC, max_pages=settings.max_pages
     )
     return {"invoice": invoice, "purchase_order": order}
+
+
+def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
+    """Pipelines that only replay recorded parses and model replies: no key, no network.
+
+    For the end-to-end test and demos on the recorded documents. A file that was never
+    recorded fails its parse, which the service records as an unreadable file.
+    """
+    recordings = Path(settings.recordings_dir)
+    parser = CachingParser(recordings / "parsed")
+    provider = RecordingProvider(recordings / "llm", settings.gemini_model)
+    order: ExtractionPipeline[PurchaseOrderExtraction] = ExtractionPipeline(
+        parser, provider, PURCHASE_ORDER_SPEC, max_pages=settings.max_pages
+    )
+    return {
+        "invoice": InvoicePipeline(parser, provider, max_pages=settings.max_pages),
+        "purchase_order": order,
+    }
 
 
 def load_pipelines(settings: Settings) -> dict[str, Pipeline]:

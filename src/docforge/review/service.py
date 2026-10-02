@@ -111,6 +111,7 @@ class ReviewDetail:
     version_id: uuid.UUID
     version_no: int
     page_count: int
+    pages: tuple[dict[str, Any], ...]  # number, width and height in points, for the boxes
     record: dict[str, Any]  # the extraction with corrections applied
     assessment: Assessment
     editable_paths: tuple[str, ...]
@@ -527,6 +528,7 @@ class ReviewService:
             version_id=state.version.id,
             version_no=state.version.version_no,
             page_count=len(state.parsed.pages),
+            pages=tuple(page.model_dump() for page in state.parsed.pages),
             record=record,
             assessment=state.reassessed.assessment,
             editable_paths=tuple(_field_paths(state.raw.model_dump())),

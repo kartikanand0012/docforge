@@ -225,3 +225,24 @@ def test_an_unexpected_failure_is_a_plain_500_without_internals(perfect_reply: s
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal error."}
+
+
+def test_the_replay_factory_extracts_a_recorded_document_offline() -> None:
+    """The end-to-end test runs the real service on recorded parses and replies: no key."""
+    from pathlib import Path
+
+    from docforge.wiring import build_replay_pipelines
+
+    repo = Path(__file__).resolve().parents[2]
+    settings = Settings(
+        _env_file=None,
+        gemini_api_key=None,
+        recordings_dir=str(repo / "tests" / "fixtures" / "recorded"),
+    )
+    pipelines = build_replay_pipelines(settings)
+
+    pdf = (repo / "tests" / "fixtures" / "synthetic" / "pair_002" / "invoice.pdf").read_bytes()
+    result = pipelines["invoice"].run(pdf)
+
+    assert set(pipelines) == {"invoice", "purchase_order"}
+    assert result.responses[0].model == settings.gemini_model

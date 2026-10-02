@@ -76,6 +76,9 @@ def test_the_review_detail_has_fields_boxes_and_what_blocks_approval(
     assert "invoice_no" in body["editable_paths"]
     assert body["record"]["invoice_no"]["raw"] == world.invoice_raw["invoice_no"]["text"]
     assert body["page_count"] == 1
+    (page,) = body["pages"]
+    assert page["number"] == 1
+    assert (page["width"], page["height"]) == pytest.approx((841.89, 595.28), abs=0.01)
     assert body["review"] is None
 
 

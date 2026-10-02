@@ -55,7 +55,9 @@ class Settings(BaseSettings):
 
     # The review screen's origin(s), comma-separated, e.g. http://localhost:3000.
     cors_origins: str = ""
-    evals_dir: str = "evals/baselines"  # the committed reports the eval page shows
+    evals_dir: str = "evals/baselines"
+    # Recorded parses and model replies, for `docforge.wiring:build_replay_pipelines`.
+    recordings_dir: str = "tests/fixtures/recorded"  # the committed reports the eval page shows
     # Model prices in USD per million tokens, for the cost figure. Unset means no cost is
     # shown: a price that is not checked against the provider's current list is not invented.
     price_input_per_million_usd: float | None = None

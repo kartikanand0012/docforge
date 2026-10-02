@@ -50,6 +50,12 @@ class SignIn(_In):
     pin: str = Field(max_length=64)
 
 
+class PageOut(BaseModel):
+    number: int
+    width: float  # points
+    height: float
+
+
 class QueueItemOut(BaseModel):
     document_id: uuid.UUID
     doc_type: str
@@ -86,6 +92,7 @@ class ReviewOut(BaseModel):
     filename: str
     version_no: int
     page_count: int
+    pages: list[PageOut]
     decision: str
     blockers: list[str]
     record: dict[str, Any]
@@ -106,6 +113,7 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
         filename=detail.filename,
         version_no=detail.version_no,
         page_count=detail.page_count,
+        pages=[PageOut(**page) for page in detail.pages],
         decision=detail.decision,
         blockers=list(detail.blockers),
         record=detail.record,
