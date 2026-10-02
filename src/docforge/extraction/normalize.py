@@ -109,7 +109,9 @@ def parse_place_of_supply(raw: str) -> tuple[str | None, str | None]:
     return text, None
 
 
-class _Normalizer:
+class Normalizer:
+    """Converts raw fields for one document, collecting issues as it goes."""
+
     def __init__(self, parsed: ParsedDocument) -> None:
         self._known = {block.id for block in parsed.blocks}
         self.issues: list[Issue] = []
@@ -180,7 +182,7 @@ class _Normalizer:
 
 def normalize_invoice(raw: RawInvoice, parsed: ParsedDocument) -> InvoiceExtraction:
     """Convert the model's printed strings to typed values and check its citations exist."""
-    normalizer = _Normalizer(parsed)
+    normalizer = Normalizer(parsed)
     if not raw.lines:
         normalizer.issues.append(
             Issue(path="lines", code="no_line_items", message="no line items were extracted")

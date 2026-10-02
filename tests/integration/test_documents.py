@@ -34,6 +34,7 @@ from docforge.documents import (
     UnknownDocumentType,
 )
 from docforge.extraction.pipeline import InvoicePipeline, PipelineResult
+from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError
 from docforge.parsing.base import ParsedDocument
 from docforge.storage import MemoryObjectStore, StorageUnavailable, original_key
@@ -61,7 +62,7 @@ class HookedPipeline:
         self.inner = inner
         self.during_run = during_run
 
-    def run(self, pdf: bytes) -> PipelineResult:
+    def run(self, pdf: bytes) -> PipelineResult[InvoiceExtraction]:
         if self.during_run is not None:
             hook, self.during_run = self.during_run, None  # only the first run is interrupted
             hook()
@@ -621,7 +622,9 @@ def test_a_worker_killed_after_the_model_call_but_before_the_write_loses_nothing
     write_result = harness.service._complete
     deaths: list[int] = []
 
-    def die_once(version_id: uuid.UUID, turn: int, result: PipelineResult) -> Any:
+    def die_once(
+        version_id: uuid.UUID, turn: int, result: PipelineResult[InvoiceExtraction]
+    ) -> Any:
         if not deaths:
             deaths.append(turn)
             raise Killed()

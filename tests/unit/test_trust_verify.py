@@ -57,7 +57,7 @@ def checks(document: ParsedDocument, **fields: dict[str, Any]) -> dict[str, Fiel
         "drug_licence_nos": [],
     }
     line = fields.pop("line", None)
-    raw = {
+    raw: dict[str, Any] = {
         "invoice_no": EMPTY,
         "invoice_date": EMPTY,
         "po_no": EMPTY,

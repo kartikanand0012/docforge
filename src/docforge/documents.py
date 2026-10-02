@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal, Protocol
 
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
@@ -72,7 +73,7 @@ class TransientProcessingError(Exception):
 
 
 class Pipeline(Protocol):
-    def run(self, pdf: bytes) -> PipelineResult: ...
+    def run(self, pdf: bytes) -> PipelineResult[BaseModel]: ...
 
 
 # Called inside the transaction that creates the version, so the job exists only if the
@@ -289,7 +290,9 @@ class DocumentService:
             return self._retry_or_fail(version_id, turn, "Internal error.", error, final)
         return self._complete(version_id, turn, result)
 
-    def _complete(self, version_id: uuid.UUID, turn: int, result: PipelineResult) -> Outcome:
+    def _complete(
+        self, version_id: uuid.UUID, turn: int, result: PipelineResult[BaseModel]
+    ) -> Outcome:
         data = result.extraction.model_dump(mode="json")
         sha256 = hashlib.sha256(audit.canonical_json(data).encode("utf-8")).hexdigest()
         with self._sessions.begin() as session:
@@ -308,7 +311,7 @@ class DocumentService:
                 Extraction(
                     tenant_id=version.tenant_id,
                     document_version_id=version.id,
-                    schema_version=result.extraction.schema_version,
+                    schema_version=result.schema_version,
                     data=data,
                     sha256=sha256,
                 )
@@ -332,7 +335,7 @@ class DocumentService:
             version.status = "succeeded"
             version.finished_at = _now()
             version.parser_version = f"{result.parsed.parser} {result.parsed.parser_version}"
-            version.schema_version = result.extraction.schema_version
+            version.schema_version = result.schema_version
             version.prompt_version = result.prompt_version
             version.model_id = model
             document.status = "extracted"
