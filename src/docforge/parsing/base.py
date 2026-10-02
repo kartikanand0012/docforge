@@ -17,6 +17,13 @@ class NoTextLayer(ParseError):
     """The PDF has no extractable text: a scan with OCR switched off, or blank pages."""
 
 
+class ParserLimitExceeded(ParseError):
+    """Parsing was stopped: too slow, too much memory, or the parser process died.
+
+    The message is written for the person who uploaded the file.
+    """
+
+
 class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 

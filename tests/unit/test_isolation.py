@@ -7,7 +7,12 @@ from collections.abc import Iterator
 import psutil
 import pytest
 
-from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParseError
+from docforge.parsing.base import (
+    DocumentTooLarge,
+    NoTextLayer,
+    ParseError,
+    ParserLimitExceeded,
+)
 from docforge.parsing.isolation import IsolatedParser
 from isolation_parsers import CommandParser
 
@@ -70,7 +75,7 @@ def test_an_unexpected_error_in_the_parser_is_a_parse_error(parser: IsolatedPars
 def test_a_parser_that_dies_fails_that_document_only(parser: IsolatedParser) -> None:
     first = pid(parser)
 
-    with pytest.raises(ParseError, match="stopped unexpectedly"):
+    with pytest.raises(ParserLimitExceeded, match="stopped unexpectedly"):
         parser.parse(b"exit")
 
     assert pid(parser) != first
@@ -80,7 +85,7 @@ def test_a_parser_that_takes_too_long_is_stopped(parser: IsolatedParser) -> None
     quick = IsolatedParser(CommandParser, name="command", version="0", timeout_seconds=1.0)
     try:
         first = pid(quick)
-        with pytest.raises(ParseError, match="time limit"):
+        with pytest.raises(ParserLimitExceeded, match="time limit"):
             quick.parse(b"sleep")
         assert not psutil.pid_exists(first) or psutil.Process(first).status() == "zombie"
         assert pid(quick) != first
@@ -91,7 +96,7 @@ def test_a_parser_that_takes_too_long_is_stopped(parser: IsolatedParser) -> None
 def test_a_parser_that_takes_too_much_memory_is_stopped(parser: IsolatedParser) -> None:
     first = pid(parser)
 
-    with pytest.raises(ParseError, match="memory limit"):
+    with pytest.raises(ParserLimitExceeded, match="memory limit"):
         parser.parse(b"hoard")
 
     assert pid(parser) != first

@@ -20,6 +20,7 @@ from docforge.parsing.base import (
     ParsedDocument,
     ParseError,
     Parser,
+    ParserLimitExceeded,
 )
 
 _ERRORS: dict[str, type[ParseError]] = {
@@ -53,7 +54,7 @@ class IsolatedParser:
 
     `factory` must be importable by name (a class or a `functools.partial` of one), because
     the child is started fresh rather than forked. One document is parsed at a time. A parse
-    that exceeds the time or memory limit, or whose process dies, raises `ParseError` and
+    that exceeds the time or memory limit, or whose process dies, raises `ParserLimitExceeded` and
     the next document gets a new process.
     """
 
@@ -88,27 +89,30 @@ class IsolatedParser:
             try:
                 while not connection.poll(_POLL_SECONDS):
                     if not process.is_alive():
-                        raise ParseError(
-                            "the parser process stopped unexpectedly "
-                            f"(exit code {process.exitcode})"
+                        raise ParserLimitExceeded(
+                            "Parsing was stopped: the parser process stopped unexpectedly "
+                            f"(exit code {process.exitcode})."
                         )
                     if time.monotonic() > deadline:
-                        raise ParseError(
-                            f"parsing exceeded the time limit of {self._timeout_seconds:.0f} s"
+                        raise ParserLimitExceeded(
+                            "Parsing was stopped: it exceeded the time limit of "
+                            f"{self._timeout_seconds:.0f} s."
                         )
                     used = self._rss(process)
                     if used > self._max_rss_bytes:
-                        raise ParseError(
-                            f"parsing exceeded the memory limit of "
-                            f"{self._max_rss_bytes // 1024**2} MB"
+                        raise ParserLimitExceeded(
+                            "Parsing was stopped: it exceeded the memory limit of "
+                            f"{self._max_rss_bytes // 1024**2} MB."
                         )
                 kind, payload = connection.recv()
-            except ParseError:
+            except ParserLimitExceeded:
                 self._stop()
                 raise
             except (EOFError, OSError) as error:
                 self._stop()
-                raise ParseError("the parser process stopped unexpectedly") from error
+                raise ParserLimitExceeded(
+                    "Parsing was stopped: the parser process stopped unexpectedly."
+                ) from error
         if kind != "ok":
             raise _ERRORS.get(kind, ParseError)(payload)
         return ParsedDocument.model_validate_json(payload)

@@ -36,7 +36,7 @@ from docforge.documents import (
 from docforge.extraction.pipeline import InvoicePipeline, PipelineResult
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError
-from docforge.parsing.base import ParsedDocument
+from docforge.parsing.base import ParsedDocument, ParserLimitExceeded
 from docforge.storage import MemoryObjectStore, StorageUnavailable, original_key
 from fakes import PARSED, FakeParser, ScriptedProvider
 
@@ -776,3 +776,21 @@ def test_reprocess_and_the_worker_on_one_document_never_deadlock(
     assert errors == []
     with sessions() as session:
         assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
+
+
+def test_a_document_that_exceeds_a_parser_limit_fails_with_the_reason(
+    sessions: SessionFactory,
+) -> None:
+    harness = Harness(sessions, [])
+
+    def over_the_limit(pdf: bytes) -> ParsedDocument:
+        raise ParserLimitExceeded("Parsing was stopped: it exceeded the time limit of 900 s.")
+
+    harness.parser.parse = over_the_limit  # type: ignore[method-assign]
+    ingested = harness.ingest()
+
+    assert harness.service.process(ingested.version.id) == "failed"
+    assert (
+        harness.version(ingested.version.id).error
+        == "Parsing was stopped: it exceeded the time limit of 900 s."
+    )

@@ -135,9 +135,7 @@ def _add_preview_endpoint(app: FastAPI, pipeline: InvoicePipeline, max_upload_by
         except DocumentTooLarge as error:
             raise HTTPException(413, f"The {error}.") from error
         except NoTextLayer as error:
-            raise HTTPException(
-                422, "The PDF has no text layer. Scanned documents are not supported yet."
-            ) from error
+            raise HTTPException(422, "No text could be read from the PDF.") from error
         except ParseError as error:
             logger.warning("unreadable upload: %s", error)
             raise HTTPException(422, "The file could not be read as a PDF.") from error

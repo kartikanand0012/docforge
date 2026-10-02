@@ -186,10 +186,7 @@ def test_a_pdf_without_a_text_layer_is_rejected_with_a_clear_message() -> None:
     response = upload(api)
 
     assert response.status_code == 422
-    assert (
-        response.json()["detail"]
-        == "The PDF has no text layer. Scanned documents are not supported yet."
-    )
+    assert response.json()["detail"] == "No text could be read from the PDF."
 
 
 def test_an_oversized_request_is_refused_from_its_declared_length() -> None:

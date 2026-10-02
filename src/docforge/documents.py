@@ -43,7 +43,12 @@ from docforge.extraction.pipeline import ExtractionError, PipelineResult
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError
-from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParseError
+from docforge.parsing.base import (
+    DocumentTooLarge,
+    NoTextLayer,
+    ParseError,
+    ParserLimitExceeded,
+)
 from docforge.storage import ObjectNotFound, ObjectStore, StorageUnavailable, original_key
 from docforge.trust.match import match_invoice_to_order
 
@@ -315,9 +320,11 @@ class DocumentService:
         except ObjectNotFound:
             return self._fail(version_id, turn, "The stored original is missing.")
         except NoTextLayer:
-            return self._fail(version_id, turn, "The PDF has no text layer.")
+            return self._fail(version_id, turn, "No text could be read from the PDF.")
         except DocumentTooLarge as error:
             return self._fail(version_id, turn, f"The {error}.")
+        except ParserLimitExceeded as error:
+            return self._fail(version_id, turn, str(error))
         except ParseError:
             return self._fail(version_id, turn, "The file could not be read as a PDF.")
         except ExtractionError:
