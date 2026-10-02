@@ -102,3 +102,20 @@ def test_recordings_do_not_store_the_prompt(tmp_path: Path) -> None:
 
     (recording,) = tmp_path.glob("*.json")
     assert "a very distinctive prompt body" not in recording.read_text(encoding="utf-8")
+
+
+def test_a_truncated_recording_is_a_miss_not_a_crash(tmp_path: Path) -> None:
+    inner = CountingProvider()
+    provider = RecordingProvider(tmp_path, model="fake-1", inner=inner)
+    provider.generate(request())
+    (recording,) = tmp_path.glob("*.json")
+    recording.write_text('{"key": "trunc', encoding="utf-8")
+
+    provider.generate(request())
+
+    assert inner.calls == 2
+    with pytest.raises(LLMError, match="no recorded response"):
+        (recording.write_text("{", encoding="utf-8"), RecordingProvider(tmp_path, "fake-1"))[
+            1
+        ].generate(request())
+    assert list(tmp_path.glob("*.tmp")) == []

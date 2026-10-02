@@ -27,7 +27,9 @@ RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 def two_pairs(tmp_path: Path) -> Path:
     for pair_id in ("pair_001", "pair_002"):
         shutil.copytree(FIXTURES / pair_id, tmp_path / pair_id)
-    shutil.copy(FIXTURES / "manifest.json", tmp_path / "manifest.json")
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"seed": 1, "count": 2, "pairs": ["pair_001", "pair_002"]}), encoding="utf-8"
+    )
     return tmp_path
 
 
@@ -125,3 +127,38 @@ def test_committed_baseline_is_reproduced_from_the_recordings() -> None:
 
     assert report == committed
     assert report.summary.documents == 20
+
+
+def test_committed_baseline_meets_the_accepted_floor() -> None:
+    """Re-recording a worse run must fail here, not pass silently. Lower it deliberately."""
+    summary = EvalReport.model_validate_json(BASELINE.read_text(encoding="utf-8")).summary
+
+    assert summary.documents == 20
+    assert summary.documents_fully_correct == 20
+    assert (summary.fields.wrong, summary.fields.missing) == (0, 0)
+    assert summary.extra_lines == 0
+    assert summary.null_expected.hallucinated == 0
+    assert summary.citations.accuracy >= 0.99
+
+
+def test_a_dataset_that_does_not_match_its_manifest_is_refused(
+    two_pairs: Path, raw_invoice_from_label: RawFromLabel
+) -> None:
+    shutil.rmtree(two_pairs / "pair_002")
+    (two_pairs / "manifest.json").write_text(
+        json.dumps({"seed": 1, "count": 2, "pairs": ["pair_001", "pair_002"]}), encoding="utf-8"
+    )
+    provider = ScriptedProvider(perfect_replies(two_pairs, raw_invoice_from_label))
+
+    with pytest.raises(ValueError, match="manifest"):
+        run_eval(two_pairs, InvoicePipeline(FakeParser(), provider))
+
+
+def test_report_counts_thinking_tokens(
+    two_pairs: Path, raw_invoice_from_label: RawFromLabel
+) -> None:
+    provider = ScriptedProvider(perfect_replies(two_pairs, raw_invoice_from_label))
+
+    report = run_eval(two_pairs, InvoicePipeline(FakeParser(), provider))
+
+    assert report.usage.thinking_tokens == 0

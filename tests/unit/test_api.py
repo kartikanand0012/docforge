@@ -15,6 +15,7 @@ from docforge.config import Settings
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.extraction.prompt import PROMPT_VERSION
 from docforge.llm.base import LLMError, LLMQuotaExhausted
+from docforge.parsing.base import ParsedDocument
 from fakes import PARSED, FakeParser, ScriptedProvider
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
@@ -66,6 +67,7 @@ def test_extraction_returns_the_record_with_its_run_details(perfect_reply: str) 
             "prompt_version": PROMPT_VERSION,
             "input_tokens": 100,
             "output_tokens": 50,
+            "thinking_tokens": None,
             "latency_ms": 1.0,
         }
     ]
@@ -169,3 +171,57 @@ def test_build_pipeline_uses_the_configured_model_and_limits() -> None:
     assert pipeline.provider.model == "gemini-test"
     assert pipeline.parser.name == "docling"
     assert pipeline.max_pages == 7
+
+
+def test_a_pdf_without_a_text_layer_is_rejected_with_a_clear_message() -> None:
+    class EmptyParser(FakeParser):
+        def parse(self, pdf: bytes) -> ParsedDocument:
+            return PARSED.model_copy(update={"blocks": ()})
+
+    api = TestClient(create_app(InvoicePipeline(EmptyParser(), ScriptedProvider([]))))
+
+    response = upload(api)
+
+    assert response.status_code == 422
+    assert (
+        response.json()["detail"]
+        == "The PDF has no text layer. Scanned documents are not supported yet."
+    )
+
+
+def test_an_oversized_request_is_refused_from_its_declared_length() -> None:
+    api = client([], max_upload_bytes=100)
+
+    response = api.post(
+        "/v1/extractions",
+        content=b"x" * 10,
+        headers={"content-type": "multipart/form-data; boundary=x", "content-length": "999999"},
+    )
+
+    assert response.status_code == 413
+
+
+def test_the_uploaded_filename_is_reduced_to_a_safe_base_name(perfect_reply: str) -> None:
+    api = client([perfect_reply])
+    name = "../../etc/pass\x07wd<script>" + "a" * 400 + ".pdf"
+
+    body = api.post("/v1/extractions", files={"file": (name, PDF, "application/pdf")}).json()
+
+    filename = body["document"]["filename"]
+    assert "/" not in filename
+    assert "\x07" not in filename
+    assert len(filename) <= 255
+
+
+def test_an_unexpected_failure_is_a_plain_500_without_internals(perfect_reply: str) -> None:
+    class BrokenParser(FakeParser):
+        def parse(self, pdf: bytes) -> ParsedDocument:
+            raise RuntimeError("secret internal detail /Users/someone")
+
+    pipeline = InvoicePipeline(BrokenParser(), ScriptedProvider([perfect_reply]))
+    api = TestClient(create_app(pipeline), raise_server_exceptions=False)
+
+    response = upload(api)
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal error."}

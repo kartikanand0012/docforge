@@ -13,7 +13,7 @@ from docforge.extraction.pipeline import ExtractionError, InvoicePipeline
 from docforge.extraction.prompt import PROMPT_VERSION
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError
-from docforge.parsing.base import ParseError
+from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, ParseError
 from fakes import PARSED, FakeParser, ScriptedProvider
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
@@ -155,3 +155,36 @@ def test_unreadable_pdf_is_rejected_before_parsing() -> None:
         InvoicePipeline(parser, ScriptedProvider([])).run(b"not a pdf")
 
     assert parser.calls == 0
+
+
+def test_a_pdf_with_no_text_is_rejected_instead_of_extracted_as_empty() -> None:
+    class EmptyParser(FakeParser):
+        def parse(self, pdf: bytes) -> ParsedDocument:
+            return PARSED.model_copy(update={"blocks": ()})
+
+    provider = ScriptedProvider([])
+
+    with pytest.raises(NoTextLayer):
+        InvoicePipeline(EmptyParser(), provider).run(PDF)
+
+    assert provider.requests == []
+
+
+def test_a_document_too_long_for_one_prompt_is_rejected_before_the_model_is_called() -> None:
+    provider = ScriptedProvider([])
+
+    with pytest.raises(DocumentTooLarge, match="characters"):
+        InvoicePipeline(FakeParser(), provider, max_prompt_chars=20).run(PDF)
+
+    assert provider.requests == []
+
+
+def test_an_extraction_without_line_items_is_reported(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = raw_invoice_from_label(LABEL)
+    raw["lines"] = []
+
+    extraction = extract(raw)
+
+    assert ("lines", "no_line_items") in {(issue.path, issue.code) for issue in extraction.issues}

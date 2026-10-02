@@ -54,3 +54,15 @@ def test_a_cached_parse_from_another_parser_version_is_redone(tmp_path: Path) ->
 def test_reports_the_inner_parser_identity(tmp_path: Path) -> None:
     assert CachingParser(tmp_path, FakeParser()).name == "fake"
     assert CachingParser(tmp_path).name == "cached"
+
+
+def test_a_truncated_cache_file_is_a_miss_not_a_crash(tmp_path: Path) -> None:
+    inner = FakeParser()
+    parser = CachingParser(tmp_path, inner)
+    parser.parse(b"pdf one")
+    (cached,) = tmp_path.glob("*.json")
+    cached.write_text('{"parser": "fa', encoding="utf-8")
+
+    assert parser.parse(b"pdf one") == PARSED
+    assert inner.calls == 2
+    assert list(tmp_path.glob("*.tmp")) == []

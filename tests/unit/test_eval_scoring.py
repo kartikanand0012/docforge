@@ -247,3 +247,43 @@ def test_summary_tallies_fields_classes_layouts_and_citations(
     assert summary.null_expected.hallucinated == 1
     assert summary.citations.checked == total - 1  # the missing field has nothing to cite
     assert summary.citations.accuracy == 1.0
+
+
+def test_the_printed_state_code_is_scored(intra: Perfect) -> None:
+    raw = intra.changed()
+    raw["place_of_supply"]["text"] = "Gujarat (99)"
+
+    score = intra.score(raw)
+
+    assert outcome(intra.score(), "place_of_supply_code") == "correct"
+    assert outcome(score, "place_of_supply") == "correct"
+    assert outcome(score, "place_of_supply_code") == "wrong"
+    assert not score.fully_correct
+
+
+def test_invented_lines_are_counted_in_the_summary(intra: Perfect) -> None:
+    raw = intra.changed()
+    raw["lines"] += [copy.deepcopy(raw["lines"][0]), copy.deepcopy(raw["lines"][1])]
+
+    summary = summarize([intra.score(raw), intra.score()])
+
+    assert summary.extra_lines == 2
+    assert summary.line_count_matches == 1
+
+
+def test_a_citation_on_another_page_does_not_count(intra: Perfect) -> None:
+    moved = intra.parsed.model_copy(
+        update={"blocks": tuple(b.model_copy(update={"page": 2}) for b in intra.parsed.blocks)}
+    )
+    reply = RawInvoice.model_validate(intra.raw)
+
+    score = score_invoice(intra.label, normalize_invoice(reply, moved), moved)
+
+    assert not any(field.cited for field in score.scored)
+
+
+def test_a_failed_document_gets_no_credit_for_null_fields(intra: Perfect) -> None:
+    score = score_invoice(intra.label, None, intra.parsed, error="model reply rejected")
+
+    assert {field.outcome for field in score.fields} == {"missing"}
+    assert summarize([score]).null_expected.total == 0

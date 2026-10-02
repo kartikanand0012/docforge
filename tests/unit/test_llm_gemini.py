@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 from typing import Any
 
+import httpx
 import pytest
 from google.genai import errors
 from pydantic import BaseModel
@@ -190,3 +191,44 @@ def test_an_empty_reply_is_an_error() -> None:
 def test_needs_a_key_or_a_client() -> None:
     with pytest.raises(ValueError, match="api_key"):
         GeminiProvider(model="gemini-test")
+
+
+@pytest.mark.parametrize(
+    "failure", [httpx.ReadTimeout("timed out"), httpx.ConnectError("no route to host")]
+)
+def test_network_failures_are_retried_then_reported_as_provider_errors(
+    failure: Exception,
+) -> None:
+    sleeps: list[float] = []
+    gemini, models = provider([failure] * 4, sleeps)
+
+    with pytest.raises(LLMError, match="could not reach"):
+        gemini.generate(REQUEST)
+
+    assert len(models.calls) == 4
+    assert len(sleeps) == 3
+
+
+def test_output_is_capped() -> None:
+    gemini, models = provider([reply()])
+
+    gemini.generate(REQUEST)
+
+    assert models.calls[0]["config"].max_output_tokens == 32768
+
+
+def test_thinking_tokens_are_reported_separately() -> None:
+    thoughtful = reply()
+    thoughtful.usage_metadata.thoughts_token_count = 900
+    gemini, _ = provider([thoughtful])
+
+    response = gemini.generate(REQUEST)
+
+    assert response.thinking_tokens == 900
+    assert response.output_tokens == 30
+
+
+def test_a_real_client_is_built_with_a_request_timeout() -> None:
+    gemini = GeminiProvider(model="gemini-test", api_key="not-a-real-key", timeout_seconds=42)
+
+    assert gemini.timeout_seconds == 42

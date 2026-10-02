@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -64,3 +65,12 @@ def test_page_count_of_a_fixture_invoice() -> None:
 def test_page_count_rejects_unreadable_pdfs(data: bytes) -> None:
     with pytest.raises(ParseError):
         pdf_page_count(data)
+
+
+def test_page_count_can_be_called_from_many_threads() -> None:
+    pdf = (FIXTURES / "pair_001" / "invoice.pdf").read_bytes()
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        counts = list(pool.map(pdf_page_count, [pdf] * 64))
+
+    assert counts == [1] * 64

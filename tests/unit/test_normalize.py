@@ -103,3 +103,43 @@ def test_parse_place_of_supply(raw: str, expected: tuple[str, str | None]) -> No
 def test_clean_text_collapses_whitespace_and_treats_blank_as_missing() -> None:
     assert clean_text("  Jalaram \n Pharmacy ") == "Jalaram Pharmacy"
     assert clean_text("   ") is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "12,50",  # decimal comma: must not become 1250
+        "1,2",
+        "1,234,56.00",
+        "1Rs2",  # a currency mark in the middle of the digits
+        "5%5",
+        "٣٤.٥",  # non-ASCII digits
+    ],
+)
+def test_parse_decimal_rejects_ambiguous_grouping_and_foreign_digits(raw: str) -> None:
+    assert parse_decimal(raw) is None
+
+
+@pytest.mark.parametrize("raw", ["1,2", "12,50", "٣٤"])
+def test_parse_int_rejects_ambiguous_grouping_and_foreign_digits(raw: str) -> None:
+    assert parse_int(raw) is None
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("1,200", 1200), ("12,34,567", 1234567)])
+def test_parse_int_accepts_western_and_indian_grouping(raw: str, expected: int) -> None:
+    assert parse_int(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["06/0028", "06/028", "\uff10\uff16/28"])
+def test_parse_month_rejects_odd_years_and_foreign_digits(raw: str) -> None:
+    assert parse_month(raw) is None
+
+
+@pytest.mark.parametrize("raw", ["02-09/2026", "\uff12-Sep-2026", "02/Sep-2026"])
+def test_parse_date_rejects_mixed_separators_and_foreign_digits(raw: str) -> None:
+    assert parse_date(raw) is None
+
+
+def test_a_bare_code_is_not_taken_for_a_state_name() -> None:
+    assert parse_place_of_supply("24") == ("24", None)
+    assert parse_place_of_supply("Gujarat - 24") == ("Gujarat", "24")
