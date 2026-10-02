@@ -103,6 +103,23 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C1 Walking skeleton (2026-10-02)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| Design a document pipeline end to end | Parse to positioned blocks, send block text with ids to the model, get back printed strings plus the ids they came from, convert to typed values in code. Each stage sits behind an interface. | `src/docforge/extraction/pipeline.py`, `src/docforge/parsing/base.py`, `src/docforge/llm/base.py` |
+| How do you stop a model reformatting or inventing values? | The model only copies text and cites blocks. Dates, amounts and quantities are parsed by code, and a string code cannot read becomes null with an issue, never a guess. Inapplicable tax fields must stay null: 0 of 26 were invented. | `src/docforge/extraction/normalize.py`, `src/docforge/extraction/prompt.py` |
+| Structured output reliability | Native structured output gave 20 of 20 schema-valid replies, so the retry library was not needed. One retry with the validation errors is built in and tested. | `InvoicePipeline.extract` in `src/docforge/extraction/pipeline.py` |
+| "Your score is 100%. Do you believe it?" | No, not at first. Checked it by a second route that bypasses the scorer, then had it reviewed. The review found the scorer never scored the state code, ignored invented lines in the headline, and accepted citations on the wrong page. Fixed, and added a floor test so a worse baseline cannot be re-recorded silently. Also stated plainly what the set does not cover. | `src/docforge/evals/scoring.py`, `tests/unit/test_eval_run.py`, `docs/progress.md` |
+| How do you make evals deterministic and free to run in CI? | Record parser output and model replies keyed by content hash and by model, prompt and schema. CI replays them with no key and no models, and fails if the committed report changes. | `src/docforge/llm/replay.py`, `src/docforge/parsing/cache.py`, `.github/workflows/ci.yml` |
+| What happens when you hit a rate limit? | Hit a real one: 20 requests per day per model on the free tier, used up by retries. A per-day quota error is now distinguished from a per-minute one and not retried; the eval records each reply as it arrives and resumes. | `_daily_quota_exhausted` in `src/docforge/llm/gemini.py`, `src/docforge/evals/__main__.py` |
+| How do you choose a model? | By measurement on the task: the larger model spent about 6,700 thinking tokens and 40 s per invoice for the same output the lite model gave in 12 s. Model id is pinned, never an alias. | `docs/progress.md` (C1, Departures) |
+| Where does your latency go, and how would you cut it? | p95 is 26.6 s against a 15 s goal. About 1.2 s is parsing; the rest is the model writing roughly 5,000 output tokens, because each field is an object with its citations. A compact reply format is the lever. | `evals/baselines/invoice.json` (`usage`) |
+| Parser trade-offs you actually saw | Docling placed every one of 2,599 labelled values in a block at the right position, but its table structure was wrong on every invoice: 13 or 14 columns for 15, a merged serial number, misaligned headers in one layout. | `tests/slow/test_docling_parser.py` |
+| Prompt injection in documents | Document text is fenced as data and the model has no tools. Review showed the fence could be disguised with zero-width characters; text is now normalised and both fence tags neutralised. Forged block ids in document text are still open until cited text is verified. | `_text` in `src/docforge/extraction/prompt.py` |
+| A failure mode that returns success | A scanned PDF has no text layer, so the model received an empty document and returned a valid, all-null record with HTTP 200. Now refused with 422. | `NoTextLayer` in `src/docforge/parsing/base.py` |
+| Thread safety in a Python service | The PDF library is not thread-safe and was called from the web framework's thread pool; it is behind a lock, and the parser serialises conversions. Uploads still queue without a limit until jobs become asynchronous. | `src/docforge/parsing/pdf.py`, `src/docforge/parsing/docling_parser.py` |
+
 ### C0 Foundations (2026-10-02)
 
 | Question it answers | What happened in this project | Where to point |
