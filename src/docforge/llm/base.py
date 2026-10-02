@@ -10,6 +10,10 @@ class LLMError(Exception):
     """The provider could not produce a reply."""
 
 
+class LLMQuotaExhausted(LLMError):
+    """A quota that will not reset soon (for example per day) is used up."""
+
+
 @dataclass(frozen=True)
 class LLMRequest:
     system: str

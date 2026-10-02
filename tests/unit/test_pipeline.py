@@ -12,58 +12,13 @@ import pytest
 from docforge.extraction.pipeline import ExtractionError, InvoicePipeline
 from docforge.extraction.prompt import PROMPT_VERSION
 from docforge.extraction.schema import InvoiceExtraction
-from docforge.llm.base import LLMError, LLMRequest, LLMResponse
-from docforge.parsing.base import BBox, Block, Page, ParsedDocument, ParseError
+from docforge.llm.base import LLMError
+from docforge.parsing.base import ParseError
+from fakes import PARSED, FakeParser, ScriptedProvider
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
 PDF = (FIXTURES / "pair_001" / "invoice.pdf").read_bytes()
 LABEL = json.loads((FIXTURES / "pair_001" / "label.json").read_text(encoding="utf-8"))
-
-PARSED = ParsedDocument(
-    parser="fake",
-    parser_version="0",
-    pages=(Page(number=1, width=842, height=595),),
-    blocks=tuple(
-        Block(id=f"b{n}", kind="text", text=f"text {n}", page=1, bbox=BBox(x0=0, y0=0, x1=1, y1=1))
-        for n in range(1, 4)
-    ),
-)
-
-
-class FakeParser:
-    name = "fake"
-    version = "0"
-
-    def __init__(self) -> None:
-        self.calls = 0
-
-    def parse(self, pdf: bytes) -> ParsedDocument:
-        self.calls += 1
-        return PARSED
-
-
-class ScriptedProvider:
-    name = "fake"
-    model = "fake-1"
-
-    def __init__(self, replies: list[str | Exception]) -> None:
-        self.replies = replies
-        self.requests: list[LLMRequest] = []
-
-    def generate(self, request: LLMRequest) -> LLMResponse:
-        self.requests.append(request)
-        reply = self.replies.pop(0)
-        if isinstance(reply, Exception):
-            raise reply
-        return LLMResponse(
-            text=reply,
-            provider=self.name,
-            model=self.model,
-            input_tokens=100,
-            output_tokens=50,
-            latency_ms=1.0,
-        )
-
 
 RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 

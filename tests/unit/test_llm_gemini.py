@@ -7,7 +7,7 @@ import pytest
 from google.genai import errors
 from pydantic import BaseModel
 
-from docforge.llm.base import LLMError, LLMRequest
+from docforge.llm.base import LLMError, LLMQuotaExhausted, LLMRequest
 from docforge.llm.gemini import GeminiProvider
 
 
@@ -111,6 +111,50 @@ def test_waits_as_long_as_the_api_asks_when_rate_limited() -> None:
     gemini.generate(REQUEST)
 
     assert sleeps == [7.0]
+
+
+def test_an_exhausted_daily_quota_is_not_retried() -> None:
+    # Seen on the free tier: retrying cannot succeed until the quota resets.
+    exhausted = errors.APIError(
+        429,
+        {
+            "error": {
+                "message": "You exceeded your current quota",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                    {
+                        "violations": [
+                            {"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}
+                        ]
+                    },
+                    {"retryDelay": "12s"},
+                ],
+            }
+        },
+    )
+    sleeps: list[float] = []
+    gemini, models = provider([exhausted, reply()], sleeps)
+
+    with pytest.raises(LLMQuotaExhausted, match="daily quota"):
+        gemini.generate(REQUEST)
+
+    assert len(models.calls) == 1
+    assert sleeps == []
+
+
+def test_errors_carry_the_api_status_for_diagnosis() -> None:
+    gemini, _ = provider([api_error(400)])
+
+    with pytest.raises(LLMError, match="status 400 X: status 400"):
+        gemini.generate(REQUEST)
+
+
+def test_automatic_function_calling_is_off() -> None:
+    gemini, models = provider([reply()])
+
+    gemini.generate(REQUEST)
+
+    assert models.calls[0]["config"].automatic_function_calling.disable is True
 
 
 def test_gives_up_after_the_last_attempt() -> None:

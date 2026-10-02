@@ -7,7 +7,7 @@ from typing import Any
 
 from google.genai import errors, types
 
-from docforge.llm.base import LLMError, LLMRequest, LLMResponse
+from docforge.llm.base import LLMError, LLMQuotaExhausted, LLMRequest, LLMResponse
 
 _RETRYABLE = {429, 500, 502, 503, 504}
 _MAX_DELAY = 90.0
@@ -26,6 +26,15 @@ def _suggested_delay(details: object) -> float | None:
             if (found := _suggested_delay(item)) is not None:
                 return found
     return None
+
+
+def _daily_quota_exhausted(details: object) -> bool:
+    """True when a 429 names a per-day quota, which a short wait cannot clear."""
+    if isinstance(details, dict):
+        if "PerDay" in str(details.get("quotaId", "")):
+            return True
+        details = list(details.values())
+    return isinstance(details, list) and any(_daily_quota_exhausted(item) for item in details)
 
 
 class GeminiProvider:
@@ -59,6 +68,8 @@ class GeminiProvider:
             temperature=0,
             response_mime_type="application/json",
             response_schema=request.schema,
+            # No tools are offered, so the SDK's function-calling loop has nothing to do.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
         for attempt in range(1, self._max_attempts + 1):
             started = time.perf_counter()
@@ -67,8 +78,13 @@ class GeminiProvider:
                     model=self.model, contents=request.prompt, config=config
                 )
             except errors.APIError as error:
+                summary = f"status {error.code} {error.status}: {error.message}"
+                if error.code == 429 and _daily_quota_exhausted(error.details):
+                    raise LLMQuotaExhausted(
+                        f"Gemini daily quota for {self.model} is used up ({summary})"
+                    ) from error
                 if error.code not in _RETRYABLE or attempt == self._max_attempts:
-                    raise LLMError(f"Gemini request failed with status {error.code}") from error
+                    raise LLMError(f"Gemini request failed with {summary}") from error
                 # Honour the server's retry delay; otherwise back off exponentially.
                 delay = _suggested_delay(error.details) or self._base_delay * 2 ** (attempt - 1)
                 self._sleep(min(delay, _MAX_DELAY))
