@@ -24,8 +24,8 @@ migrate: ## Apply database migrations
 test: ## Run all tests (integration tests need `make up`)
 	uv run pytest
 
-test-unit: ## Run tests that need no services
-	uv run pytest -m "not integration" --no-cov
+test-unit: ## Run fast tests that need no services or models
+	uv run pytest -m "not integration and not docling" --no-cov
 
 lint: ## Lint, format check and type check
 	uv run ruff check .
