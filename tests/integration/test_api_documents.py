@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from docforge.api.app import create_app
@@ -16,7 +17,7 @@ from docforge.db.models import DocumentVersion
 from docforge.db.session import SessionFactory
 from docforge.documents import DocumentService
 from docforge.extraction.pipeline import InvoicePipeline
-from docforge.storage import MemoryObjectStore
+from docforge.storage import MemoryObjectStore, StorageUnavailable
 from fakes import FakeParser, ScriptedProvider
 
 pytestmark = pytest.mark.integration
@@ -236,3 +237,32 @@ def test_reprocess_is_refused_while_the_document_is_still_being_processed(api: A
     assert response.status_code == 409
     assert response.json()["detail"] == "This document is still being processed."
     assert len(api.queued) == 1
+
+
+def test_an_upload_while_storage_is_down_is_service_unavailable(api: Api) -> None:
+    class DownStore(MemoryObjectStore):
+        def exists(self, key: str) -> bool:
+            raise StorageUnavailable("connection refused")
+
+    api.service._store = DownStore()
+
+    response = api.upload()
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Storage is unavailable. Try again later."
+    assert api.queued == []
+
+
+def test_a_database_outage_is_service_unavailable(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def down(*args: object, **kwargs: object) -> None:
+        raise OperationalError("SELECT 1", {}, Exception("connection refused"))
+
+    monkeypatch.setattr(api.service, "detail", down)
+    client = TestClient(api.client.app, raise_server_exceptions=False)
+
+    response = client.get(f"/v1/documents/{uuid.uuid4()}")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "The database is unavailable. Try again later."

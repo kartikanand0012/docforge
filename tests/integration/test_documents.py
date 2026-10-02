@@ -35,7 +35,7 @@ from docforge.documents import (
 from docforge.extraction.pipeline import InvoicePipeline, PipelineResult
 from docforge.llm.base import LLMError
 from docforge.parsing.base import ParsedDocument
-from docforge.storage import MemoryObjectStore, original_key
+from docforge.storage import MemoryObjectStore, StorageUnavailable, original_key
 from fakes import PARSED, FakeParser, ScriptedProvider
 
 pytestmark = pytest.mark.integration
@@ -606,3 +606,104 @@ def test_many_documents_processed_at_once_all_finish_and_the_chain_holds(
     with sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
     assert (report.consistent, report.entries) == (True, 3 * len(pairs))
+
+
+# --- verification pass before merging C2 ----------------------------------------------------
+
+
+def test_a_worker_killed_after_the_model_call_but_before_the_write_loses_nothing(
+    sessions: SessionFactory, perfect: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The narrowest window: the model has answered, nothing is stored yet."""
+    harness = Harness(sessions, [perfect, perfect])
+    ingested = harness.ingest()
+    write_result = harness.service._complete
+    deaths: list[int] = []
+
+    def die_once(version_id: uuid.UUID, turn: int, result: PipelineResult) -> Any:
+        if not deaths:
+            deaths.append(turn)
+            raise Killed()
+        return write_result(version_id, turn, result)
+
+    monkeypatch.setattr(harness.service, "_complete", die_once)
+
+    with pytest.raises(Killed):
+        harness.service.process(ingested.version.id)
+    assert harness.count(Extraction) == 0
+
+    assert harness.service.process(ingested.version.id) == "succeeded"
+    assert harness.count(Extraction) == 1
+    assert harness.count(ModelRun) == 1
+    assert len(harness.provider.requests) == 2  # the model call is repeated; the record is not
+
+
+def test_simultaneous_reprocess_requests_create_one_new_version(
+    sessions: SessionFactory, perfect: str
+) -> None:
+    harness = Harness(sessions, [perfect])
+    ingested = harness.ingest()
+    harness.service.process(ingested.version.id)
+
+    def reprocess(_: int) -> str:
+        try:
+            harness.service.reprocess(
+                tenant_id=DEFAULT_TENANT_ID, document_id=ingested.document.id, actor="api:x"
+            )
+        except ReprocessInProgress:
+            return "refused"
+        return "queued"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = sorted(pool.map(reprocess, range(8)))
+
+    assert outcomes == ["queued"] + ["refused"] * 7
+    assert harness.count(DocumentVersion) == 2
+    assert len(harness.enqueued) == 2
+
+
+def test_simultaneous_uploads_of_one_file_create_one_document(sessions: SessionFactory) -> None:
+    harness = Harness(sessions, [])
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: harness.ingest(), range(8)))
+
+    assert sorted(result.created for result in results) == [False] * 7 + [True]
+    assert len({result.document.id for result in results}) == 1
+    assert harness.count(Document) == 1
+    assert len(harness.enqueued) == 1
+
+
+class DownStore(MemoryObjectStore):
+    def exists(self, key: str) -> bool:
+        raise StorageUnavailable("connection refused")
+
+    def get(self, key: str) -> bytes:
+        raise StorageUnavailable("connection refused")
+
+
+def test_an_upload_while_storage_is_down_records_nothing(sessions: SessionFactory) -> None:
+    harness = Harness(sessions, [])
+    harness.service._store = DownStore()
+
+    with pytest.raises(StorageUnavailable):
+        harness.ingest()
+
+    assert harness.count(Document) == 0
+    assert harness.enqueued == []
+
+
+def test_processing_while_storage_is_down_is_retried_later(
+    sessions: SessionFactory, perfect: str
+) -> None:
+    harness = Harness(sessions, [perfect])
+    ingested = harness.ingest()
+    working = harness.service._store
+    harness.service._store = DownStore()
+
+    with pytest.raises(TransientProcessingError):
+        harness.service.process(ingested.version.id)
+    assert harness.version(ingested.version.id).status == "queued"
+
+    harness.service._store = working
+    assert harness.service.process(ingested.version.id) == "succeeded"

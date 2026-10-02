@@ -11,6 +11,7 @@ from docforge.storage import (
     ObjectNotFound,
     ObjectStore,
     S3ObjectStore,
+    StorageUnavailable,
     original_key,
 )
 
@@ -58,3 +59,15 @@ def test_original_key_is_built_from_tenant_and_content_hash() -> None:
     assert original_key(DEFAULT_TENANT_ID, "ab" * 32) == (
         f"originals/{DEFAULT_TENANT_ID}/{'ab' * 32}.pdf"
     )
+
+
+def test_an_unreachable_store_is_reported_as_unavailable(settings: Settings) -> None:
+    unreachable = settings.model_copy(update={"s3_endpoint_url": "http://127.0.0.1:1"})
+    store = S3ObjectStore.from_settings(unreachable)
+
+    with pytest.raises(StorageUnavailable):
+        store.exists("anything")
+    with pytest.raises(StorageUnavailable):
+        store.put("anything", b"x", "application/pdf")
+    with pytest.raises(StorageUnavailable):
+        store.get("anything")
