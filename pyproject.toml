@@ -11,6 +11,7 @@ dependencies = [
     "docling>=2.132.0",
     "fastapi>=0.142.2",
     "google-genai>=2.27.0",
+    "procrastinate>=3.10.0",
     "psycopg[binary]>=3.2",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",

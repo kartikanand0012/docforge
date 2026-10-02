@@ -62,3 +62,15 @@ estimate for the rest.
    must be removed from history before it goes public.
 5. Build order: demo-able cut first (C0–C5, then C9), then C6–C8.
 6. Commit and push after every passing step.
+
+## Decisions (agreed 2026-10-02, after C1)
+
+7. **General, not pharma-only.** DocForge is a general document-intelligence service. Each document
+   type is a pack (schema, prompt, validators, eval set) registered by name. The pharma distributor
+   invoice + PO pack stays the first and lead demo; it replaces decision 1's framing of the product,
+   not the build order. A second, non-pharma document type is added after C5 to prove the seam.
+8. **Eval and cost page moves into C5.** A read-only page showing accuracy by field class, tokens
+   and latency per document, built from `evals/baselines/*.json`.
+9. **The C5 demo ends with an action.** A matched invoice posts an approval draft; a mismatch opens
+   a review task and fires a webhook. The webhook delivery part of C6 moves into C5.
+10. **Development model:** `gemini-3.5-flash-lite`, pinned (see `progress.md`, C1).

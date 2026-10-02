@@ -42,8 +42,9 @@ def insert_document(engine: Engine, tenant_id: uuid.UUID, sha256: str = SHA) -> 
     with engine.begin() as conn:
         document_id: uuid.UUID = conn.execute(
             text(
-                "INSERT INTO documents (tenant_id, sha256, storage_key, filename) "
-                "VALUES (:tenant_id, :sha256, :key, 'invoice.pdf') RETURNING id"
+                "INSERT INTO documents "
+                "(tenant_id, doc_type, sha256, storage_key, filename, size_bytes) "
+                "VALUES (:tenant_id, 'invoice', :sha256, :key, 'invoice.pdf', 1) RETURNING id"
             ),
             {"tenant_id": tenant_id, "sha256": sha256, "key": f"{tenant_id}/{sha256}"},
         ).scalar_one()
@@ -110,7 +111,10 @@ def test_document_requires_an_existing_tenant(migrated: Engine) -> None:
 
 def test_version_numbers_are_unique_per_document(migrated: Engine) -> None:
     document_id = insert_document(migrated, insert_tenant(migrated, "acme"))
-    insert_version = text("INSERT INTO document_versions (document_id, version_no) VALUES (:id, 1)")
+    insert_version = text(
+        "INSERT INTO document_versions (tenant_id, document_id, version_no) "
+        "SELECT tenant_id, id, 1 FROM documents WHERE id = :id"
+    )
     with migrated.begin() as conn:
         conn.execute(insert_version, {"id": document_id})
 
