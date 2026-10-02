@@ -7,6 +7,7 @@ license = "MIT"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.13",
+    "boto3>=1.43.107",
     "psycopg[binary]>=3.2",
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
@@ -55,9 +56,9 @@ select = ["E", "F", "I", "B", "UP", "S", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests", "migrations"]
+files = ["src", "tests"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["reportlab.*"]
+module = ["boto3.*", "botocore.*", "reportlab.*"]
 ignore_missing_imports = true

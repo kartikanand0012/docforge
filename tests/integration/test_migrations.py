@@ -51,7 +51,7 @@ def insert_document(engine: Engine, tenant_id: uuid.UUID, sha256: str = SHA) -> 
 
 
 def test_upgrade_creates_core_tables(migrated: Engine) -> None:
-    assert CORE_TABLES <= set(inspect(migrated).get_table_names())
+    assert set(inspect(migrated).get_table_names()) >= CORE_TABLES
 
 
 def test_upgrade_enables_pgvector(migrated: Engine) -> None:
@@ -68,7 +68,7 @@ def test_downgrade_removes_core_tables_and_upgrade_restores_them(empty_database_
     assert not CORE_TABLES & table_names(empty_database_url)
 
     command.upgrade(config, "head")
-    assert CORE_TABLES <= table_names(empty_database_url)
+    assert table_names(empty_database_url) >= CORE_TABLES
 
 
 def test_new_document_starts_in_received_status(migrated: Engine) -> None:
@@ -110,9 +110,7 @@ def test_document_requires_an_existing_tenant(migrated: Engine) -> None:
 
 def test_version_numbers_are_unique_per_document(migrated: Engine) -> None:
     document_id = insert_document(migrated, insert_tenant(migrated, "acme"))
-    insert_version = text(
-        "INSERT INTO document_versions (document_id, version_no) VALUES (:id, 1)"
-    )
+    insert_version = text("INSERT INTO document_versions (document_id, version_no) VALUES (:id, 1)")
     with migrated.begin() as conn:
         conn.execute(insert_version, {"id": document_id})
 

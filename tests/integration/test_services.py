@@ -2,8 +2,11 @@
 
 import urllib.error
 import urllib.request
+from typing import Any
 
+import boto3
 import pytest
+from botocore.exceptions import ClientError
 from sqlalchemy import create_engine, text
 
 from docforge.config import Settings
@@ -33,10 +36,24 @@ def test_object_store_is_live(settings: Settings) -> None:
     assert http_status(f"{settings.s3_endpoint_url}/minio/health/live") == 200
 
 
+def s3_client(settings: Settings) -> Any:
+    return boto3.client(
+        "s3",
+        endpoint_url=settings.s3_endpoint_url,
+        aws_access_key_id=settings.s3_access_key,
+        aws_secret_access_key=settings.s3_secret_key.get_secret_value(),
+        region_name="us-east-1",
+    )
+
+
 def test_originals_bucket_exists(settings: Settings) -> None:
-    # Anonymous HEAD: 403 means the bucket exists but is private, 404 means it is missing.
-    assert http_status(f"{settings.s3_endpoint_url}/{settings.s3_bucket}") == 403
+    response = s3_client(settings).head_bucket(Bucket=settings.s3_bucket)
+
+    assert response["ResponseMetadata"]["HTTPStatusCode"] == 200
 
 
 def test_unknown_bucket_is_reported_missing(settings: Settings) -> None:
-    assert http_status(f"{settings.s3_endpoint_url}/no-such-bucket-docforge") == 404
+    with pytest.raises(ClientError) as error:
+        s3_client(settings).head_bucket(Bucket="no-such-bucket-docforge")
+
+    assert error.value.response["Error"]["Code"] == "404"
