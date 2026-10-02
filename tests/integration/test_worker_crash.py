@@ -134,6 +134,7 @@ def test_killing_a_worker_mid_job_loses_nothing(
         "processing.started",
         "processing.started",
         "extraction.created",
+        "assessment.created",
     ]
 
     with engine.connect() as conn:

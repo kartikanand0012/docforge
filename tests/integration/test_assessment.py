@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from fakes import MappedParser, ScriptedProvider, cited, reprint
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
@@ -21,9 +20,10 @@ from docforge.db.models import AssessmentRecord, AuditEntry, DocumentVersion, Ma
 from docforge.db.session import SessionFactory
 from docforge.documents import DocumentService
 from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
-from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
+from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
 from docforge.parsing.base import ParsedDocument
 from docforge.storage import MemoryObjectStore
+from fakes import MappedParser, ScriptedProvider, cited, reprint
 
 pytestmark = pytest.mark.integration
 
@@ -57,14 +57,15 @@ class World:
         parser.add(self.order_pdf, self.order_parsed)
         replies = [json.dumps(self.invoice_raw)] * 3
         order_replies = [json.dumps(self.order_raw)] * 3
+        order_pipeline: ExtractionPipeline[PurchaseOrderExtraction] = ExtractionPipeline(
+            parser, ScriptedProvider(order_replies), PURCHASE_ORDER_SPEC
+        )
         self.service = DocumentService(
             self.sessions,
             MemoryObjectStore(),
             {
                 "invoice": InvoicePipeline(parser, ScriptedProvider(replies)),
-                "purchase_order": ExtractionPipeline(
-                    parser, ScriptedProvider(order_replies), PURCHASE_ORDER_SPEC
-                ),
+                "purchase_order": order_pipeline,
             },
             lambda session, version: self.queued.append(version.id),
         )
@@ -136,7 +137,7 @@ def test_the_audit_entry_summarises_the_assessment(world: World, sessions: Sessi
     assert entry.details == {
         "version_no": 1,
         "decision": "review",
-        "values_flagged": 1,
+        "values_flagged": 3,  # the line amount and the two tax totals it no longer adds up to
         "checks_failed": 2,
     }
 
@@ -273,4 +274,3 @@ def test_versions_reference(sessions: SessionFactory, world: World) -> None:
         record = session.scalars(select(AssessmentRecord)).one()
         version = session.get_one(DocumentVersion, record.document_version_id)
     assert version.document_id == document_id
-

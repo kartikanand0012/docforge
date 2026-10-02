@@ -119,6 +119,33 @@ class ModelRun(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class AssessmentRecord(Base):
+    """The checks run on one version and their outcome. Immutable, like the extraction."""
+
+    __tablename__ = "assessments"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_version_id: Mapped[uuid.UUID] = _version()
+    decision: Mapped[str] = mapped_column(Text)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class MatchRecord(Base):
+    """One comparison of an invoice version with a purchase-order version. Immutable."""
+
+    __tablename__ = "matches"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    invoice_version_id: Mapped[uuid.UUID] = _version()
+    order_version_id: Mapped[uuid.UUID] = _version()
+    decision: Mapped[str] = mapped_column(Text)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = _created_at()
+
+
 class AuditEntry(Base):
     """Append-only and hash-chained per tenant; see `docforge.audit`."""
 

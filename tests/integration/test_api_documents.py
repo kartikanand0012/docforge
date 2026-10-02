@@ -175,11 +175,12 @@ def test_audit_trail_lists_every_step_and_the_chain_verifies(api: Api) -> None:
         "document.received",
         "processing.started",
         "extraction.created",
+        "assessment.created",
     ]
     assert trail[0]["actor"] == "api:anonymous"
     assert trail[0]["prev_hash"] is None
     assert trail[1]["prev_hash"] == trail[0]["hash"]
-    assert verification == {"consistent": True, "entries": 3, "first_bad_id": None, "reason": None}
+    assert verification == {"consistent": True, "entries": 4, "first_bad_id": None, "reason": None}
 
 
 @pytest.mark.parametrize(
