@@ -1,5 +1,7 @@
 """Stand-ins for the parser and the model, shared by the pipeline and API tests."""
 
+from collections.abc import Sequence
+
 from docforge.llm.base import LLMRequest, LLMResponse
 from docforge.parsing.base import BBox, Block, Page, ParsedDocument
 
@@ -32,8 +34,8 @@ class ScriptedProvider:
     name = "fake"
     model = "fake-1"
 
-    def __init__(self, replies: list[str | BaseException]) -> None:
-        self.replies = replies
+    def __init__(self, replies: Sequence[str | BaseException]) -> None:
+        self.replies = list(replies)
         self.requests: list[LLMRequest] = []
 
     def generate(self, request: LLMRequest) -> LLMResponse:

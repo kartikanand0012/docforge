@@ -32,6 +32,14 @@ def _created_at() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=_NOW)
 
 
+class Tenant(Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[uuid.UUID] = _id()
+    name: Mapped[str] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = _created_at()
+
+
 class Document(Base):
     """One uploaded file. `(tenant_id, sha256)` is unique: the content hash is the identity."""
 

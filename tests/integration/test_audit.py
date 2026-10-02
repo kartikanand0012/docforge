@@ -35,11 +35,11 @@ def entries(sessions: SessionFactory, tenant_id: uuid.UUID = DEFAULT_TENANT_ID) 
         return list(session.scalars(query))
 
 
-def tamper(engine: Engine, statement: str) -> None:
+def tamper(engine: Engine, statement: str, **params: object) -> None:
     """Change the log the way someone with table-owner rights could."""
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE audit_log DISABLE TRIGGER USER"))
-        conn.execute(text(statement))
+        conn.execute(text(statement), params)
         conn.execute(text("ALTER TABLE audit_log ENABLE TRIGGER USER"))
 
 
@@ -136,7 +136,10 @@ def test_a_rewritten_entry_with_a_recomputed_hash_breaks_the_link_after_it(
     )
 
     tamper(
-        engine, f"UPDATE audit_log SET actor = 'forger', hash = '{forged}' WHERE id = {target.id}"
+        engine,
+        "UPDATE audit_log SET actor = 'forger', hash = :hash WHERE id = :id",
+        hash=forged,
+        id=target.id,
     )
 
     with sessions() as session:
