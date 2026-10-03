@@ -142,13 +142,17 @@ def create_app(
         # question, and neither belongs in a third-party trace store.
         with traced(request.method) as span:
             span.set_attribute("http.request.method", request.method)
-            response = await call_next(request)
-            route = request.scope.get("route")
-            template = getattr(route, "path", None) or "unmatched"
-            span.update_name(f"{request.method} {template}")
-            span.set_attribute("http.route", template)
-            span.set_attribute("http.response.status_code", response.status_code)
-            return response
+            status = 500  # unless a response comes back: an error escaping here becomes a 500
+            try:
+                response = await call_next(request)
+                status = response.status_code
+                return response
+            finally:
+                route = request.scope.get("route")
+                template = getattr(route, "path", None) or "unmatched"
+                span.update_name(f"{request.method} {template}")
+                span.set_attribute("http.route", template)
+                span.set_attribute("http.response.status_code", status)
 
     @app.exception_handler(OperationalError)
     async def database_unavailable(request: Request, error: OperationalError) -> JSONResponse:

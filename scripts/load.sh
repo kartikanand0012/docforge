@@ -83,10 +83,14 @@ uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 -
 PIDS+=($!)
 uv run python -m docforge.worker >"$WORK/worker.log" 2>&1 &
 PIDS+=($!)
+up=0
 for _ in $(seq 1 60); do
-  curl -fsS "http://127.0.0.1:${API_PORT}/healthz" >/dev/null 2>&1 && break
+  if curl -fsS "http://127.0.0.1:${API_PORT}/healthz" >/dev/null 2>&1; then up=1; break; fi
   sleep 1
 done
+if [ "$up" != 1 ]; then
+  echo "the API did not start"; tail -40 "$WORK/api.log"; exit 1
+fi
 
 status=0
 uv run python -m docforge.load --api "http://127.0.0.1:${API_PORT}" --keys "$WORK/keys" \

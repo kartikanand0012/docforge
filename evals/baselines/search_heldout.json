@@ -4,7 +4,7 @@
   "questions": 98,
   "modes": {
     "keyword": {
-      "recall_at_1": 0.4659,
+      "hit_at_1": 0.4659,
       "recall_at_5": 0.7642,
       "mrr": 0.6136,
       "by_kind": {
@@ -54,7 +54,7 @@
       ]
     },
     "vector": {
-      "recall_at_1": 0.6705,
+      "hit_at_1": 0.6705,
       "recall_at_5": 0.8343,
       "mrr": 0.7594,
       "by_kind": {
@@ -97,7 +97,7 @@
       ]
     },
     "hybrid": {
-      "recall_at_1": 0.8295,
+      "hit_at_1": 0.8295,
       "recall_at_5": 0.875,
       "mrr": 0.861,
       "by_kind": {

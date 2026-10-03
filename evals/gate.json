@@ -21,5 +21,17 @@
   {"report": "search", "path": "modes.vector.cross_tenant_hits", "op": "==", "value": 0, "why": "never another organisation's document"},
   {"report": "search_heldout", "path": "modes.hybrid.recall_at_5", "op": ">=", "value": 0.85, "why": "held-out questions: the right document in the top five"},
   {"report": "search_heldout", "path": "modes.hybrid.mrr", "op": ">=", "value": 0.82, "why": "held-out questions: how high the right document ranks"},
-  {"report": "search_heldout", "path": "modes.hybrid.cross_tenant_hits", "op": "==", "value": 0, "why": "never another organisation's document"}
+  {"report": "search_heldout", "path": "modes.hybrid.cross_tenant_hits", "op": "==", "value": 0, "why": "never another organisation's document"},
+  {"report": "invoice", "path": "summary.documents", "op": "==", "value": 20, "why": "the dataset is the one the floors were set on"},
+  {"report": "invoice", "path": "summary.fields.total", "op": "==", "value": 2472, "why": "the dataset is the one the floors were set on"},
+  {"report": "invoice", "path": "model", "op": "==", "value": "gemini-3.5-flash-lite", "why": "a model change is a deliberate change: update this pin with it"},
+  {"report": "invoice", "path": "prompt_version", "op": "==", "value": "invoice-v1", "why": "a prompt change is a deliberate change: update this pin with it"},
+  {"report": "invoice", "path": "summary.fields.wrong", "op": "<=", "value": 0, "why": "a wrong value is worse than a missing one: none on clean invoices"},
+  {"report": "invoice", "path": "summary.null_expected.hallucinated", "op": "<=", "value": 0, "why": "no value invented for a field that is not printed"},
+  {"report": "invoice", "path": "summary.by_class.date.accuracy", "op": ">=", "value": 0.99, "why": "per class: a loss in one class hides in the total"},
+  {"report": "invoice", "path": "summary.by_class.amount.accuracy", "op": ">=", "value": 0.99, "why": "per class: a loss in one class hides in the total"},
+  {"report": "invoice", "path": "summary.by_class.identifier.accuracy", "op": ">=", "value": 0.99, "why": "per class: a loss in one class hides in the total"},
+  {"report": "search", "path": "questions", "op": "==", "value": 124, "why": "the question set the floors were set on"},
+  {"report": "search_heldout", "path": "questions", "op": "==", "value": 98, "why": "the held-out set is frozen: not tuned against, not changed"},
+  {"report": "search_heldout", "path": "modes.hybrid.by_kind.ocr_code.recall_at_5", "op": ">=", "value": 0.35, "why": "the hardest slice (19 questions): a loose floor so it cannot quietly drop to nothing"}
 ]

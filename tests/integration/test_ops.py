@@ -33,11 +33,13 @@ def job(run: Run, queue: str, status: str, *, age_minutes: float = 0) -> None:
         "VALUES (:queue, 't', 'todo')",
         queue=queue,
     )
-    if status != "todo":
+    # As a worker does: a job is taken (doing) before it ends; the queue logs events by
+    # transition, and only doing -> failed is a failure.
+    for step in ("doing", status) if status != "todo" else ():
         run(
             "UPDATE procrastinate_jobs SET status = CAST(:status AS procrastinate_job_status) "
             "WHERE id = (SELECT max(id) FROM procrastinate_jobs)",
-            status=status,
+            status=step,
         )
     run(
         "UPDATE procrastinate_events SET at = now() - make_interval(mins => :age) "

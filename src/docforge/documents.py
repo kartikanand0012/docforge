@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -357,6 +358,8 @@ class DocumentService:
             span.set_attribute("docforge.tenant_id", str(tenant_id))
             outcome = self._process(version_id)
             span.set_attribute("docforge.outcome", outcome)
+            if outcome == "failed":
+                span.set_status(Status(StatusCode.ERROR))
             return outcome
 
     def _process(self, version_id: uuid.UUID) -> Outcome:

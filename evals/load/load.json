@@ -1,54 +1,60 @@
 {
   "concurrency": 16,
   "tenants": 5,
-  "wall_seconds": 15.9,
+  "wall_seconds": 16.4,
+  "environment": {
+    "git_sha": "1e86245",
+    "python": "3.12.13",
+    "platform": "macOS-26.5.2-arm64-arm-64bit",
+    "cpus": "15"
+  },
   "documents": {
     "uploaded": 300,
     "processed": 300,
     "failed": 0,
     "not_finished": 0
   },
-  "documents_per_minute": 1257.7,
+  "replay_documents_per_minute": 1233.1,
   "requests": {
     "processed": {
       "count": 300,
       "errors": 0,
-      "p50_ms": 7963.4,
-      "p95_ms": 12622.2,
-      "p99_ms": 12707.1,
-      "max_ms": 12750.1
+      "p50_ms": 8045.7,
+      "p95_ms": 12302.0,
+      "p99_ms": 12747.0,
+      "max_ms": 12824.8
     },
     "review.queue": {
       "count": 5,
       "errors": 0,
-      "p50_ms": 942.5,
-      "p95_ms": 1164.9,
-      "p99_ms": 1164.9,
-      "max_ms": 1164.9
+      "p50_ms": 703.7,
+      "p95_ms": null,
+      "p99_ms": null,
+      "max_ms": 1345.0
     },
     "search.hybrid": {
       "count": 100,
       "errors": 0,
-      "p50_ms": 75.0,
-      "p95_ms": 131.7,
-      "p99_ms": 137.4,
-      "max_ms": 138.8
+      "p50_ms": 84.8,
+      "p95_ms": 155.3,
+      "p99_ms": 170.7,
+      "max_ms": 182.4
     },
     "search.keyword": {
       "count": 100,
       "errors": 0,
-      "p50_ms": 63.9,
-      "p95_ms": 117.4,
-      "p99_ms": 127.5,
-      "max_ms": 132.0
+      "p50_ms": 70.9,
+      "p95_ms": 137.7,
+      "p99_ms": 146.0,
+      "max_ms": 154.1
     },
     "upload": {
       "count": 300,
       "errors": 0,
-      "p50_ms": 89.3,
-      "p95_ms": 124.2,
-      "p99_ms": 175.3,
-      "max_ms": 186.8
+      "p50_ms": 98.9,
+      "p95_ms": 134.3,
+      "p99_ms": 207.2,
+      "max_ms": 220.3
     }
   }
 }

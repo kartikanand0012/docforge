@@ -20,6 +20,7 @@ def test_percentiles_and_errors_per_kind_of_request() -> None:
     assert summary.count == 102
     assert summary.errors == 2
     assert summary.p50_ms == pytest.approx(51, abs=1)
+    assert summary.p95_ms is not None
     assert summary.p95_ms == pytest.approx(96, abs=1)
     assert summary.max_ms == 100
 

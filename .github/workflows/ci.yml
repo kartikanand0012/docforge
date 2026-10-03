@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0  # the base branch too, for the gate's comparison
 
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
         with:
@@ -52,6 +53,21 @@ jobs:
       # costs noticeably more fails here, whoever recorded the reports.
       - name: Eval gate
         run: make gate
+
+      # Against the branch this pull request goes into: no gated metric worse than there, and
+      # no floor loosened or removed, unless the pull request carries the `gate-change` label
+      # (a deliberate change, reviewed as one).
+      - name: Eval gate against the base branch
+        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'gate-change')
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          base="$RUNNER_TEMP/base"
+          mkdir -p "$base"
+          git archive "origin/$BASE_REF" evals | tar -x -C "$base"
+          args=(--base-reports "$base/evals/baselines")
+          if [ -f "$base/evals/gate.json" ]; then args+=(--base-gate "$base/evals/gate.json"); fi
+          uv run python -m docforge.evals.gate "${args[@]}"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

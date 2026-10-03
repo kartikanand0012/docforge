@@ -14,6 +14,7 @@ from typing import Literal
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 from docforge.config import get_settings
 
@@ -55,20 +56,30 @@ class Alert:
     message: str
 
 
+# Waiting and running jobs (the queue's own partial indexes cover these statuses).
 _QUEUES = text(
     """
     SELECT j.queue_name,
            count(*) FILTER (WHERE j.status = 'todo') AS waiting,
            count(*) FILTER (WHERE j.status = 'doing') AS running,
-           count(*) FILTER (WHERE j.status = 'failed' AND e.at > now() - interval '1 hour')
-               AS failed_last_hour,
            coalesce(extract(epoch FROM now() - min(e.at) FILTER (WHERE j.status = 'todo')) / 60,
                     0) AS oldest_waiting_minutes
     FROM procrastinate_jobs j
     LEFT JOIN LATERAL (
         SELECT max(at) AS at FROM procrastinate_events WHERE job_id = j.id
     ) e ON true
-    WHERE j.status IN ('todo', 'doing', 'failed')
+    WHERE j.status IN ('todo', 'doing')
+    GROUP BY j.queue_name
+    """
+)
+
+# Failures in the last hour, from the event log: failed jobs are kept forever, so counting
+# them by status would read every failure there has ever been.
+_FAILED = text(
+    """
+    SELECT j.queue_name, count(DISTINCT j.id) AS failed
+    FROM procrastinate_events e JOIN procrastinate_jobs j ON j.id = e.job_id
+    WHERE e.type = 'failed' AND e.at > now() - interval '1 hour' AND j.status = 'failed'
     GROUP BY j.queue_name
     """
 )
@@ -77,15 +88,17 @@ _QUEUES = text(
 def snapshot(engine: Engine, thresholds: Thresholds | None = None) -> Snapshot:
     silent = (thresholds or Thresholds()).worker_silent_seconds
     with engine.connect() as conn:
+        failed = {row.queue_name: row.failed for row in conn.execute(_FAILED)}
         queues = {
             row.queue_name: Queue(
                 waiting=row.waiting,
                 running=row.running,
-                failed_last_hour=row.failed_last_hour,
+                failed_last_hour=failed.pop(row.queue_name, 0),
                 oldest_waiting_minutes=round(float(row.oldest_waiting_minutes), 1),
             )
             for row in conn.execute(_QUEUES)
         }
+        queues.update({name: Queue(failed_last_hour=count) for name, count in failed.items()})
         live = conn.execute(
             text(
                 "SELECT count(*) FROM procrastinate_workers "
@@ -154,12 +167,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     url = args.database_url or get_settings().migration_database_url.get_secret_value()
-    engine = create_engine(url)
+    thresholds = Thresholds()
     try:
-        thresholds = Thresholds()
-        state = snapshot(engine, thresholds)
-    finally:
-        engine.dispose()
+        engine = create_engine(url)
+        try:
+            state = snapshot(engine, thresholds)
+        finally:
+            engine.dispose()
+    except SQLAlchemyError as error:
+        # Not knowing is critical: a scheduler must not read an outage as a warning. The
+        # error's type only: its message can hold the connection string.
+        alert = Alert(
+            "ops_unreachable", "critical", f"database not readable ({type(error).__name__})"
+        )
+        print(json.dumps({"status": "critical", "alerts": [asdict(alert)], "snapshot": None}))
+        return 2
     alerts = check(state, thresholds)
     worst = 2 if any(a.severity == "critical" for a in alerts) else 1 if alerts else 0
     status = ("ok", "warning", "critical")[worst]

@@ -1,0 +1,4 @@
+# Changes to what the ship gate measures, or to the replies it replays, need the owner's review.
+/evals/ @kartikanand0012
+/tests/fixtures/recorded/ @kartikanand0012
+/src/docforge/evals/gate.py @kartikanand0012

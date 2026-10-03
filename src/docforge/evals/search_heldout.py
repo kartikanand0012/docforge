@@ -38,7 +38,7 @@ class HeldoutQuestion(_Model):
 
 
 class HeldoutMode(_Model):
-    recall_at_1: float
+    hit_at_1: float
     recall_at_5: float
     mrr: float
     by_kind: dict[str, dict[str, float]]
@@ -202,7 +202,7 @@ def run_heldout_eval(
                 rank = next((n for n, key in enumerate(found, 1) if key in expected), None)
                 reciprocal[question.id] = 1 / rank if rank else 0.0
             modes[mode] = HeldoutMode(
-                recall_at_1=_mean(answerable, at1),
+                hit_at_1=_mean(answerable, at1),
                 recall_at_5=_mean(answerable, at5),
                 mrr=_mean(answerable, reciprocal),
                 by_kind={
@@ -239,7 +239,7 @@ def format_heldout_report(report: HeldoutReport) -> str:
     for mode, result in report.modes.items():
         kinds = ", ".join(f"{k} {v['recall_at_5']:.2f}" for k, v in result.by_kind.items())
         lines.append(
-            f"{mode:8} recall@1 {result.recall_at_1:.2f} recall@5 {result.recall_at_5:.2f} "
+            f"{mode:8} hit@1 {result.hit_at_1:.2f} recall@5 {result.recall_at_5:.2f} "
             f"MRR {result.mrr:.2f} ({kinds}); nothing returned for "
             f"{result.abstained_when_no_answer:.0%} of unanswerable; "
             f"other organisation: {result.cross_tenant_hits}"

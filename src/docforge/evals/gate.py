@@ -30,7 +30,7 @@ class Check:
     report: str
     path: str
     op: str
-    value: float
+    value: float | str  # a string only with ==: a pinned model, prompt or dataset name
     why: str = ""
 
 
@@ -51,7 +51,16 @@ def load_gate(path: Path) -> list[Check]:
     for check in checks:
         if check.op not in _OPS:
             raise GateError(f"unknown comparison {check.op!r} for {check.report} {check.path}")
+        if isinstance(check.value, str) and check.op != "==":
+            raise GateError(f"{check.report} {check.path}: text can only be pinned with ==")
     return checks
+
+
+def _comparable(actual: Any, wanted: float | str) -> bool:
+    if isinstance(wanted, str):
+        return isinstance(actual, str)
+    # bool is an int to Python; a metric that turned into true/false is not a number.
+    return isinstance(actual, int | float) and not isinstance(actual, bool)
 
 
 def _lookup(report: Any, path: str) -> Any:
@@ -82,9 +91,62 @@ def check_gate(reports: Path, checks: Sequence[Check]) -> list[Result]:
         except KeyError:
             results.append(Result(check.report, label, False, "metric missing"))
             continue
-        passed = isinstance(actual, int | float) and _OPS[check.op](actual, check.value)
+        passed = _comparable(actual, check.value) and _OPS[check.op](actual, check.value)
         results.append(Result(check.report, label, passed, f"is {actual}"))
     return results
+
+
+def _load_reports(directory: Path, names: set[str]) -> dict[str, Any]:
+    out = {}
+    for name in names:
+        file = directory / f"{name}.json"
+        out[name] = json.loads(file.read_text(encoding="utf-8")) if file.exists() else None
+    return out
+
+
+def compare_with_base(reports: Path, base: Path, checks: Sequence[Check]) -> list[Result]:
+    """Each floor's metric must be no worse than on the base branch, not just above the floor:
+    a change that loses ground passes floors set with room to spare. Metrics new on this
+    branch, and pinned (==) values, are not compared."""
+    ordered = [c for c in checks if c.op in (">=", "<=") and not isinstance(c.value, str)]
+    names = {c.report for c in ordered}
+    mine, theirs = _load_reports(reports, names), _load_reports(base, names)
+    results = []
+    for check in ordered:
+        try:
+            before = _lookup(theirs[check.report], check.path)
+        except KeyError:
+            continue  # new on this branch
+        label = f"{check.report} {check.path} no worse than base {before}"
+        try:
+            now = _lookup(mine[check.report], check.path)
+        except KeyError:
+            results.append(Result(check.report, label, False, "metric missing"))
+            continue
+        passed = _comparable(now, 0.0) and _OPS[check.op](now, before)
+        results.append(Result(check.report, label, passed, f"is {now}"))
+    return results
+
+
+def loosened(checks: Sequence[Check], base: Sequence[Check]) -> list[str]:
+    """Floors this branch relaxes or removes compared with the base branch's gate file."""
+    now = {(c.report, c.path): c for c in checks}
+    found = []
+    for old in base:
+        new = now.get((old.report, old.path))
+        name = f"{old.report} {old.path}"
+        if new is None:
+            found.append(f"{name}: removed")
+        elif new.op != old.op or (
+            not isinstance(old.value, str)
+            and not isinstance(new.value, str)
+            and (
+                (old.op == ">=" and new.value < old.value)
+                or (old.op == "<=" and new.value > old.value)
+            )
+        ):
+            found.append(f"{name}: {old.op} {old.value} -> {new.op} {new.value}")
+    return found
 
 
 def format_gate(results: Sequence[Result]) -> str:
@@ -101,10 +163,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m docforge.evals.gate", description=__doc__)
     parser.add_argument("--reports", type=Path, default=Path("evals/baselines"))
     parser.add_argument("--gate", type=Path, default=Path("evals/gate.json"))
+    parser.add_argument("--base-reports", type=Path, help="the base branch's evals/baselines")
+    parser.add_argument("--base-gate", type=Path, help="the base branch's evals/gate.json")
     args = parser.parse_args(argv)
-    results = check_gate(args.reports, load_gate(args.gate))
+    checks = load_gate(args.gate)
+    results = check_gate(args.reports, checks)
+    if args.base_reports is not None:
+        results += compare_with_base(args.reports, args.base_reports, checks)
     print(format_gate(results))
-    return 0 if all(result.passed for result in results) else 1
+    relaxed = loosened(checks, load_gate(args.base_gate)) if args.base_gate else []
+    for line in relaxed:
+        print(f"LOOSENED  {line}")
+    return 0 if all(result.passed for result in results) and not relaxed else 1
 
 
 if __name__ == "__main__":

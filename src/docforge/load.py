@@ -11,6 +11,9 @@ import argparse
 import asyncio
 import json
 import math
+import os
+import platform
+import subprocess
 import time
 from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass
@@ -36,12 +39,15 @@ class Tenant:
 
 
 class Latency(BaseModel):
+    """Percentiles of the successful requests only; none without successes, and no tail
+    percentiles from fewer than `_TAIL_SAMPLES` (the 95th of five is just the largest)."""
+
     count: int
     errors: int
-    p50_ms: float
-    p95_ms: float
-    p99_ms: float
-    max_ms: float
+    p50_ms: float | None
+    p95_ms: float | None
+    p99_ms: float | None
+    max_ms: float | None
 
 
 class Documents(BaseModel):
@@ -55,9 +61,42 @@ class LoadReport(BaseModel):
     concurrency: int
     tenants: int
     wall_seconds: float
+    environment: dict[str, str]  # where it ran: numbers from another machine differ
     documents: Documents
-    documents_per_minute: float
+    # With model replies replayed (no model time): the system's own ceiling, not capacity.
+    # Live throughput is bound by the model's latency and rate limits.
+    replay_documents_per_minute: float
     requests: dict[str, Latency]
+
+
+_TAIL_SAMPLES = 20
+
+
+def environment() -> dict[str, str]:
+    try:
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607 - a developer's own checkout
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()  # fmt: skip
+    except (OSError, subprocess.CalledProcessError):
+        sha = "unknown"
+    return {
+        "git_sha": sha,
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "cpus": str(os.cpu_count() or 0),
+    }
+
+
+def run_failed(report: "LoadReport", expected_uploads: int) -> bool:
+    """A load run passes only if every upload got through, every document finished and
+    no request failed: a run against an API that never came up must not pass."""
+    return (
+        report.documents.uploaded < expected_uploads
+        or report.documents.failed > 0
+        or report.documents.not_finished > 0
+        or any(latency.errors for latency in report.requests.values())
+    )
 
 
 def _percentile(values: list[float], q: float) -> float:
@@ -72,14 +111,15 @@ def summarise(samples: Sequence[Sample]) -> dict[str, Latency]:
         by_name.setdefault(sample.name, []).append(sample)
     out = {}
     for name, group in sorted(by_name.items()):
-        ok = [s.ms for s in group if 0 < s.status < 400] or [0.0]
+        ok = [s.ms for s in group if 0 < s.status < 400]
+        tail = len(ok) >= _TAIL_SAMPLES
         out[name] = Latency(
             count=len(group),
             errors=sum(not 0 < s.status < 400 for s in group),
-            p50_ms=round(_percentile(ok, 0.50), 1),
-            p95_ms=round(_percentile(ok, 0.95), 1),
-            p99_ms=round(_percentile(ok, 0.99), 1),
-            max_ms=round(max(ok), 1),
+            p50_ms=round(_percentile(ok, 0.50), 1) if ok else None,
+            p95_ms=round(_percentile(ok, 0.95), 1) if tail else None,
+            p99_ms=round(_percentile(ok, 0.99), 1) if tail else None,
+            max_ms=round(max(ok), 1) if ok else None,
         )
     return out
 
@@ -141,11 +181,17 @@ async def run_load(
     async def finish(key: str, document_id: str, sent: float) -> str:
         deadline = sent + timeout_seconds
         while time.perf_counter() < deadline:
-            async with gate:
-                response = await client.get(
-                    f"/v1/documents/{document_id}", headers={"Authorization": f"Bearer {key}"}
+            try:
+                async with gate:
+                    response = await client.get(
+                        f"/v1/documents/{document_id}",
+                        headers={"Authorization": f"Bearer {key}"},
+                    )
+                status = (
+                    response.json()["document"]["status"] if response.status_code == 200 else ""
                 )
-            status = response.json()["document"]["status"] if response.status_code == 200 else ""
+            except (httpx.HTTPError, ValueError, KeyError, TypeError):
+                status = ""  # a poll lost under load is asked again, not the end of the run
             if status in FINAL:
                 samples.append(Sample("processed", 200, (time.perf_counter() - sent) * 1000))
                 return status
@@ -185,7 +231,8 @@ async def run_load(
             failed=sum(o == "failed" for o in outcomes),
             not_finished=sum(o == "not_finished" for o in outcomes),
         ),
-        documents_per_minute=round(done / processing_minutes, 1),
+        environment={},
+        replay_documents_per_minute=round(done / processing_minutes, 1),
         requests=summarise(samples),
     )
 
@@ -219,11 +266,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 client, tenants, concurrency=args.concurrency, questions=questions
             )
 
-    report = asyncio.run(go())
+    report = asyncio.run(go()).model_copy(update={"environment": environment()})
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
     print(report.model_dump_json(indent=2))
-    return 0 if report.documents.not_finished == 0 else 1
+    return 1 if run_failed(report, expected_uploads=len(files) * len(tenants)) else 0
 
 
 if __name__ == "__main__":

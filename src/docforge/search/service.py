@@ -129,27 +129,35 @@ class SearchService:
             if row is None:
                 raise DocumentNotFound(document_id)
             document, version, extraction, parse_output = row
-            if session.scalar(
-                select(func.count()).where(ChunkRow.document_version_id == version.id)
-            ):
-                return 0
-            schema = _SCHEMAS.get(document.doc_type)
-            if schema is None:
-                return 0
-            chunks = chunk_document(
-                document.doc_type,
-                document.filename,
-                ParsedDocument.model_validate(parse_output.data),
-                schema.model_validate(extraction.data),
-            )
             version_id, version_no = version.id, version.version_no
+            indexed = bool(
+                session.scalar(
+                    select(func.count()).where(ChunkRow.document_version_id == version_id)
+                )
+            )
+            schema = _SCHEMAS.get(document.doc_type)
+            if indexed or schema is None:
+                chunks = []
+            else:
+                chunks = chunk_document(
+                    document.doc_type,
+                    document.filename,
+                    ParsedDocument.model_validate(parse_output.data),
+                    schema.model_validate(extraction.data),
+                )
+        if indexed:
+            # Indexed already, perhaps by code that did not keep the pointer: put it right.
+            with self._sessions.begin() as session:
+                self._lock(session, document_id)
+                self._point(session, document_id, version_id, version_no)
+            return 0
+        if not chunks:
+            return 0  # nothing to show; the version that has chunks stays the one searched
         vectors = self._embedder.embed([c.text for c in chunks], "document")
         with self._sessions.begin() as session:
             # Two jobs for one document: the second waits here, then finds the chunks there
             # (or indexes a newer version after the first has finished).
-            session.execute(
-                select(func.pg_advisory_xact_lock(func.hashtext(f"index:{document_id}")))
-            )
+            self._lock(session, document_id)
             if session.scalar(
                 select(func.count()).where(ChunkRow.document_version_id == version_id)
             ):
@@ -169,21 +177,32 @@ class SearchService:
                         embedding=vector,
                     )
                 )
-            # Search shows this version from now on, unless a newer one is indexed already.
-            newer = (
-                select(DocumentVersion.version_no)
-                .where(DocumentVersion.id == Document.indexed_version_id)
-                .scalar_subquery()
-            )
-            session.execute(
-                update(Document)
-                .where(
-                    Document.id == document_id,
-                    (Document.indexed_version_id.is_(None)) | (newer < version_no),
-                )
-                .values(indexed_version_id=version_id)
-            )
+            session.flush()
+            self._point(session, document_id, version_id, version_no)
         return len(chunks)
+
+    @staticmethod
+    def _lock(session: Session, document_id: uuid.UUID) -> None:
+        session.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"index:{document_id}"))))
+
+    @staticmethod
+    def _point(
+        session: Session, document_id: uuid.UUID, version_id: uuid.UUID, version_no: int
+    ) -> None:
+        """Search shows this version from now on, unless a newer one is indexed already."""
+        current = (
+            select(DocumentVersion.version_no)
+            .where(DocumentVersion.id == Document.indexed_version_id)
+            .scalar_subquery()
+        )
+        session.execute(
+            update(Document)
+            .where(
+                Document.id == document_id,
+                Document.indexed_version_id.is_(None) | (current < version_no),
+            )
+            .values(indexed_version_id=version_id)
+        )
 
     # Searching
 

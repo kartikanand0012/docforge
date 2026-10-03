@@ -12,6 +12,7 @@ import math
 import time
 import uuid
 from collections.abc import Sequence
+from contextlib import ExitStack
 from pathlib import Path
 
 import numpy as np
@@ -136,13 +137,16 @@ def run_vector_scale(
     rng = np.random.default_rng(seed)
     vectors = _unit(rng, chunks)
     owners = rng.integers(0, tenants, size=chunks)
-    with temporary_database("docforge_vector_scale") as (owner_url, app_url):
+    # Pools are closed however the run ends, before the database under them is dropped.
+    with temporary_database("docforge_vector_scale") as (owner_url, app_url), ExitStack() as close:
         owner = create_engine(owner_url)
+        close.callback(owner.dispose)
         tenant_ids = populate(owner, vectors, owners, tenants)
         asked = _unit(rng, queries)
         who = rng.integers(0, tenants, size=queries)
         names = {f"q{i}": asked[i].tolist() for i in range(queries)}
         engine = make_engine(app_url)
+        close.callback(engine.dispose)
         search = SearchService(make_session_factory(engine), _Fixed(names))
         latencies, recalls, leaks = [], [], 0
         for i in range(queries):
@@ -156,8 +160,6 @@ def run_vector_scale(
             exact = mine[np.argsort(-(vectors[mine] @ asked[i]), kind="stable")[:k]]
             recalls.append(len(found & {f"chunk {j}" for j in exact}) / max(1, min(k, len(mine))))
         plan = search.explain_vector(tenant_ids[0], asked[0].tolist())
-        engine.dispose()
-        owner.dispose()
     return VectorScaleReport(
         chunks=chunks,
         tenants=tenants,

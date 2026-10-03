@@ -16,7 +16,7 @@ import math
 import re
 import uuid
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -169,8 +169,13 @@ def indexed_corpus(
     """The recorded invoices, orders and certificates, processed and indexed through the real
     services in two organisations (and all of them in a third), in a database of their own."""
     model = get_settings().gemini_model
-    with temporary_database("docforge_search_eval", database_url) as (owner_url, app_url):
+    with (
+        temporary_database("docforge_search_eval", database_url) as (owner_url, app_url),
+        ExitStack() as close,
+    ):
+        # Pools are closed however setup ends, before the database under them is dropped.
         owner = create_engine(owner_url)
+        close.callback(owner.dispose)
         with owner.begin() as conn:
             tenants = {
                 name: conn.execute(
@@ -179,8 +184,8 @@ def indexed_corpus(
                 ).scalar_one()
                 for name in ("a", "b", "all")
             }
-        owner.dispose()
         engine = make_engine(app_url)
+        close.callback(engine.dispose)
         sessions = make_session_factory(engine)
         parser = CachingParser(recordings / "parsed")
         provider = RecordingProvider(recordings / "llm", model)
@@ -225,10 +230,7 @@ def indexed_corpus(
                     service.process(ingested.version.id)
                     search.index_document(tenants[name], ingested.document.id)
                     keys[ingested.document.id] = (key, name)
-        try:
-            yield Corpus(search, tenants, keys, documents)
-        finally:
-            engine.dispose()
+        yield Corpus(search, tenants, keys, documents)
 
 
 def run_search_eval(

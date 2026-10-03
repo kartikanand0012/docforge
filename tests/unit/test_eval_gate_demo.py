@@ -37,7 +37,9 @@ def test_each_variant_is_its_own_prompt_version() -> None:
 
 
 def test_the_gate_lets_a_shortened_prompt_that_measures_as_well_through(tmp_path: Path) -> None:
-    assert gate_with(replay("shortened"), tmp_path) == []
+    # Every quality floor holds; only the prompt pin asks for the change to be declared.
+    failed = gate_with(replay("shortened"), tmp_path)
+    assert [r.label for r in failed] == ["invoice prompt_version == invoice-v1"]
 
 
 def test_the_gate_blocks_a_prompt_that_tidies_values(tmp_path: Path) -> None:
@@ -49,6 +51,7 @@ def test_the_gate_blocks_a_prompt_that_tidies_values(tmp_path: Path) -> None:
         "invoice summary.documents_fully_correct",
     }
     assert all(r.report == "invoice" for r in failed)
+    assert "invoice summary.by_class.date.accuracy >= 0.99" in {r.label for r in failed}
     # The trust layer turned unmatchable dates into missing values, not wrong ones.
     assert report.summary.fields.wrong == 0
 
