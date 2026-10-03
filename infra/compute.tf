@@ -19,7 +19,7 @@ resource "aws_instance" "demo" {
 
   metadata_options {
     http_tokens                 = "required" # IMDSv2 only
-    http_put_response_hop_limit = 1          # containers cannot reach the instance's credentials
+    http_put_response_hop_limit = 1          # containers cannot reach the host role's credentials
     http_endpoint               = "enabled"
   }
 
@@ -34,7 +34,7 @@ resource "aws_instance" "demo" {
     #!/bin/bash
     set -euo pipefail
     mkdir -p /opt/docforge
-    aws s3 cp --recursive s3://${aws_s3_bucket.originals.id}/_deploy/ /opt/docforge/
+    aws s3 cp --recursive s3://${aws_s3_bucket.deploy.id}/ /opt/docforge/
     chmod +x /opt/docforge/*.sh
     /opt/docforge/bootstrap.sh
   EOT

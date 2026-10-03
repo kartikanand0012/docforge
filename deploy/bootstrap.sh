@@ -3,8 +3,8 @@
 # from SSM Parameter Store, the images from ECR, the database, the demo data, and timers for
 # the nightly reset and the ops check. Run by the instance's user data; safe to run again.
 #
-# Needs: the instance role (SSM read of /docforge/demo/*, ECR pull, S3 on the bucket,
-# CloudWatch put-metric-data) and this directory at /opt/docforge.
+# Needs: the instance role (SSM read of /docforge/demo/*, ECR pull, CloudWatch
+# put-metric-data) and this directory at /opt/docforge.
 set -euo pipefail
 
 cd "${DOCFORGE_DIR:-/opt/docforge}"
@@ -20,15 +20,20 @@ if ! command -v docker >/dev/null; then
 fi
 if ! docker compose version >/dev/null 2>&1; then
   mkdir -p /usr/local/lib/docker/cli-plugins
-  curl -fsSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
-    "https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}/docker-compose-linux-aarch64"
-  chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+  base="https://github.com/docker/compose/releases/download/${COMPOSE_VERSION}"
+  tmp="$(mktemp -d)"
+  curl -fsSL -o "$tmp/docker-compose-linux-aarch64" "$base/docker-compose-linux-aarch64"
+  curl -fsSL -o "$tmp/docker-compose-linux-aarch64.sha256" "$base/docker-compose-linux-aarch64.sha256"
+  (cd "$tmp" && sha256sum -c docker-compose-linux-aarch64.sha256)  # stop here if it differs
+  install -m 0755 "$tmp/docker-compose-linux-aarch64" /usr/local/lib/docker/cli-plugins/docker-compose
 fi
 
-# Settings: one SecureString holding the whole .env, readable only by root.
+# Settings: three SecureStrings, readable only by root (see env.example).
 umask 077
-aws ssm get-parameter --name /docforge/demo/env --with-decryption \
-  --query Parameter.Value --output text > .env
+for part in compose:.env app:app.env owner:owner.env; do
+  aws ssm get-parameter --name "/docforge/demo/${part%%:*}" --with-decryption \
+    --query Parameter.Value --output text > "${part#*:}"
+done
 umask 022
 
 # Images.
@@ -39,10 +44,10 @@ docker compose pull --quiet
 
 # Database, then the services, then the demo data.
 docker compose up -d --wait postgres
-docker compose run --rm api alembic upgrade head
-docker compose run --rm api python -m docforge.db.roles
+docker compose run --rm admin alembic upgrade head
+docker compose run --rm admin python -m docforge.db.roles
 docker compose up -d --wait
-docker compose run --rm api python -m docforge.demo seed
+docker compose run --rm admin python -m docforge.demo seed
 
 # Timers: the nightly reset and the ops check every five minutes.
 install -m 0644 systemd/docforge-*.service systemd/docforge-*.timer /etc/systemd/system/

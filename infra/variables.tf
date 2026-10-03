@@ -38,6 +38,12 @@ variable "image_tag" {
   type        = string
 }
 
+variable "originals_expire_days" {
+  description = "Uploaded originals are deleted after this many days (the demo is re-seeded nightly)."
+  type        = number
+  default     = 7
+}
+
 variable "github_repository" {
   description = "owner/name of the repository whose main branch may push images and deploy."
   type        = string

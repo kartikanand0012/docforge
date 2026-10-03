@@ -1,12 +1,13 @@
 # The review app: Next.js standalone server, run as an unprivileged user.
-FROM node:24-bookworm-slim AS build
+# node:24-bookworm-slim, pinned by digest.
+FROM node@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6 AS build
 WORKDIR /web
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM node:24-bookworm-slim
+FROM node@sha256:0e0ff40c39bc087845bfb27465a0df4ea419520094bc35842ff83dd8cbe6f9b6
 ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000 NEXT_TELEMETRY_DISABLED=1
 WORKDIR /web
 COPY --from=build --chown=node:node /web/.next/standalone ./

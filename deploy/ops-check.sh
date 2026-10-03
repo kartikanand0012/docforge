@@ -4,8 +4,8 @@
 set -uo pipefail
 
 cd "${DOCFORGE_DIR:-/opt/docforge}" || exit 1
-# The owner's URL comes from the container's own environment, not the command line.
-docker compose exec -T api python -m docforge.ops check
+# As the owner (counts across organisations), in a container that runs and is gone.
+docker compose run --rm -T admin python -m docforge.ops check
 status=$?
 aws cloudwatch put-metric-data --namespace DocForge --metric-name OpsStatus \
   --dimensions Stack=demo --value "$status"

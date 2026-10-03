@@ -1,6 +1,10 @@
 # HTTPS for the demo's domain (certificates from Let's Encrypt, renewed by Caddy). The API is
 # reachable under /v1 for integrators with a key; everything else is the review app.
 {$DOMAIN} {
+	# Uploads are 10 MB at most; nothing larger reaches the services or their disks.
+	request_body {
+		max_size 12MB
+	}
 	encode zstd gzip
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"

@@ -14,7 +14,7 @@ docker compose stop api worker web
 docker compose exec -T postgres psql -U docforge -d postgres -v ON_ERROR_STOP=1 \
   -c 'DROP DATABASE IF EXISTS docforge WITH (FORCE)' \
   -c 'CREATE DATABASE docforge'
-docker compose run --rm api alembic upgrade head
-docker compose run --rm api python -m docforge.db.roles
+docker compose run --rm admin alembic upgrade head
+docker compose run --rm admin python -m docforge.db.roles
 docker compose up -d --wait api worker web
-docker compose run --rm api python -m docforge.demo seed
+docker compose run --rm admin python -m docforge.demo seed

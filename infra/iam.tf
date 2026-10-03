@@ -1,4 +1,5 @@
-# The host's role: Session Manager, its own settings, image pulls, its bucket, its metric.
+# The host's role: Session Manager, its settings, image pulls, its deploy files, its metric.
+# The containers cannot reach it (IMDS hop limit 1); the application has its own S3 key.
 data "aws_iam_policy_document" "assume_ec2" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -23,7 +24,7 @@ data "aws_iam_policy_document" "host" {
   statement {
     sid       = "Settings"
     actions   = ["ssm:GetParameter"]
-    resources = [aws_ssm_parameter.env.arn]
+    resources = [for parameter in aws_ssm_parameter.settings : parameter.arn]
   }
   statement {
     sid       = "EcrLogin"
@@ -35,15 +36,16 @@ data "aws_iam_policy_document" "host" {
     actions   = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"]
     resources = [for repo in aws_ecr_repository.app : repo.arn]
   }
+  # Read-only: what the host runs as root comes from here, and nothing on the host can change it.
   statement {
-    sid       = "Originals"
-    actions   = ["s3:GetObject", "s3:PutObject"]
-    resources = ["${aws_s3_bucket.originals.arn}/*"]
+    sid       = "DeployFiles"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.deploy.arn}/*"]
   }
   statement {
-    sid       = "ListOriginals"
+    sid       = "ListDeployFiles"
     actions   = ["s3:ListBucket"]
-    resources = [aws_s3_bucket.originals.arn]
+    resources = [aws_s3_bucket.deploy.arn]
   }
   statement {
     sid       = "OpsMetric"
@@ -108,7 +110,7 @@ data "aws_iam_policy_document" "deploy" {
     sid = "EcrPush"
     actions = [
       "ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart",
-      "ecr:CompleteLayerUpload", "ecr:PutImage", "ecr:BatchGetImage",
+      "ecr:CompleteLayerUpload", "ecr:PutImage",
     ]
     resources = [for repo in aws_ecr_repository.app : repo.arn]
   }

@@ -1,8 +1,22 @@
 # The demo on one host: Postgres, the API, the worker, the review app and Caddy for HTTPS.
-# Values come from .env (written by bootstrap.sh from SSM Parameter Store; see env.example).
-# Only Caddy publishes ports. Originals go to S3 with the instance's role; the `local` profile
-# adds MinIO instead, for trying this file on a laptop.
+# Settings come from three files that bootstrap.sh writes from SSM Parameter Store:
+#   .env       images, domain and demo PIN (no secrets beyond the public PIN)
+#   app.env    what the API and worker need: the restricted database login, S3, keys
+#   owner.env  the database owner: only Postgres and the one-shot `admin` service see it
+# Only Caddy publishes ports. The `local` profile adds MinIO, for trying this on a laptop.
 name: docforge-demo  # not "docforge": that is the development stack
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging: *logging
+  restart: unless-stopped
 
 services:
   postgres:
@@ -10,8 +24,8 @@ services:
     image: pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
     environment:
       POSTGRES_USER: docforge
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
       POSTGRES_DB: docforge
+    env_file: owner.env  # POSTGRES_PASSWORD
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -19,11 +33,14 @@ services:
       interval: 5s
       timeout: 3s
       retries: 30
+    mem_limit: 2g
+    logging: *logging
     restart: unless-stopped
 
   api:
+    <<: *hardened
     image: ${APP_IMAGE:?set in .env}
-    env_file: .env
+    env_file: app.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,31 +49,49 @@ services:
       interval: 10s
       timeout: 3s
       retries: 12
-    restart: unless-stopped
+    mem_limit: 1536m
 
   worker:
+    <<: *hardened
     image: ${APP_IMAGE:?set in .env}
     command: ["python", "-m", "docforge.worker"]
-    env_file: .env
+    env_file: app.env
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
+    mem_limit: 3g  # the parser's own limit (PARSER_MAX_RSS_MB) is set below this
+
+  # Migrations, the database login, the demo seed and the ops check: run, then gone.
+  admin:
+    profiles: ["tools"]
+    image: ${APP_IMAGE:?set in .env}
+    env_file: [app.env, owner.env]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
 
   web:
+    <<: *hardened
     image: ${WEB_IMAGE:?set in .env}
     environment:
       DOCFORGE_API_URL: http://api:8000
+      # Caddy is the only way in and overwrites X-Forwarded-For: its value can be passed on.
+      DOCFORGE_TRUST_PROXY: "1"
       # The public demo shows its shared sign-in on the sign-in page; unset elsewhere.
       DOCFORGE_DEMO_PIN: ${DEMO_PIN:-}
     depends_on:
       api:
         condition: service_healthy
-    restart: unless-stopped
+    mem_limit: 512m
 
   caddy:
-    # caddy:2.10-alpine
-    image: caddy:2.10-alpine
+    <<: *hardened
+    # caddy:2.10-alpine, pinned by digest.
+    image: caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    cap_add: [NET_BIND_SERVICE]
     ports:
       - "80:80"
       - "443:443"
@@ -67,16 +102,16 @@ services:
       - caddy_data:/data
     depends_on:
       - web
-    restart: unless-stopped
+    mem_limit: 256m
 
   minio:
     profiles: ["local"]
     image: cgr.dev/chainguard/minio@sha256:0f95aa412a12351a95bb43c3b54b66440eb0aa022bb3f3458942678a489e915b
     environment:
       MINIO_ROOT_USER: docforge
-      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-docforge-local-secret}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-docforge-local-secret}
       MC_CONFIG_DIR: /tmp/.mc
-    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/$${S3_BUCKET:-docforge-originals} && exec minio server /data"]
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/docforge-originals && exec minio server /data"]
     volumes:
       - miniodata:/data
 
