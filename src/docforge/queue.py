@@ -4,12 +4,14 @@ A job is enqueued on the caller's connection, inside the transaction that create
 version it refers to, so there is never a version without a job or a job without a version.
 """
 
+import json
 import logging
 import math
 import uuid
 from typing import TYPE_CHECKING
 
 import procrastinate
+from sqlalchemy import text
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session
 
@@ -42,6 +44,22 @@ DEFAULT_MAX_ATTEMPTS = 5
 def _libpq_url(url: URL | str) -> str:
     """The SQLAlchemy URL without its driver suffix, as libpq expects."""
     return make_url(url).set(drivername="postgresql").render_as_string(hide_password=False)
+
+
+def _defer(session: Session, queue: str, task: str, **args: str) -> None:
+    """Add a job in the session's own transaction, with the queue's SQL function.
+
+    The library's `defer` takes an async path when called from a task the worker is running,
+    which cannot use this synchronous connection; the SQL function works from anywhere, and
+    its trigger still wakes the workers listening on the queue.
+    """
+    session.execute(
+        text(
+            "SELECT procrastinate_defer_jobs_v1(ARRAY[ROW(:queue, :task, 0, NULL, NULL, "
+            "CAST(:args AS jsonb), NULL)::procrastinate_job_to_defer_v1])"
+        ),
+        {"queue": queue, "task": task, "args": json.dumps(args)},
+    )
 
 
 class JobQueue:
@@ -128,8 +146,7 @@ class JobQueue:
 
     def defer_index(self, session: Session, version: DocumentVersion) -> None:
         """Queue the search indexing of `version` in the session's transaction."""
-        connection = session.connection().connection.driver_connection
-        self._index.configure(connection=connection).defer(version_id=str(version.id))
+        _defer(session, INDEX_QUEUE, INDEX_TASK, version_id=str(version.id))
 
     def bind_webhooks(self, webhooks: "WebhookService") -> None:
         self._webhooks = webhooks
@@ -138,12 +155,14 @@ class JobQueue:
         self, session: Session, delivery_id: uuid.UUID, tenant_id: uuid.UUID
     ) -> None:
         """Queue one webhook delivery in the session's transaction."""
-        connection = session.connection().connection.driver_connection
-        self._deliver.configure(connection=connection).defer(
-            delivery_id=str(delivery_id), tenant_id=str(tenant_id)
+        _defer(
+            session,
+            WEBHOOK_QUEUE,
+            WEBHOOK_TASK,
+            delivery_id=str(delivery_id),
+            tenant_id=str(tenant_id),
         )
 
     def enqueue(self, session: Session, version: DocumentVersion) -> None:
         """Add the job for `version` in the session's transaction."""
-        connection = session.connection().connection.driver_connection
-        self._task.configure(connection=connection).defer(version_id=str(version.id))
+        _defer(session, QUEUE_NAME, TASK_NAME, version_id=str(version.id))

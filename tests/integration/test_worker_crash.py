@@ -67,6 +67,7 @@ def worker_env(
         "WORKER_HEARTBEAT_SECONDS": "0.5",
         "WORKER_STALLED_AFTER_SECONDS": "2",
         "JOB_RETRY_WAIT_SECONDS": "0",
+        "GEMINI_API_KEY": "",  # no model or embedding calls from a test
     }
 
 
@@ -138,8 +139,10 @@ def test_killing_a_worker_mid_job_loses_nothing(
     ]
 
     with engine.connect() as conn:
-        jobs = conn.execute(text("SELECT status::text FROM procrastinate_jobs")).scalars().all()
-    assert jobs == ["succeeded"]
+        jobs = conn.execute(
+            text("SELECT status::text FROM procrastinate_jobs WHERE queue_name = 'extract'")
+        ).scalars().all()
+    assert jobs == ["succeeded"]  # (a search-index job for the version is queued as well)
 
     second.send_signal(signal.SIGTERM)  # and a worker asked to stop does so cleanly
     assert second.wait(timeout=20) == 0
