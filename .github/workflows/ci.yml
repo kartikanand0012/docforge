@@ -15,7 +15,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,6 +47,22 @@ jobs:
       # The C1 gate: the baseline report is reproduced offline from recordings.
       - name: Eval (offline replay)
         run: make eval && git diff --exit-code -- evals/baselines
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Review app (type check, lint, unit tests, build)
+        run: make web-check
+
+      # The C5 gate: a reviewer resolves a flagged document end to end in a browser,
+      # against the real API, worker and database, on recorded documents (no key).
+      - name: End-to-end review in a browser
+        run: |
+          (cd web && npx playwright install --with-deps chromium)
+          make e2e
 
       - name: Service logs
         if: failure()
