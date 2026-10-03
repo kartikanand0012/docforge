@@ -297,3 +297,45 @@ def test_searches_are_limited_per_caller_and_a_missing_embedding_is_unavailable_
 
     assert statuses == [200, 200, 200, 429]
     assert unavailable.status_code == 503
+
+
+@pytest.mark.parametrize("mode", ["keyword", "vector", "hybrid"])
+def test_identical_chunks_in_two_documents_come_back_in_the_same_order_every_time(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], owner_engine: Engine, mode: Mode
+) -> None:
+    """The same file uploaded twice (or in two organisations) gives chunks with equal scores.
+    The older document's chunk comes first, whatever order the rows sit in on disk."""
+    world, search, invoice_id, _ = indexed
+    with owner_engine.begin() as conn:
+        copy = conn.execute(
+            text(
+                "INSERT INTO documents (tenant_id, doc_type, sha256, storage_key, filename, "
+                "size_bytes) SELECT tenant_id, doc_type, :sha, storage_key, filename, size_bytes "
+                "FROM documents WHERE id = :id RETURNING id"
+            ),
+            {"sha": "c" * 64, "id": invoice_id},
+        ).scalar_one()
+        version = conn.execute(
+            text(
+                "INSERT INTO document_versions (tenant_id, document_id, version_no) "
+                "VALUES (:tenant, :document, 1) RETURNING id"
+            ),
+            {"tenant": DEFAULT_TENANT_ID, "document": copy},
+        ).scalar_one()
+        # Written after the original's chunks, but dated a day earlier.
+        conn.execute(
+            text(
+                "INSERT INTO chunks (tenant_id, document_id, document_version_id, chunk_no, kind, "
+                "page, block_ids, text, embedding_model, embedding, created_at) "
+                "SELECT tenant_id, :copy, :version, chunk_no, kind, page, block_ids, text, "
+                "embedding_model, embedding, created_at - interval '1 day' "
+                "FROM chunks WHERE document_id = :id"
+            ),
+            {"copy": copy, "version": version, "id": invoice_id},
+        )
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    hits = search.search(DEFAULT_TENANT_ID, batch, mode=mode, k=20)
+    pairs = [h.document_id for h in hits if h.text == hits[0].text]
+
+    assert pairs[:2] == [copy, invoice_id]
