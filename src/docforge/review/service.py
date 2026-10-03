@@ -228,8 +228,16 @@ class ReviewService:
 
     @scoped
     def add_reviewer(
-        self, tenant_id: uuid.UUID, *, name: str, email: str, pin: str, role: str = "reviewer"
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        name: str,
+        email: str,
+        pin: str,
+        role: str = "reviewer",
+        shared: bool = False,
     ) -> uuid.UUID:
+        """`shared`: an account whose PIN is public (the demo's); it is never locked."""
         if role not in ("reviewer", "admin"):
             raise ValueError("a reviewer's role is reviewer or admin")
         if len(pin) < _MIN_PIN_DIGITS or not pin.isdigit():
@@ -247,6 +255,7 @@ class ReviewService:
                 email=email,
                 pin_hash=hash_pin(pin),
                 role=role,
+                shared=shared,
             )
             session.add(reviewer)
             session.flush()
@@ -305,7 +314,7 @@ class ReviewService:
                     details={"attempt": reviewer.failed_attempts + 1},
                 )
                 reviewer.failed_attempts += 1
-                if reviewer.failed_attempts >= MAX_FAILED_PINS:
+                if reviewer.failed_attempts >= MAX_FAILED_PINS and not reviewer.shared:
                     reviewer.failed_attempts = 0
                     reviewer.locked_until = now + LOCK_FOR
                 failed = True

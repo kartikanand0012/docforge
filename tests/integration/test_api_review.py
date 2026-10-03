@@ -40,7 +40,9 @@ def api(world: World, sessions: SessionFactory) -> TestClient:
     review = ReviewService(
         sessions, world.store, {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC}
     )
-    reviewer_id = review.add_reviewer(DEFAULT_TENANT_ID, name="Asha Rao", **CREDENTIALS)
+    reviewer_id = review.add_reviewer(
+        DEFAULT_TENANT_ID, name="Asha Rao", email=CREDENTIALS["email"], pin=CREDENTIALS["pin"]
+    )
     app = create_app(
         None,
         service=world.service,

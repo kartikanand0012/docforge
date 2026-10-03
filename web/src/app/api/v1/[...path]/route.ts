@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, apiBase, sameOrigin } from "@/lib/server";
+import { MAX_BODY_BYTES, SESSION_COOKIE, apiBase, declaredTooLarge, forwardedFor, sameOrigin } from "@/lib/server";
 
 /** The review screen's only way to the API: same origin, with the session token added here,
  * so the browser holds nothing but an HttpOnly cookie. */
@@ -13,14 +13,20 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/v1/[...path
     return NextResponse.json({ detail: "Bad path." }, { status: 400 });
   }
   const target = `${apiBase()}/v1/${path.map(encodeURIComponent).join("/")}${request.nextUrl.search}`;
-  const headers = new Headers({ Authorization: `Bearer ${token}` });
+  if (declaredTooLarge(request)) return NextResponse.json({ detail: "The file is too large." }, { status: 413 });
+  const headers = new Headers({ Authorization: `Bearer ${token}`, ...forwardedFor(request) });
   const type = request.headers.get("content-type");
   if (type) headers.set("Content-Type", type);
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
+  const body = hasBody ? await request.arrayBuffer() : undefined;
+  // An undeclared length is checked once read; the front proxy caps it before that.
+  if (body && body.byteLength > MAX_BODY_BYTES) {
+    return NextResponse.json({ detail: "The file is too large." }, { status: 413 });
+  }
   const upstream = await fetch(target, {
     method: request.method,
     headers,
-    body: hasBody ? await request.arrayBuffer() : undefined,
+    body,
     cache: "no-store",
   });
   const out = new Headers();

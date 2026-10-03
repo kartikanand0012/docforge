@@ -189,6 +189,8 @@ class Reviewer(Base):
     role: Mapped[str] = mapped_column(Text, server_default="reviewer")  # or admin
     failed_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # A shared account (the public demo's): its PIN is public, so it is never locked.
+    shared: Mapped[bool] = mapped_column(Boolean, server_default="false")
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 

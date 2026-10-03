@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import { safeNext } from "@/lib/next";
 import type { DemoSignIn } from "@/lib/demo";
 import { rememberEmail, savedEmail } from "@/lib/reviewer";
@@ -10,6 +10,12 @@ function LoginForm({ demo }: { demo: DemoSignIn | null }) {
   const next = useSearchParams().get("next");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const email = useRef<HTMLInputElement>(null);
+  // The remembered email lives in this browser only, so it is filled in after the page loads:
+  // the server renders the field empty, and the first render in the browser matches it.
+  useEffect(() => {
+    if (!demo && email.current && !email.current.value) email.current.value = savedEmail();
+  }, [demo]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -38,7 +44,7 @@ function LoginForm({ demo }: { demo: DemoSignIn | null }) {
   return (
     <form className="card" onSubmit={submit} style={{ maxWidth: 420 }} aria-label="Sign in">
       {demo && (
-        <p className="muted" role="note">
+        <p className="muted">
           This is a public demo on synthetic documents. Sign in as organisation <strong>{demo.tenant}</strong>,
           email <strong>{demo.email}</strong>, PIN <strong>{demo.pin}</strong>. The data is reset every night.
         </p>
@@ -46,7 +52,7 @@ function LoginForm({ demo }: { demo: DemoSignIn | null }) {
       <label htmlFor="tenant">Organisation</label>
       <input id="tenant" name="tenant" required defaultValue={demo?.tenant ?? "default"} autoComplete="organization" />
       <label htmlFor="email">Email</label>
-      <input id="email" name="email" type="email" required defaultValue={demo?.email ?? savedEmail()} autoComplete="username" />
+      <input id="email" name="email" type="email" required ref={email} defaultValue={demo?.email ?? ""} autoComplete="username" />
       <label htmlFor="pin">PIN</label>
       <input id="pin" name="pin" type="password" inputMode="numeric" required autoComplete="current-password" />
       {error && <p className="error" role="alert">{error}</p>}

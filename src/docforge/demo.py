@@ -69,8 +69,10 @@ def seed_demo(
             select(Reviewer.id).where(Reviewer.tenant_id == tenant_id, Reviewer.email == DEMO_EMAIL)
         )
     if known is None:
+        # A reviewer, not an admin: visitors read, correct and sign, but cannot upload, make
+        # keys or webhooks. Shared: its PIN is public, so wrong PINs never lock it.
         review.add_reviewer(
-            tenant_id, name="Demo Reviewer", email=DEMO_EMAIL, pin=pin, role="admin"
+            tenant_id, name="Demo Reviewer", email=DEMO_EMAIL, pin=pin, role="reviewer", shared=True
         )
     added = 0
     with tenant_scope(tenant_id):

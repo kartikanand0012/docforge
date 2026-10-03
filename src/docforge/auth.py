@@ -206,7 +206,7 @@ class Authenticator:
                     details={"attempt": reviewer.failed_attempts + 1, "at": "sign-in"},
                 )
                 reviewer.failed_attempts += 1
-                if reviewer.failed_attempts >= _MAX_FAILED_PINS:
+                if reviewer.failed_attempts >= _MAX_FAILED_PINS and not reviewer.shared:
                     reviewer.failed_attempts, reviewer.locked_until = 0, now + _LOCK_FOR
                 ok = False
             token = None

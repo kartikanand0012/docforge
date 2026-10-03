@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { SESSION_COOKIE, apiBase, cookieOptions, sameOrigin } from "@/lib/server";
+import { SESSION_COOKIE, apiBase, cookieOptions, forwardedFor, sameOrigin } from "@/lib/server";
 
 /** Sign in: the token goes into an HttpOnly cookie; the page never sees it. */
 export async function POST(request: Request) {
@@ -8,9 +8,8 @@ export async function POST(request: Request) {
   const body = await request.text();
   const response = await fetch(`${apiBase()}/v1/sessions`, {
     method: "POST",
-    // The client's own X-Forwarded-For is not passed on: it could be anything. In deployment
-    // the front proxy, not the browser, says where a request came from.
-    headers: { "Content-Type": "application/json" },
+    // The client address is passed on only where the front proxy is trusted to have set it.
+    headers: { "Content-Type": "application/json", ...forwardedFor(request) },
     body,
     cache: "no-store",
   });
