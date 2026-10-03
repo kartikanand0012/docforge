@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+from opentelemetry import trace
 from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -51,6 +52,7 @@ from docforge.parsing.base import (
     ParserLimitExceeded,
 )
 from docforge.storage import ObjectNotFound, ObjectStore, StorageUnavailable, original_key
+from docforge.telemetry import current_prices, document_cost, tracer
 from docforge.trust.match import match_invoice_to_order
 
 if TYPE_CHECKING:
@@ -350,8 +352,12 @@ class DocumentService:
             tenant_id = session.scalar(select(func.docforge_version_tenant(version_id)))
         if tenant_id is None:
             raise DocumentNotFound(version_id)
-        with tenant_scope(tenant_id):
-            return self._process(version_id)
+        with tracer.start_as_current_span("document.process") as span, tenant_scope(tenant_id):
+            span.set_attribute("docforge.version_id", str(version_id))
+            span.set_attribute("docforge.tenant_id", str(tenant_id))
+            outcome = self._process(version_id)
+            span.set_attribute("docforge.outcome", outcome)
+            return outcome
 
     def _process(self, version_id: uuid.UUID) -> Outcome:
         with self._sessions.begin() as session:
@@ -382,6 +388,9 @@ class DocumentService:
             doc_type, storage_key, sha256 = document.doc_type, document.storage_key, document.sha256
 
         final = turn >= self._max_attempts
+        span = trace.get_current_span()
+        span.set_attribute("docforge.doc_type", doc_type)
+        span.set_attribute("docforge.attempt", turn)
         pipeline = self._pipelines.get(doc_type)
         if pipeline is None:
             return self._fail(version_id, turn, "No pipeline is registered for this document type.")
@@ -417,10 +426,21 @@ class DocumentService:
         except Exception as error:
             logger.exception("unexpected error processing version %s", version_id)
             return self._retry_or_fail(version_id, turn, "Internal error.", error, final)
+        calls = [
+            (r.input_tokens or 0, r.output_tokens or 0, r.thinking_tokens or 0)
+            for r in result.responses
+        ]
+        span.set_attribute("docforge.model_calls", len(calls))
+        span.set_attribute("docforge.input_tokens", sum(c[0] for c in calls))
+        span.set_attribute("docforge.output_tokens", sum(c[1] + c[2] for c in calls))
+        cost = document_cost(calls, current_prices())
+        if cost is not None:
+            span.set_attribute("docforge.cost_usd", cost)
         outcome = self._complete(version_id, turn, result)
         if outcome == "succeeded":
             try:
-                self._match(version_id)
+                with tracer.start_as_current_span("document.match"):
+                    self._match(version_id)
             except Exception:
                 # The extraction is stored; a failed comparison must not fail the job.
                 logger.exception("could not match version %s with its counterpart", version_id)

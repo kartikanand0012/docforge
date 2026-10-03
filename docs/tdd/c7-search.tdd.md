@@ -33,7 +33,7 @@ Source plan: checkpoint C7 in `docs/build-plan.md`; journeys derived during this
 | RED search eval | `34ea498` | collection fails |
 | GREEN, then recorded live | `9efd01b`, `aef5e84` | hybrid recall@5 1.00, 0 cross-tenant hits |
 | RED review findings | `6e8cb75` | the new tests fail |
-| GREEN | `9b1bd61` | `make test` 1,480 passed; `make eval` unchanged but one unfiltered figure (0.996 to 0.992); e2e 7 passed |
+| GREEN | `9b1bd61` | `make test` 1,480 passed; `make eval` unchanged but one unfiltered figure, which turned out to flip between 0.996 and 0.992 from run to run: equal scores were ordered arbitrarily (fixed in C8, `_TIE_BREAK`); e2e 7 passed |
 
 ## Test specification
 

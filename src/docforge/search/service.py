@@ -25,6 +25,7 @@ from docforge.extraction.schema import InvoiceExtraction
 from docforge.parsing.base import ParsedDocument
 from docforge.search.chunking import chunk_document
 from docforge.search.embeddings import Embedder
+from docforge.telemetry import tracer
 
 Mode = Literal["keyword", "vector", "hybrid"]
 _SCHEMAS: dict[str, type[BaseModel]] = {
@@ -35,6 +36,9 @@ _SCHEMAS: dict[str, type[BaseModel]] = {
 _CANDIDATES = 50
 _RRF_K = 60
 _CACHE_SIZE = 256
+# Equal scores are common: the same file uploaded twice, or in two organisations, gives
+# identical chunks. Older first, then by id, so a search gives the same order every time.
+_TIE_BREAK = (ChunkRow.text, ChunkRow.chunk_no, ChunkRow.created_at, ChunkRow.id)
 _WORD = re.compile(r"[0-9A-Za-z]+")
 
 
@@ -95,6 +99,13 @@ class SearchService:
     @scoped
     def index_document(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> int:
         """Index the newest extracted version. Returns the chunks added (0 if already done)."""
+        with tracer.start_as_current_span("search.index") as span:
+            span.set_attribute("docforge.document_id", str(document_id))
+            added = self._index_document(tenant_id, document_id)
+            span.set_attribute("docforge.chunks_added", added)
+            return added
+
+    def _index_document(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> int:
         with self._sessions() as session:
             row = session.execute(
                 select(Document, DocumentVersion, Extraction, ParseOutput)
@@ -160,6 +171,18 @@ class SearchService:
         k: int = 10,
         mode: Mode = "hybrid",
         doc_type: str | None = None,
+    ) -> list[SearchHit]:
+        # The question itself is not recorded: it may name a patient, a price or a supplier.
+        with tracer.start_as_current_span("search.query") as span:
+            span.set_attribute("docforge.search.mode", mode)
+            span.set_attribute("docforge.search.k", k)
+            span.set_attribute("docforge.search.doc_type", doc_type or "")
+            hits = self._search(tenant_id, query, k, mode, doc_type)
+            span.set_attribute("docforge.search.hits", len(hits))
+            return hits
+
+    def _search(
+        self, tenant_id: uuid.UUID, query: str, k: int, mode: Mode, doc_type: str | None
     ) -> list[SearchHit]:
         ranked: list[list[uuid.UUID]] = []
         # Embedded before a connection is taken, so a slow embedding holds no database session.
@@ -245,7 +268,7 @@ class SearchService:
                 literal_column("chunks.tsv").op("@@")(tsquery),
                 *required,
             )
-            .order_by(rank.desc(), ChunkRow.text, ChunkRow.chunk_no)
+            .order_by(rank.desc(), *_TIE_BREAK)
             .limit(_CANDIDATES)
         )
         return [row[0] for row in rows]
@@ -264,7 +287,7 @@ class SearchService:
                 *self._filters(tenant_id, doc_type),
                 ChunkRow.embedding_model == self._embedder.model,
             )
-            .order_by(ChunkRow.embedding.cosine_distance(vector), ChunkRow.text, ChunkRow.chunk_no)
+            .order_by(ChunkRow.embedding.cosine_distance(vector), *_TIE_BREAK)
             .limit(_CANDIDATES)
         )
         return [row[0] for row in rows]

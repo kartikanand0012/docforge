@@ -1,9 +1,9 @@
 """Exporting traces is switched on by configuration only."""
 
 import pytest
-from docforge.telemetry import configure_tracing, document_cost
 
 from docforge.config import Settings
+from docforge.telemetry import configure_tracing, document_cost
 
 
 def test_without_an_endpoint_nothing_is_exported() -> None:

@@ -6,7 +6,6 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
-from docforge.telemetry import set_prices
 from fastapi.testclient import TestClient
 from opentelemetry.sdk.trace import ReadableSpan
 
@@ -15,6 +14,7 @@ from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
 from docforge.search.embeddings import FakeEmbedder
 from docforge.search.service import SearchService
+from docforge.telemetry import set_prices
 from tracing import EXPORTER
 from worlds import World
 

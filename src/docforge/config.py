@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     failed_logins_per_window: int = 20
     # The review screen's origin(s), comma-separated, e.g. http://localhost:3000.
     cors_origins: str = ""
+    # Traces are exported over OTLP/HTTP here (e.g. http://collector:4318); unset, none are.
+    otel_exporter_otlp_endpoint: str | None = None
     evals_dir: str = "evals/baselines"
     # Recorded parses and model replies, for `docforge.wiring:build_replay_pipelines`.
     recordings_dir: str = "tests/fixtures/recorded"  # the committed reports the eval page shows

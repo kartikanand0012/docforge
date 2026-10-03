@@ -10,7 +10,7 @@ Branch `c7-search`, PR #8 (stacked on C6).
 
 | Gate condition | Result | Evidence |
 | --- | --- | --- |
-| Retrieval recall measured on a labelled question set, with and without the tenant filter | Pass | 124 generated questions over 60 documents in two organisations, through the real upload, extraction, indexing and search services. Recall@5 within the asker's organisation: hybrid 1.00, keyword 0.99, vector 0.87. With every organisation's documents as candidates: hybrid 0.99, keyword 0.98, vector 0.84. Results from the other organisation: 0 in every mode (`evals/baselines/search.json`, `test_eval_search.py` replays it with floors) |
+| Retrieval recall measured on a labelled question set, with and without the tenant filter | Pass | 124 generated questions over 60 documents in two organisations, through the real upload, extraction, indexing and search services. Recall@5 within the asker's organisation: hybrid 1.00, keyword 0.99, vector 0.87. With every organisation's documents as candidates: hybrid 0.996, keyword 0.98, vector 0.84 (hybrid read 0.992 on some runs until C8 made equal scores order the same way every time). Results from the other organisation: 0 in every mode (`evals/baselines/search.json`, `test_eval_search.py` replays it with floors) |
 | Out-of-limit CoA results are flagged | Pass | 20 synthetic certificates: 511 of 511 values read; 6 of 6 seeded out-of-limit results caught; 3 of 3 certificates that still claim compliance flagged as contradictory; 0 of 14 clean certificates flagged (`evals/baselines/coa.json`). An invoice whose batch has an out-of-limit certificate is held back (`test_coa_link.py`) |
 
 ### Measured

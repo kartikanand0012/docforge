@@ -39,6 +39,7 @@ from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
 from docforge.review.service import ReviewService
 from docforge.search.service import SearchService
+from docforge.telemetry import tracer
 from docforge.webhooks import WebhookService
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,14 @@ def create_app(
     searches_per_minute: int = 60,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
-    app = FastAPI(title="DocForge", version=__version__)
+    # FastAPI's own telemetry is off: its request spans record the query string (a search
+    # question) and it would configure exporters from the environment. Requests are traced
+    # below, by route only.
+    app = FastAPI(
+        title="DocForge",
+        version=__version__,
+        telemetry={"tracing": False, "metrics": False, "logs": False, "auto_configure": False},
+    )
     # Without an authenticator every /v1 route answers 401: there is no anonymous mode.
     app.state.authenticator = authenticator
     if cors_origins:
@@ -125,6 +133,22 @@ def create_app(
         if declared.isdigit() and int(declared) > max_upload_bytes + MULTIPART_OVERHEAD:
             return JSONResponse({"detail": too_large_message(max_upload_bytes)}, status_code=413)
         return await call_next(request)
+
+    @app.middleware("http")
+    async def trace_requests(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # Named by route template, never by path or query: a path can hold an id, a query a
+        # question, and neither belongs in a third-party trace store.
+        with tracer.start_as_current_span(request.method) as span:
+            span.set_attribute("http.request.method", request.method)
+            response = await call_next(request)
+            route = request.scope.get("route")
+            template = getattr(route, "path", None) or "unmatched"
+            span.update_name(f"{request.method} {template}")
+            span.set_attribute("http.route", template)
+            span.set_attribute("http.response.status_code", response.status_code)
+            return response
 
     @app.exception_handler(OperationalError)
     async def database_unavailable(request: Request, error: OperationalError) -> JSONResponse:

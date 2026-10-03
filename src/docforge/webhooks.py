@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 from docforge.db.models import Webhook, WebhookDelivery
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import current_tenant, scoped, tenant_scope
+from docforge.telemetry import tracer
 
 EVENTS = ("document.processed", "review.signed", "webhook.test")
 Defer = Callable[[Session, uuid.UUID, uuid.UUID], None]  # (session, delivery id, tenant id)
@@ -293,6 +294,13 @@ class WebhookService:
         and no connection. If the process dies between sending and recording, the event is
         sent again later with the same id, which the receiver can recognise.
         """
+        with tracer.start_as_current_span("webhook.deliver") as span:
+            span.set_attribute("docforge.delivery_id", str(delivery_id))
+            outcome = self._deliver(delivery_id, tenant_id)
+            span.set_attribute("docforge.outcome", outcome)
+            return outcome
+
+    def _deliver(self, delivery_id: uuid.UUID, tenant_id: uuid.UUID) -> Outcome:
         with tenant_scope(tenant_id):
             with self._sessions.begin() as session:
                 row = session.execute(

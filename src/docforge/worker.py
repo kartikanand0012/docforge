@@ -105,10 +105,12 @@ async def run_worker(
 
 
 def main() -> None:
+    from docforge.telemetry import configure_tracing
     from docforge.wiring import build_service
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings = get_settings()
+    configure_tracing(settings, "worker")
     _service, queue = build_service(settings)
     asyncio.run(
         run_worker(
