@@ -48,6 +48,11 @@ jobs:
       - name: Eval (offline replay)
         run: make eval && git diff --exit-code -- evals/baselines
 
+      # The C8 gate: a change that reads worse, misses a defect, leaks across organisations or
+      # costs noticeably more fails here, whoever recorded the reports.
+      - name: Eval gate
+        run: make gate
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "24"

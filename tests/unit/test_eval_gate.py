@@ -86,7 +86,9 @@ def test_a_gate_file_with_an_unknown_comparison_is_refused(tmp_path: Path) -> No
         load_gate(bad)
 
 
-def test_the_command_exits_non_zero_on_a_failure(reports: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_the_command_exits_non_zero_on_a_failure(
+    reports: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     assert main(["--reports", str(reports), "--gate", str(GATE)]) == 0
     worsen(reports, "invoice", ["summary", "fields", "accuracy"], 0.5)
 

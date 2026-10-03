@@ -317,7 +317,11 @@ def summarise_evals(directory: Path, prices: tuple[float, float] | None) -> dict
         per_document = None
         if prices is not None:
             per_document = round(
-                (usage["input_tokens"] * prices[0] + usage["output_tokens"] * prices[1])
+                (
+                    usage["input_tokens"] * prices[0]
+                    # Thinking tokens are billed at the output price.
+                    + (usage["output_tokens"] + usage.get("thinking_tokens", 0)) * prices[1]
+                )
                 / 1_000_000
                 / documents,
                 6,
