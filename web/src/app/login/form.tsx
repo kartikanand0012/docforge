@@ -54,7 +54,19 @@ function LoginForm({ demo }: { demo: DemoSignIn | null }) {
       <label htmlFor="email">Email</label>
       <input id="email" name="email" type="email" required ref={email} defaultValue={demo?.email ?? ""} autoComplete="username" />
       <label htmlFor="pin">PIN</label>
-      <input id="pin" name="pin" type="password" inputMode="numeric" required autoComplete="current-password" />
+      {/* On the demo the PIN is public and filled in, and a password manager must not swap in a
+          saved one for this site (which turns a working sign-in into "PIN is not right"). */}
+      <input
+        id="pin"
+        name="pin"
+        type="password"
+        inputMode="numeric"
+        required
+        defaultValue={demo?.pin ?? ""}
+        autoComplete={demo ? "off" : "current-password"}
+        data-1p-ignore={demo ? true : undefined}
+        data-lpignore={demo ? "true" : undefined}
+      />
       {error && <p className="error" role="alert">{error}</p>}
       <p>
         <button className="primary" type="submit" disabled={busy}>
