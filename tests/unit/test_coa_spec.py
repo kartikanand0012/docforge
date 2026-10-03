@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from docforge.extraction.coa import COA_SPEC, CoaExtraction, RawCoa
 
+from docforge.extraction.coa import COA_SPEC, CoaExtraction, RawCoa
 from docforge.parsing.base import Page, ParsedDocument
 from docforge.trust.rules import run_rules
 
