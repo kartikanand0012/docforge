@@ -10,13 +10,19 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from docforge.config import get_settings
+from docforge.evals.coa import format_coa_report, run_coa_eval
 from docforge.evals.run import format_report, record_pipeline, replay_pipeline, run_eval
 from docforge.evals.scans import format_scan_report, run_scan_eval
 from docforge.evals.scoring import DocumentScore
 from docforge.evals.trust import format_trust_report, run_trust_eval, trust_pipelines
-from docforge.extraction.pipeline import InvoicePipeline
+from docforge.extraction.coa import COA_SPEC
+from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
 from docforge.llm.base import LLMError, LLMQuotaExhausted
+from docforge.llm.gemini import GeminiProvider
+from docforge.llm.replay import RecordingProvider
 from docforge.parsing.base import ParseError
+from docforge.parsing.cache import CachingParser
+from docforge.parsing.docling_parser import DoclingParser
 
 
 def _progress(score: DocumentScore) -> None:
@@ -28,20 +34,26 @@ def _progress(score: DocumentScore) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     parser = argparse.ArgumentParser(prog="python -m docforge.evals", description=__doc__)
-    parser.add_argument("--suite", choices=("extraction", "trust", "scans"), default="extraction")
+    parser.add_argument(
+        "--suite", choices=("extraction", "trust", "scans", "coa"), default="extraction"
+    )
     parser.add_argument("--mode", choices=("replay", "record"), default="replay")
     parser.add_argument("--fixtures", type=Path, default=Path("tests/fixtures/synthetic"))
     parser.add_argument("--recordings", type=Path, default=Path("tests/fixtures/recorded"))
     parser.add_argument("--seeded", type=Path, default=Path("tests/fixtures/seeded"))
     parser.add_argument("--scanned", type=Path, default=Path("tests/fixtures/scanned"))
+    parser.add_argument("--coa", type=Path, default=Path("tests/fixtures/coa"))
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--model", default=settings.gemini_model)
     args = parser.parse_args(argv)
 
-    names = {"extraction": "invoice", "trust": "trust", "scans": "scans"}
+    names = {"extraction": "invoice", "trust": "trust", "scans": "scans", "coa": "coa"}
     out = args.out or Path(f"evals/baselines/{names[args.suite]}.json")
     if args.mode == "record" and settings.gemini_api_key is None:
         parser.error("record mode needs GEMINI_API_KEY")
+    if args.suite == "coa":
+        secret = settings.gemini_api_key if args.mode == "record" else None
+        return _coa(args, out, secret.get_secret_value() if secret is not None else None)
     if args.suite == "trust":
         secret = settings.gemini_api_key if args.mode == "record" else None
         key = secret.get_secret_value() if secret is not None else None
@@ -101,6 +113,27 @@ def _scans(args: argparse.Namespace, out: Path, pipeline: InvoicePipeline) -> in
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
     print(format_scan_report(report))
+    print(f"Report written to {out}")
+    return 0
+
+
+def _coa(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
+    live = api_key is not None
+    parser = CachingParser(args.recordings / "parsed", DoclingParser() if live else None)
+    provider = RecordingProvider(
+        args.recordings / "llm", args.model, GeminiProvider(args.model, api_key) if live else None
+    )
+    try:
+        report = run_coa_eval(args.coa, ExtractionPipeline(parser, provider, COA_SPEC))
+    except LLMQuotaExhausted as error:
+        print(f"Stopped: {error}", file=sys.stderr)
+        return 2
+    except (ParseError, LLMError) as error:
+        print(f"Eval failed: {error}", file=sys.stderr)
+        return 1
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    print(format_coa_report(report))
     print(f"Report written to {out}")
     return 0
 

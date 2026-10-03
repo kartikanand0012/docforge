@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 from docforge.evals.coa import format_coa_report, run_coa_eval
-
 from docforge.extraction.coa import COA_SPEC
 from docforge.extraction.pipeline import ExtractionPipeline
 from fakes import MappedParser, ScriptedProvider, cited

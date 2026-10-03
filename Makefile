@@ -69,9 +69,11 @@ eval: ## Re-run the invoice eval offline from recordings and rewrite the baselin
 	uv run python -m docforge.evals --mode replay --fixtures tests/fixtures/multipage --out evals/baselines/multipage.json
 	uv run python -m docforge.evals --suite trust --mode replay
 	uv run python -m docforge.evals --suite scans --mode replay
+	uv run python -m docforge.evals --suite coa --mode replay
 
 eval-record: ## Run the eval live for anything not yet recorded (needs GEMINI_API_KEY; resumable)
 	uv run python -m docforge.evals --mode record
 	uv run python -m docforge.evals --mode record --fixtures tests/fixtures/multipage --out evals/baselines/multipage.json
 	uv run python -m docforge.evals --suite trust --mode record
 	uv run python -m docforge.evals --suite scans --mode record
+	uv run python -m docforge.evals --suite coa --mode record
