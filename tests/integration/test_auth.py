@@ -292,3 +292,19 @@ def test_wrong_pins_at_sign_in_lock_the_reviewer_whatever_address_they_come_from
     )
 
     assert locked.status_code == 401  # the right PIN, but the reviewer is locked for now
+
+
+def test_a_shared_account_with_a_public_pin_is_never_locked(stack: Stack) -> None:
+    """The public demo's account: its PIN is on the sign-in page, so a lock would protect
+    nothing and let any visitor shut everyone else out."""
+    stack.review.add_reviewer(
+        DEFAULT_TENANT_ID, name="Demo", email="demo@example.com", pin="111111", shared=True
+    )
+    for attempt in range(6):
+        stack.client.post(
+            "/v1/sessions",
+            json={"tenant": "default", "email": "demo@example.com", "pin": "000000"},
+            headers={"X-Forwarded-For": f"203.0.113.{attempt}"},
+        )
+
+    assert stack.login("demo@example.com", "111111")

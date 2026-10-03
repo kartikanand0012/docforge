@@ -488,3 +488,18 @@ def test_the_queue_finds_a_flagged_document_behind_ones_that_need_nobody(
     )
 
     assert [item.document_id for item in review.queue(DEFAULT_TENANT_ID)] == [invoice_id]
+
+
+def test_wrong_pins_at_signing_do_not_lock_a_shared_account(
+    world: World, review: ReviewService
+) -> None:
+    review.add_reviewer(
+        DEFAULT_TENANT_ID, name="Demo", email="demo@example.com", pin="111111", shared=True
+    )
+    invoice_id = world.process("invoice")
+
+    for _ in range(6):
+        with pytest.raises(NotAuthenticated):
+            correct(review, invoice_id, "invoice_no", "X", email="demo@example.com", pin="000000")
+
+    assert correct(review, invoice_id, "invoice_no", "X", email="demo@example.com", pin="111111")

@@ -54,6 +54,9 @@ def test_seeding_twice_adds_nothing_the_second_time(
     assert len(queued) == 4
     token = Authenticator(sessions).login("demo", "demo@docforge.example", "482915", "test")
     assert token.startswith("dfs_")
+    principal = Authenticator(sessions).authenticate(token)
+    # Read, correct and sign only: no uploads, keys or webhooks for anonymous visitors.
+    assert principal is not None and principal.role == "reviewer"
 
 
 def test_a_weak_demo_pin_is_refused(sessions: SessionFactory, owner_engine: Engine) -> None:
