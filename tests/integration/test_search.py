@@ -14,7 +14,7 @@ from docforge.api.app import create_app
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
 from docforge.parsing.cache import CachingParser
-from docforge.search.embeddings import FakeEmbedder
+from docforge.search.embeddings import EmbeddingMissing, FakeEmbedder, RecordingEmbedder
 from docforge.search.service import Mode, SearchService
 from fakes import reprint, signed_in
 from worlds import World
@@ -376,3 +376,19 @@ def test_a_pointer_to_another_documents_version_is_refused(
             ),
             {"other": order_id, "d": invoice_id},
         )
+
+
+def test_hybrid_search_falls_back_to_words_when_the_question_cannot_be_embedded(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], sessions: SessionFactory
+) -> None:
+    """With no model key (the demo) or the embedding quota used up, a question that was
+    never embedded still finds what it names; only a search by meaning alone fails."""
+    world, _, invoice_id, _ = indexed
+    replay_only = SearchService(sessions, RecordingEmbedder(Path("/nonexistent"), None, model="m"))
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    hits = replay_only.search(DEFAULT_TENANT_ID, batch, mode="hybrid")
+
+    assert hits and hits[0].document_id == invoice_id
+    with pytest.raises(EmbeddingMissing):
+        replay_only.search(DEFAULT_TENANT_ID, batch, mode="vector")
