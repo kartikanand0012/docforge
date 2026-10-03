@@ -103,6 +103,22 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C8 Operations (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| How do you stop a prompt change from shipping a regression? | Recorded replies replayed in CI; floors per report, per field class, and zero wrong values; dataset, model and prompt pinned; on pull requests, no metric worse than the base branch and no floor loosened without a label. Proven with two live-recorded edits: one blocked, one let through. | `evals/gate.py`, `evals/demos/` |
+| What surprised you in evals? | A shortened prompt that dropped the rules I thought mattered showed no measurable difference: the reply schema already asks for block ids. A "helpful" prompt that normalised dates lost 56 of them, and the trust layer turned them into missing values, not wrong ones. | `test_eval_gate_demo.py` |
+| What can your gate not catch? | A determined author who re-records and lowers floors; run-to-run model variation (one run each); drift on the live model (no scheduled live run yet). 20 documents bound the document failure rate at about 14%. | `docs/progress.md` C8 |
+| Debugging slow search | Measured at 50,000 chunks: 180 ms, of which 170 was a per-chunk "newest version" subquery. Moved the fact onto the document; 21 ms. HNSW was never the issue: the planner sorted exactly. | `0012_indexed_version.py` |
+| HNSW and multi-tenancy | Postgres filters to the tenant and sorts exactly; forcing the index found 18% of true neighbours on random vectors. Exact keeps full recall; HNSW needs real embeddings at scale to judge. | `evals/vector_scale.py` |
+| A flaky eval that was really a bug | One search number flipped between runs: identical documents in two organisations tied, and Postgres ordered ties arbitrarily. I had attributed the change to my own edit. | `_TIE_BREAK` |
+| Tracing without leaking data | Spans carry ids, counts, tokens, cost; never content. Review found the leak I had missed: a recorded exception's message and stack (a SQL error's parameters, a validation error's input). FastAPI's own tracing recorded query strings, so it is off. | `telemetry.py::traced` |
+| Where does the cost go? | $0.0135 per one-page invoice; 92% is output tokens, because every value carries its block ids. That is the lever, not the prompt. | `evals/baselines/invoice.json` |
+| A profile that paid off | The review queue built a regex per value (12,000 per call) and overflowed Python's pattern cache; string search, proven equal on 40,000 cases. | `trust/verify.py::_contains` |
+| Running a migration on a busy table | Add the column alone with a lock timeout, fill in batches, build indexes concurrently, add the key NOT VALID and validate after. | `0012_indexed_version.py` |
+| Honest load numbers | Model replayed, so the numbers are the system's own; model latency is quoted separately; throughput is named `replay_documents_per_minute`; no p95 from five samples. | `load.py` |
+
 ### C7 Search and certificates of analysis (2026-10-03)
 
 | Question it answers | What happened in this project | Where to point |

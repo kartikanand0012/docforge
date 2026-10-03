@@ -2,6 +2,107 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C8 Operations (2026-10-03): gate passed
+
+Branch `c8-operations`, PR #9 (stacked on C7).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| CI blocks a deliberately worse prompt | Pass | Two edits to the invoice prompt, each run live once on the 20 synthetic invoices and replayed in CI (`evals/demos/`, `test_eval_gate_demo.py`). A prompt that "tidies" values for a downstream system (ISO dates, plain numbers) lost 56 of 334 dates and is blocked on five floors. A shortened prompt showed no measurable difference in that one run and passes every quality floor; only its prompt-version pin asks for the change to be declared. The gate runs after the offline replay in CI (`make gate`, 35 checks), and on pull requests again against the base branch: no gated metric worse than there, no floor loosened or removed, unless the pull request carries a `gate-change` label |
+| The load test gives real p95 latency and cost numbers | Pass | `scripts/load.sh` on a laptop (`evals/load/load.json`, environment recorded): 300 uploads from 5 organisations at concurrency 16, all processed, no errors. Upload p95 134 ms; keyword search p95 138 ms, hybrid 155 ms (target 300 ms). Model replies are replayed in this run, so model time is not in these numbers: it is 14.4 s p50 and 26.6 s p95 per invoice, measured live in the C1 eval. Cost per one-page invoice $0.0135 at Gemini 3.5 Flash-Lite's paid price (checked 2026-10-03), from the live run's tokens |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 1,547 Python (1,184 unit, 321 integration, 42 real-parser), 29 web unit, 7 browser steps |
+| Coverage | 93% |
+| Cost per one-page invoice | $0.0135 (2,091 tokens in, 5,166 out; output is 92% of the cost, because every value carries its block ids) |
+| Cost per page of a long invoice | $0.048 |
+| Vector search, 50,000 chunks in 10 organisations | p95 21 ms (was 195 ms), recall@10 0.999 against exact, no results across organisations |
+| Vector search, 50,000 chunks in one organisation | p95 96 ms, recall@10 1.00 |
+| Search on held-out questions (hybrid) | hit@1 0.83, recall@5 0.88, MRR 0.86 (the tuned question set: 1.00) |
+| Review queue under load | p50 704 ms over 5 requests (too few for a p95) |
+
+### What was built
+
+- **Eval gate** (`python -m docforge.evals.gate`, `evals/gate.json`).
+  - Every report has floors, and the dataset, model and prompt version are pinned.
+  - Field classes are gated separately, because a loss in one class hides in the total. A wrong value and an invented value are each held at zero.
+  - Cost is gated on tokens.
+  - A missing report or metric fails, and so does a metric that is not a number.
+  - On a pull request the gate also compares every gated metric with the base branch and names any floor that was loosened. CODEOWNERS covers `evals/` and the recordings.
+- **Tracing with OpenTelemetry.**
+  - Spans cover each processing stage, each model call (with tokens), each document (with model calls, tokens and cost), each search (mode, count) and each request (by route template).
+  - Nothing that could hold content goes on a span: no document text, question, path, query string or credential. An error is recorded by type only, because its message can carry a SQL statement's parameters or part of a model reply.
+  - FastAPI's own tracing is switched off, because it records query strings.
+  - Exporting over OTLP happens only when configured.
+- **Alerts** (`make ops-check`).
+  - It reports no live worker, a stalled queue, a backlog, failed jobs by queue, and a high document failure rate.
+  - It prints one JSON line of counts and exits 0, 1 or 2. A database it cannot read is critical.
+- **Load test** (`make load`): the real API (two processes) and worker on recorded documents, plus vector search measured at 50,000 chunks under the application's role and row-level security.
+- **Held-out search questions** (`evals/baselines/search_heldout.json`): a set not used for tuning, frozen.
+- **Performance fixes found by measuring.**
+  - The "newest version" filter in search ran a subquery per chunk. Each document now names its indexed version (migration 0012), which made vector search 9 times faster.
+  - The review queue's text matching built a regex per value and overflowed Python's pattern cache. It now uses string search, giving the same answers on 40,000 generated cases.
+  - The review queue also worked out each invoice-and-order pair twice.
+
+### Departures from the plan
+
+- **No Langfuse.** Traces are standard OpenTelemetry, so any backend works. The eval reports already hold datasets and cost per prompt version.
+- **No HNSW tuning.**
+  - Postgres never uses the HNSW index at these sizes: it filters to the organisation and sorts exactly, with full recall.
+  - Forcing the index first (a two-step query) was five times faster but found 18% of the true nearest neighbours on random vectors. Random vectors are the index's worst case; real embeddings cluster.
+  - Whether the index pays off needs a large set of real embeddings, so exact search stays.
+  - Until then, exact search grows with the organisation's size: 96 ms at 50,000 chunks, and roughly 2 s at a million, extrapolated rather than measured.
+
+### Honest limits
+
+- **The gate catches accidents, not a determined author.**
+  - Whoever records the replies and sets the floors can pass anything above the floors. The base-branch comparison and CODEOWNERS narrow this; review still has to cover it.
+  - Recorded replies are not signed, and nothing re-runs the model live on a schedule. A nightly live run needs a paid key in CI.
+- **Small samples.**
+  - The invoice floors rest on 20 synthetic documents in two layouts, effectively 20 samples rather than 2,472 fields: a 95% upper bound of about 14% on the document failure rate.
+  - Each prompt was recorded once, so run-to-run variation is unmeasured.
+  - "No measurable difference" for the shortened prompt is one run on 20 documents.
+- **Held-out search questions.**
+  - They are held out in wording only; the documents are the same.
+  - Their slices are small: 19 OCR-misread codes and 10 unanswerable questions.
+  - Hybrid search never says "no answer". A similarity floor is the fix to try, on a new question set.
+- **Load numbers.**
+  - They come from one run on one laptop, with the model replayed.
+  - Searches ran after ingestion had finished, so the two did not compete for resources.
+  - `replay_documents_per_minute` (1,233) is the system's ceiling without the model, not capacity.
+  - Live search adds a query-embedding call, which is not in these numbers.
+- **The review queue is still the slowest endpoint.** It builds each document's state with about 7 queries. Storing that state when it changes is the fix.
+- **Keyword search's full-text index has no tenant column.** At large sizes a common word reads other organisations' index entries before row-level security filters them.
+
+### Review (ECC security-reviewer, database-reviewer, python-reviewer, mle-reviewer)
+
+Fixed, each with a failing test first:
+
+- **Errors on spans.** A failing search or a malformed model reply put the question or document text on a span, through the recorded exception's message and stack.
+- **Migration 0012 locking.** It held an exclusive lock on `documents` for its whole backfill. It now adds the column alone, fills it in batches, builds indexes concurrently and validates a NOT VALID key.
+- **The indexed-version pointer.**
+  - It could point at another document's version. The key now ties it to its own document.
+  - It could not repair itself after the migration window. Indexing an already-indexed version now puts it right.
+  - A version with no chunks would have hidden its document. It no longer moves the pointer.
+- **Missing indexes** for the review queue and the ops check. The ops check also counted every failure there had ever been; it now reads the last hour's events.
+- **Ops check exit code.** It exited 1 (warning) when the database was unreachable. It now exits 2 (critical).
+- **Load run.**
+  - It passed when every request failed, and one lost poll ended it. It now fails on any failure and retries a lost poll.
+  - Its p95 from five samples was the maximum. Tail percentiles now need at least 20 samples.
+  - Its throughput figure read as capacity. It is now named `replay_documents_per_minute`.
+- **Eval helpers** left database pools open on failure.
+- **The gate** accepted `true` as a number, did not pin the dataset, and compared only with fixed floors.
+- **Database cleanup.**
+  - The load and end-to-end scripts' cleanup had never dropped their databases, because Postgres will not drop the database a connection is using.
+  - A remote owner URL could have been used for temporary databases.
+
+Not changed: the remaining limits above, and logs that still print exception chains (as before C8).
+
 ## C7 Search and certificates of analysis (2026-10-03): gate passed
 
 Branch `c7-search`, PR #8 (stacked on C6).

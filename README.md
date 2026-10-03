@@ -49,6 +49,19 @@ the top five for 100% of questions with hybrid search (99% for keyword alone, 87
 alone), and never a document from the other organisation. The questions come from the same
 documents the search was tuned on, so treat this as an upper bound.
 
+On held-out search questions (new wording, codes with an OCR-style misread, unanswerable
+codes) hybrid search finds the right document in the top five 88% of the time, and only 42%
+for misread codes; it never answers "nothing found". Vector search over 50,000 chunks in ten
+organisations: p95 21 ms.
+
+A one-page invoice costs about $0.0135 in model calls (Gemini 3.5 Flash-Lite, paid price checked
+2026-10-03). Under load on a laptop (300 documents, 5 organisations, model replies replayed):
+upload p95 134 ms, search p95 155 ms; the model adds 14 s p50, 27 s p95 per invoice.
+
+CI replays every eval and blocks a change that reads worse (`make gate`); `make ops-check`
+reports what needs a person; traces go to any OpenTelemetry backend and carry no document
+content.
+
 `make eval` reproduces every report offline from recorded parses and model replies.
 
 ## Review screen

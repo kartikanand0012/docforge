@@ -74,7 +74,7 @@ upload ─▶ ingest ─▶ classify ─▶ parse ─▶ extract ─▶ validate
 | Object storage | S3 with Object Lock for originals (MinIO locally) | | Unaltered originals |
 | Review UI | Next.js + TypeScript | | Page image with highlighted source box beside the field |
 | Auth | API keys for machines; OIDC sessions for people; roles in Postgres | | RBAC + row-level security |
-| Observability | OpenTelemetry + Langfuse (self-hosted) | Audit tables only | Traces, cost, datasets |
+| Observability | OpenTelemetry (any OTLP backend); `python -m docforge.ops check` for alerts; eval reports for datasets and cost | Langfuse if prompt-level analysis is needed | Built in C8: spans carry ids, counts, tokens and cost, never content |
 | PII | Presidio before logging and before LLM calls where configured | regex | Redaction |
 | Infra | Docker Compose locally; AWS ECS Fargate + RDS + S3 by Terraform | Kubernetes when a client needs it | Smallest thing that scales horizontally |
 
