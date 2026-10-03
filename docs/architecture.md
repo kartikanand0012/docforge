@@ -6,7 +6,7 @@ Inputs: `docs/research/01`–`05`. Where this document departs from a research r
 ## 1. What DocForge is
 
 A document-intelligence service for regulated, document-heavy operations. It turns PDFs and scans into
-validated, structured records where every value can be traced to the place on the page it came from,
+checked, structured records where every value can be traced to the place on the page it came from,
 and nothing AI-extracted becomes a record until a rule or a person accepts it.
 
 **Demo scope (v1)**
@@ -148,7 +148,7 @@ tamper-evident against ordinary access, not tamper-proof.
 | Table errors across pages | Table-aware parser, header carry-over across pages, line-arithmetic checks |
 | Parser memory leaks | Subprocess workers recycled per N documents, page streaming, page cap |
 | Duplicates and retry storms | Content-hash idempotency, jittered backoff honouring Retry-After, permanent vs transient error classes, dead-letter state |
-| pgvector recall with tenant filter | Tenant-partitioned or partial HNSW indexes, iterative scan, measured recall in evals |
+| pgvector recall with tenant filter | Measured in C8: Postgres filters to the tenant and sorts exactly (full recall; p95 21 ms at 50,000 chunks in 10 tenants, 96 ms at 50,000 in one). The HNSW index is kept with iterative scan on, but is unproven on real embeddings at scale; tenant partitions are the next step if one tenant grows large |
 | Prompt injection in documents | Document text is passed as data; text layer compared to OCR; no tool access in the extraction call |
 | Cost blow-ups | Cheap path for simple pages, batch API for bulk, caching by content hash, per-tenant cost caps |
 | Prompt or model regressions | Pinned model IDs, versioned prompts, eval gate in CI before any change ships |
@@ -158,9 +158,17 @@ worker pools (parse, extract), one Postgres. Stage two: read replica, per-stage 
 queue depth, self-hosted OCR on GPU. Stage three (only if measured need): move queue to SQS and search
 to OpenSearch. Each move is a swap behind an existing interface.
 
-**Speed targets (to be measured at the load-test checkpoint; they are goals, not results).**
-Born-digital 3-page invoice end to end p95 under 15 s; scanned under 40 s; API reads p95 under 200 ms;
-search p95 under 300 ms. Upload returns immediately with a job ID.
+**Speed targets (set before C8) and what C8 measured.**
+- **Born-digital 3-page invoice, end to end, p95 under 15 s:** not met as set. The model alone has a p95 of 26.6 s for a one-page invoice, measured live. The target assumed a faster model call.
+- **API reads p95 under 200 ms:** upload p95 was 134 ms under load.
+- **Search p95 under 300 ms:** search p95 was 155 ms under load.
+- **Upload returns immediately with a job ID:** as designed.
+
+**Deployment (C9).**
+- **Demo:** one arm64 EC2 host in its own VPC runs the same Compose services behind Caddy (HTTPS), with originals in S3 under the host's IAM role. Settings live in one SSM SecureString; the alarms and the budget are in CloudWatch.
+- **Infrastructure:** Terraform in `infra/`.
+- **Operations:** `docs/runbook.md`.
+- **Production:** would move Postgres to RDS with backups and run the services on two or more hosts behind a load balancer. The application does not change.
 
 ## 7. Compliance-supporting features
 
