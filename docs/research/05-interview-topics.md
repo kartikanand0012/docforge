@@ -103,6 +103,19 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C5 Review (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| Designing human-in-the-loop review | The queue holds only what needs a person, with the reasons. A correction is applied to the model's reply and re-read by the same code and checks, so a person's typo is caught like a model's. | `review/revise.py`, `review/service.py` |
+| What does an e-signature need? | The named person, re-authentication at that moment, a stated meaning, and binding to exactly what was signed. A review found the signature was not bound to what the reviewer saw; the client now sends the hash of the record shown. | `ReviewService.sign`, `review/signing.py` |
+| Time-of-check to time-of-use | Viewing and signing are two requests; another tab or a reprocess could change the record between them. Fixed by signing against the hash of what was displayed, refused otherwise. | `RecordChanged` |
+| Enforcing rules in the database as well as code | No correction after signing, no approval over open checks without a reason, reviewers never deleted or renamed: triggers and constraints, so a script or a bug cannot bypass them. | `migrations/versions/0006_review.py` |
+| Account enumeration and lockout | A locked account answered 423, a wrong PIN 401: that told an attacker the email exists. Now one answer. The lockout can still be abused to lock someone out; rate limiting belongs at the edge (C6/C9). | `api/review.py::_errors` |
+| A frontend bug only a review found | Opening a second correction form kept the first field's typed value in uncontrolled inputs; saving would have stored it under the other field, signed. Fixed with a `key` on the form. | `web/src/components/Review.tsx` |
+| Testing the whole thing | One browser test drives the real API, worker and database on recorded documents: upload, queue, highlight, correct, wrong PIN, sign, draft, audit chain. Runs in CI with no API key. | `scripts/e2e.sh`, `web/tests/e2e` |
+| A flaky test harness | The e2e script killed the shell that started the web server, not the server, so the next run hit a stale build. Process groups and a port check fixed it. | `scripts/e2e.sh` |
+
 ### C4 Scans and tables (2026-10-03)
 
 | Question it answers | What happened in this project | Where to point |

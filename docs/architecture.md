@@ -110,6 +110,13 @@ holding its discrepancies. Both are immutable. The per-field `fields`, `validati
 history. The decision has two levels with reasons; there is no numeric confidence until there are
 reviewer outcomes to calibrate one against.
 
+As built in C5: reviewers (with a scrypt-hashed PIN), corrections and signed reviews are their own
+tables, append-only; the record a reviewer sees is the model's reply with the corrections applied,
+read again by the normaliser and checks. A signature stores the SHA-256 of the record and of who,
+what, why and when; the database refuses corrections to a signed version and approvals over open
+checks without an override reason. The review screen is a Next.js app calling the API from the
+browser.
+
 As built in C4: the parser runs in a child process started fresh (not forked), replaced after
 50 documents and stopped if one document exceeds a time or memory limit; replies cross the pipe
 as JSON, and the child gets no credentials. A file whose every page has a text layer is read from

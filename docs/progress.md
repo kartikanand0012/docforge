@@ -2,6 +2,103 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C5 Review (2026-10-03): gate passed
+
+Branch `c5-review`, PR #6 (stacked on C4).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| A reviewer can resolve a flagged document end to end | Pass | `scripts/e2e.sh` (in CI): a browser uploads an order and an invoice, finds the flagged invoice in the queue, sees the doubtful value outlined on the page image, confirms it with a reason and PIN, is refused on a wrong PIN, signs the approval, gets the payment approval draft, and reopens the document to the signed review. Real API, worker and Postgres; recorded parses and model replies, no key |
+| Every action appears in the audit log | Pass | Same test: `document.received`, `extraction.created`, `assessment.created`, `match.created`, `review.corrected`, `review.signed` in order, actor `reviewer:<id>` on the review actions, chain verifies. Failed PINs are logged as `reviewer.pin_failed` (`tests/integration/test_review.py`) |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 1,247 Python (1,011 unit, 194 integration, 42 real-parser), 14 web unit, 5 browser steps |
+| Coverage | 94% (Python) |
+| End-to-end run | about 7 s for the five browser steps, after the stack is up |
+
+No usability study or timing of real reviewers was done.
+
+### What was built
+
+- Review service (`review/`): a queue of documents that need a person; corrections applied to the
+  model's reply and read again by the same normaliser and checks (a reviewer's typing mistake is
+  caught like a model's); confirming a value by re-entering it; approval or rejection under a
+  signature; a payment approval draft for an approved invoice.
+- E-signature: the reviewer re-enters a PIN (scrypt-hashed) for every correction and signature;
+  the signature has a fixed meaning per outcome ("I approve this invoice for payment"), binds to
+  the hash of the record the reviewer was shown, and covers the record, who, which document and
+  version, the reasons and the time. Five wrong PINs lock the reviewer for 15 minutes.
+- Migration 0006: reviewers, corrections and reviews (append-only), the model's reply kept with
+  each extraction, and database guards: no correction to a signed version, no approval over open
+  checks without an override reason, no deleting or renaming a reviewer.
+- API: queue, review detail, corrections, signing, page images of the original, an eval summary.
+- `web/`: a Next.js review screen (queue, upload, review with the page image and outlined
+  sources, correction and signing forms, signed review with the draft) and an evals and cost page.
+- `make e2e`, `make web`, `make web-check`; CI runs the web checks and the browser test.
+
+### What the e-signature is and is not
+
+Designed to support an organisation's own electronic-signature controls: each signature names
+the person, requires their PIN at that moment, states its meaning, and is bound to a hash of
+exactly what was signed. It is not a qualified electronic signature, and until accounts exist
+(C6) the PIN is the only identity check.
+
+### Departures from the plan
+
+- Identity is a reviewer row with a PIN, not a user account: accounts and roles are C6.
+- Corrections are stored per field in `corrections`, and the corrected record is recomputed, not
+  stored as a new extraction. The extraction stays exactly what the model returned.
+- No cost figure is shown until model prices are configured: a price not checked against the
+  provider's current list is not invented.
+
+### Review (ECC python-reviewer, security-reviewer, database-reviewer, react-reviewer)
+
+Fixed, tests first (each reproduced by a failing test):
+
+- A signature was not bound to what the reviewer saw: a correction from another tab, or a new
+  version from reprocessing, could change the record between viewing and signing. Signing now
+  sends the hash of the record shown; a different record is refused.
+- A superseded version could be corrected and signed while a newer one was being processed.
+- When checking an invoice against its order, corrections to the order were ignored.
+- The signature hash covered only the record, outcome and meaning; now also the signer, document,
+  version, reasons and time. Meanings were free text; now fixed per outcome.
+- A locked account answered differently from a wrong PIN, telling an attacker the email exists.
+  Failed PINs left no trail.
+- The queue took the 200 oldest documents before filtering, so accepted documents could crowd
+  out newer ones that needed a person.
+- Rules only in code are now also in the database (see migration 0006); a reviewer's name could
+  have been edited after they signed.
+- A correction path such as `lines[00].qty` was accepted but never matched its field.
+- Internal lookup errors were reported as "no such document".
+- In the review screen: opening a second correction kept the first field's typed value (it would
+  have been saved under the second field); a brief API outage stopped polling for good; a failed
+  signature left a stale screen; contrast failures in dark mode and on the page marks; no
+  location given to screen-reader users.
+
+Found while testing: the end-to-end script left the web server running after a run (it stopped
+the wrapper shell, not the server), so the next run talked to a stale build. It now stops whole
+process groups and refuses to start on busy ports.
+
+Recorded, not fixed (C6 or C9):
+
+- No authentication on any route: anyone who can reach the API can read documents and page
+  images, and try PINs. The API binds to 127.0.0.1 locally; it must not be exposed before C6.
+- No per-IP or global rate limit on PIN attempts; the lockout itself can be used to keep a known
+  reviewer locked out.
+- No PIN reset or rotation; no content security policy on the web app.
+- Rendering page images shares the PDF library lock with extraction in the same process.
+
+### Not verified
+
+- Use by real reviewers; the screen with long multi-page documents in a browser (only one page
+  is exercised end to end).
+- Accessibility with a screen reader or an automated audit; the review was by reading the code.
+
 ## C4 Scans and tables (2026-10-03): gate passed
 
 Branch `c4-scans-tables`, PR #5 (stacked on C3).
