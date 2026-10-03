@@ -11,6 +11,7 @@ from alembic import command
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, Engine, make_url
 
+import tracing  # noqa: F401 - installs the in-memory span exporter before anything traces
 from docforge.config import Settings, get_settings
 from docforge.db import DEFAULT_TENANT_ID, alembic_config
 from docforge.db.roles import ensure_app_login
