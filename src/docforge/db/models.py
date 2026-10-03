@@ -177,6 +177,7 @@ class Reviewer(Base):
     pin_hash: Mapped[str] = mapped_column(Text)
     failed_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
 
 

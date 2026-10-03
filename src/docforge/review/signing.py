@@ -37,10 +37,36 @@ def verify_pin(pin: str, stored: str) -> bool:
     return scheme == "scrypt" and hmac.compare_digest(actual, expected)
 
 
-def record_hash(record: dict[str, Any], *, outcome: str, meaning: str) -> str:
-    """SHA-256 of what is signed: the record, the decision and what the signature means."""
+# What a signature means, per document type and outcome. Fixed here so a client cannot have
+# someone sign a sentence of its own choosing.
+MEANINGS: dict[str, dict[str, str]] = {
+    "invoice": {
+        "approved": "I approve this invoice for payment",
+        "rejected": "I reject this invoice",
+    },
+    "purchase_order": {
+        "approved": "I approve this purchase order record",
+        "rejected": "I reject this purchase order record",
+    },
+}
+
+
+def _canonical(value: Any) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+    ).encode()
+
+
+def record_digest(record: dict[str, Any]) -> str:
+    """SHA-256 of a record alone: what the reviewer was shown, to compare before signing."""
+    return hashlib.sha256(_canonical(record)).hexdigest()
+
+
+def record_hash(record: dict[str, Any], **signed: Any) -> str:
+    """SHA-256 of what is signed: the record and everything said about it (who, which
+    document and version, the decision, its meaning, the reasons, and when)."""
     canonical = json.dumps(
-        {"record": record, "outcome": outcome, "meaning": meaning},
+        {"record": record, **signed},
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,

@@ -15,7 +15,7 @@ export default function SignedCard({ review, valid }: { review: Signed; valid: b
   };
 
   return (
-    <div className="card" aria-label="Signed review">
+    <section className="card" aria-label="Signed review">
       <h2>
         <span className={`chip ${review.outcome}`}>{review.outcome}</span> by {review.reviewer_name}
       </h2>
@@ -25,7 +25,7 @@ export default function SignedCard({ review, valid }: { review: Signed; valid: b
       <p>Reason: {review.reason}</p>
       {review.override_reason && <p className="notice warn">Approved despite open checks: {review.override_reason}</p>}
       <p className={valid ? "notice ok" : "notice bad"}>
-        {valid ? "The record matches what was signed." : "The record no longer matches its signature."}
+        {valid ? "The stored review matches its signature." : "The stored review no longer matches its signature: it was changed after signing."}
         <br />
         <span className="value">SHA-256 {review.record_sha256}</span>
       </p>
@@ -57,6 +57,6 @@ export default function SignedCard({ review, valid }: { review: Signed; valid: b
           </p>
         </>
       )}
-    </div>
+    </section>
   );
 }

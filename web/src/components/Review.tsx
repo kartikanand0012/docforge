@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError, api, type FieldAssessment, type ReviewDetail } from "@/lib/api";
 import { fieldAt, label, section } from "@/lib/fields";
 import PageView from "./PageView";
@@ -8,35 +8,57 @@ import CorrectionForm from "./CorrectionForm";
 import SignForm from "./SignForm";
 import SignedCard from "./SignedCard";
 
-const STATUS_TEXT: Record<FieldAssessment["status"], string> = {
+const STATUS_TEXT: Record<string, string> = {
   verified: "found in source",
   confirmed: "confirmed by reviewer",
   not_in_cited_blocks: "not found in cited text",
   no_citation: "no source cited",
 };
 
-type Load = { kind: "loading" } | { kind: "processing"; status: string; error: string | null } | { kind: "error"; message: string } | { kind: "ready"; detail: ReviewDetail };
+type Waiting = { status: string; error: string | null };
 
 export default function Review({ id }: { id: string }) {
-  const [load, setLoad] = useState<Load>({ kind: "loading" });
+  const [detail, setDetail] = useState<ReviewDetail | null>(null);
+  const [waiting, setWaiting] = useState<Waiting | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const latest = useRef(0);
 
-  const refresh = useCallback(async () => {
+  /** Load the review; true when there is nothing more to wait for. Keeps what was shown last
+   * if the API cannot be reached, and says so. */
+  const refresh = useCallback(async (): Promise<boolean> => {
+    const ticket = ++latest.current;
     try {
-      setLoad({ kind: "ready", detail: await api.review(id) });
+      const next = await api.review(id);
+      if (ticket !== latest.current) return true;
+      setDetail(next);
+      setWaiting(null);
+      setProblem(null);
       return true;
     } catch (e) {
+      if (ticket !== latest.current) return true;
       if (e instanceof ApiError && e.status === 409) {
-        // Not extracted yet: show where processing is.
-        const summary = await api.document(id);
-        const latest = summary.versions.at(-1);
-        setLoad({ kind: "processing", status: latest?.status ?? summary.document.status, error: latest?.error ?? null });
-        return latest?.status === "failed";
+        try {
+          const summary = await api.document(id);
+          const version = summary.versions.at(-1);
+          const status = version?.status ?? summary.document.status;
+          setWaiting({ status, error: version?.error ?? null });
+          setProblem(null);
+          return status === "failed";
+        } catch (inner) {
+          setProblem((inner as Error).message);
+          return false;
+        }
       }
-      setLoad({ kind: "error", message: (e as Error).message });
-      return true;
+      if (e instanceof ApiError && e.status < 500) {
+        setProblem(e.message);
+        return true; // e.g. no such document: retrying will not help
+      }
+      setProblem(`${(e as Error).message} Retrying…`);
+      return false;
     }
   }, [id]);
 
@@ -52,9 +74,8 @@ export default function Review({ id }: { id: string }) {
       stopped = true;
       if (timer) clearTimeout(timer);
     };
-  }, [refresh]);
+  }, [refresh, attempt]);
 
-  const detail = load.kind === "ready" ? load.detail : null;
   const groups = useMemo(() => {
     const result = new Map<string, FieldAssessment[]>();
     for (const field of detail?.assessment.fields ?? []) {
@@ -64,24 +85,52 @@ export default function Review({ id }: { id: string }) {
     return [...result.entries()];
   }, [detail]);
 
-  if (load.kind === "loading") return <p className="muted">Loading…</p>;
-  if (load.kind === "error") return <p className="error" role="alert">{load.message}</p>;
-  if (load.kind === "processing") {
+  if (!detail) {
+    if (waiting) {
+      const failed = waiting.status === "failed";
+      return (
+        <div className="card">
+          <h1>{failed ? "Extraction failed" : "Processing"}</h1>
+          <p aria-live="polite">
+            Status: <strong>{waiting.status}</strong>
+          </p>
+          {failed ? (
+            <p className="error" role="alert">{waiting.error ?? "The document could not be extracted."}</p>
+          ) : (
+            <p className="muted">This page updates when the extraction is ready.</p>
+          )}
+        </div>
+      );
+    }
     return (
-      <div className="card" aria-live="polite">
-        <h1>Processing</h1>
-        <p>
-          Status: <strong>{load.status}</strong>
-        </p>
-        {load.error ? <p className="error">{load.error}</p> : <p className="muted">This page updates when the extraction is ready.</p>}
+      <div className="card">
+        <h1>Document</h1>
+        {problem ? (
+          <>
+            <p className="error" role="alert">{problem}</p>
+            <button type="button" onClick={() => setAttempt((n) => n + 1)}>
+              Try again
+            </button>
+          </>
+        ) : (
+          <p className="muted">Loading…</p>
+        )}
       </div>
     );
   }
 
-  const d = load.detail;
+  const d = detail;
   const signed = d.review !== null;
-  const selectedField = d.assessment.fields.find((f) => f.path === selected) ?? null;
   const needs = d.assessment.fields.filter((f) => f.needs_review).length;
+  const select = (path: string) => {
+    const off = path === selected;
+    setSelected(off ? null : path);
+    const field = d.assessment.fields.find((f) => f.path === path);
+    const pages = [...new Set(field?.boxes.map((b) => b.page) ?? [])];
+    setAnnouncement(
+      off ? "" : pages.length ? `${label(path)} is outlined on page ${pages.join(" and ")}` : `${label(path)} has no place on the page`,
+    );
+  };
 
   return (
     <>
@@ -89,15 +138,19 @@ export default function Review({ id }: { id: string }) {
         {d.filename} <span className="muted">· {d.doc_type.replace("_", " ")} · version {d.version_no}</span>
       </h1>
       <p className="sr-only" aria-live="polite">{announcement}</p>
+      {problem && <p className="error" role="alert">{problem}</p>}
+      {d.superseded && <p className="notice warn">A newer version of this document is being processed. This version can be read but not corrected or signed.</p>}
 
       {signed ? null : d.blockers.length === 0 ? (
-        <p className="notice ok">Every value was found in its source or confirmed, the checks pass{d.doc_type === "invoice" ? " and it matches its order" : ""}. It can be approved.</p>
+        <p className="notice ok">
+          Every value was found in its source or confirmed, the checks pass{d.doc_type === "invoice" ? " and it matches its order" : ""}. It can be approved.
+        </p>
       ) : (
         <div className="notice warn">
           <strong>Needs a person:</strong>
           <ul>
-            {d.blockers.map((b) => (
-              <li key={b}>{b}</li>
+            {d.blockers.map((b, i) => (
+              <li key={`${i}-${b}`}>{b}</li>
             ))}
           </ul>
         </div>
@@ -105,17 +158,12 @@ export default function Review({ id }: { id: string }) {
 
       <div className="review">
         <section aria-label="Pages of the original document">
-          <div className="sticky">
-            {d.pages.map((page) => (
-              <PageView
-                key={page.number}
-                src={api.pageUrl(d.document_id, page.number)}
-                page={page}
-                fields={d.assessment.fields}
-                selected={selected}
-              />
-            ))}
-          </div>
+          <p className="legend muted">
+            <span className="swatch needs" aria-hidden="true" /> needs attention <span className="swatch selected" aria-hidden="true" /> selected value
+          </p>
+          {d.pages.map((page) => (
+            <PageView key={page.number} src={api.pageUrl(d.document_id, page.number)} page={page} fields={d.assessment.fields} selected={selected} />
+          ))}
         </section>
 
         <section aria-label="Extracted values">
@@ -159,26 +207,21 @@ export default function Review({ id }: { id: string }) {
                       return (
                         <tr key={field.path} className={`field-row${isSelected ? " selected" : ""}`}>
                           <td>
-                            <button
-                              type="button"
-                              aria-pressed={isSelected}
-                              onClick={() => {
-                                setSelected(isSelected ? null : field.path);
-                                setAnnouncement(isSelected ? "" : `${label(field.path)} highlighted on the page`);
-                              }}
-                            >
+                            <button type="button" className="link" aria-pressed={isSelected} aria-label={`Show ${label(field.path)} on the page`} onClick={() => select(field.path)}>
                               {label(field.path)}
                             </button>
                           </td>
                           <td className="value">{value?.raw ?? <span className="muted">not printed</span>}</td>
                           <td>
-                            <span className={`chip ${field.status}`}>{STATUS_TEXT[field.status]}</span>
+                            <span className={`chip ${field.status}`}>{STATUS_TEXT[field.status] ?? field.status}</span>
                             {field.reasons
                               .filter((r) => r.startsWith("failed"))
-                              .map((r) => (
-                                <div key={r} className="chip failed">{r}</div>
+                              .map((r, i) => (
+                                <div key={`${i}-${r}`} className="chip failed">
+                                  {r}
+                                </div>
                               ))}
-                            {!signed && d.editable_paths.includes(field.path) && (
+                            {!signed && !d.superseded && d.editable_paths.includes(field.path) && (
                               <div>
                                 <button type="button" onClick={() => setEditing(field.path)} aria-label={`Correct ${label(field.path)}`}>
                                   Correct
@@ -195,22 +238,24 @@ export default function Review({ id }: { id: string }) {
             </div>
           </div>
 
-          {editing && (
+          {editing && !signed && (
             <CorrectionForm
+              key={editing}
               documentId={d.document_id}
               path={editing}
               current={fieldAt(d.record, editing)?.raw ?? null}
               onDone={(next) => {
+                const path = editing;
                 setEditing(null);
-                setSelected(editing);
-                if (next) setLoad({ kind: "ready", detail: next });
-                setAnnouncement(next ? `${label(editing)} corrected` : "");
+                setSelected(path);
+                if (next) setDetail(next);
+                setAnnouncement(next ? `${label(path)} saved` : "");
               }}
             />
           )}
 
           {d.corrections.length > 0 && (
-            <div className="card" style={{ marginTop: 12 }}>
+            <div className="card spaced">
               <h2>Corrections</h2>
               <table>
                 <thead>
@@ -240,14 +285,13 @@ export default function Review({ id }: { id: string }) {
             </div>
           )}
 
-          <div style={{ marginTop: 12 }}>
+          <div className="spaced">
             {signed && d.review ? (
               <SignedCard review={d.review} valid={d.signature_valid} />
-            ) : (
-              <SignForm detail={d} onSigned={() => void refresh()} />
+            ) : d.superseded ? null : (
+              <SignForm detail={d} onSigned={() => void refresh()} onFailed={() => void refresh()} />
             )}
           </div>
-          {selectedField === null ? null : <p className="sr-only">{label(selectedField.path)} selected</p>}
         </section>
       </div>
     </>

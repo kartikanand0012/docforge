@@ -39,10 +39,18 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     const doubtful = page.getByRole("row").filter({ hasText: "not found in cited text" }).first();
     await expect(doubtful).toBeVisible();
 
-    // Selecting a value outlines its source on the page image.
-    await doubtful.getByRole("button", { pressed: false }).first().click();
-    await expect(page.locator(".mark.selected").first()).toBeVisible();
-    await expect(page.getByRole("img", { name: "Page 1 of the original document" })).toBeVisible();
+    // Selecting a value outlines its source on the page image, inside the image.
+    await doubtful.getByRole("button", { name: /^Show .* on the page$/ }).click();
+    const image = page.getByRole("img", { name: "Page 1 of the original document" });
+    const mark = page.locator(".mark.selected").first();
+    await expect(mark).toBeVisible();
+    const [imageBox, markBox] = [await image.boundingBox(), await mark.boundingBox()];
+    expect(imageBox && markBox).toBeTruthy();
+    expect(markBox!.x).toBeGreaterThanOrEqual(imageBox!.x - 1);
+    expect(markBox!.y).toBeGreaterThanOrEqual(imageBox!.y - 1);
+    expect(markBox!.x + markBox!.width).toBeLessThanOrEqual(imageBox!.x + imageBox!.width + 1);
+    expect(markBox!.y + markBox!.height).toBeLessThanOrEqual(imageBox!.y + imageBox!.height + 1);
+    await expect(page.getByText(/is outlined on page 1/)).toBeAttached();
 
     // Confirm it: the same text, a reason, and the PIN.
     await doubtful.getByRole("button", { name: /^Correct / }).click();
@@ -67,10 +75,16 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     await sign.getByRole("button", { name: "Sign and approve" }).click();
     const signed = page.getByLabel("Signed review");
     await expect(signed).toContainText("approved by E2E Reviewer");
-    await expect(signed).toContainText("The record matches what was signed.");
+    await expect(signed).toContainText("The stored review matches its signature.");
+    await expect(signed).toContainText("I approve this invoice for payment");
     await expect(signed.getByRole("heading", { name: "Payment approval draft" })).toBeVisible();
     await expect(signed).toContainText("INR");
     await expect(page.getByRole("button", { name: /^Correct / })).toHaveCount(0);
+
+    // Opening it again later shows the signed review, not a form.
+    await page.reload();
+    await expect(page.getByLabel("Signed review")).toContainText("approved by E2E Reviewer");
+    await expect(page.getByRole("form", { name: "Sign the review" })).toHaveCount(0);
   });
 
   test("every action is in the audit log and the chain verifies", async ({ request }) => {

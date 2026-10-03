@@ -7,6 +7,7 @@ never values or reasons, because the log cannot be edited if they must be erased
 """
 
 import io
+import threading
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -14,8 +15,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import exists, func, select
+from sqlalchemy.orm import Session, aliased
 
 from docforge import audit
 from docforge.db.models import (
@@ -36,8 +37,21 @@ from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.parsing.base import ParsedDocument
 from docforge.parsing.raster import render_pages
-from docforge.review.revise import Correction, Reassessed, apply_corrections, reassess
-from docforge.review.signing import approval_draft, hash_pin, record_hash, verify_pin
+from docforge.review.revise import (
+    Correction,
+    Reassessed,
+    apply_corrections,
+    field_paths,
+    reassess,
+)
+from docforge.review.signing import (
+    MEANINGS,
+    approval_draft,
+    hash_pin,
+    record_digest,
+    record_hash,
+    verify_pin,
+)
 from docforge.storage import ObjectStore
 from docforge.trust.assess import Assessment
 from docforge.trust.match import Discrepancy, match_invoice_to_order
@@ -47,6 +61,8 @@ LOCK_FOR = timedelta(minutes=15)
 _MIN_PIN_DIGITS = 6
 _PAGE_DPI = 110
 _QUEUE_LIMIT = 200
+_QUEUE_SCAN = 20  # documents examined per queue entry returned, at most
+_CONCURRENT_RENDERS = 3  # page images rendered at once in the API process
 _DUMMY_HASH = hash_pin("not-a-real-pin")  # checked for unknown emails, so timing says nothing
 
 
@@ -67,7 +83,16 @@ class ApprovalBlocked(Exception):
 
 
 class NotReviewable(Exception):
-    """No extraction that can be reviewed (none yet, or made before review existed)."""
+    """No extraction that can be reviewed (none yet, made before review existed, or a newer
+    version is being processed)."""
+
+
+class RecordChanged(Exception):
+    """The record changed after the reviewer saw it; they must look again before signing."""
+
+
+class PageNotFound(LookupError):
+    """The document has no such page."""
 
 
 @dataclass(frozen=True)
@@ -121,7 +146,10 @@ class ReviewDetail:
     counterpart_document_id: uuid.UUID | None
     blockers: tuple[str, ...]  # why approval would need an override reason
     review: SignedReview | None
-    signature_valid: bool | None  # None until signed
+    signature_valid: bool | None  # None until signed: does the stored review match its hash
+    record_sha256: str  # of `record`; a signature must name it, so it signs what was seen
+    meanings: dict[str, str]  # outcome -> the sentence a signature with that outcome means
+    superseded: bool  # a newer version of the document is being processed
 
     @property
     def decision(self) -> str:
@@ -141,6 +169,7 @@ class _State:
     discrepancies: tuple[Discrepancy, ...]
     counterpart: uuid.UUID | None
     review: tuple[Review, str] | None
+    superseded: bool
 
     @property
     def blockers(self) -> tuple[str, ...]:
@@ -150,22 +179,6 @@ class _State:
         if self.document.doc_type == "invoice" and self.match_status == "no_counterpart":
             found.append("there is no purchase order on file to compare it with")
         return tuple(found)
-
-
-def _field_paths(data: Any, prefix: str = "") -> list[str]:
-    if isinstance(data, dict):
-        if set(data) == {"text", "block_ids"}:
-            return [prefix]
-        return [
-            p
-            for key, value in data.items()
-            for p in _field_paths(value, f"{prefix}.{key}" if prefix else key)
-        ]
-    if isinstance(data, list):
-        return [
-            p for index, item in enumerate(data) for p in _field_paths(item, f"{prefix}[{index}]")
-        ]
-    return []
 
 
 def _now() -> datetime:
@@ -178,10 +191,14 @@ class ReviewService:
         sessions: SessionFactory,
         store: ObjectStore,
         specs: Mapping[str, DocumentSpec[Any]],
+        *,
+        queue_limit: int = _QUEUE_LIMIT,
     ) -> None:
         self._sessions = sessions
         self._store = store
         self._specs = dict(specs)
+        self._queue_limit = queue_limit
+        self._renders = threading.BoundedSemaphore(_CONCURRENT_RENDERS)
 
     # Reviewers
 
@@ -202,21 +219,43 @@ class ReviewService:
             session.flush()
             return reviewer.id
 
+    def deactivate_reviewer(self, tenant_id: uuid.UUID, email: str) -> None:
+        """Stop a reviewer from correcting or signing. Their past signatures stay."""
+        with self._sessions.begin() as session:
+            reviewer = session.scalar(
+                select(Reviewer).where(
+                    Reviewer.tenant_id == tenant_id, Reviewer.email == email.strip().lower()
+                )
+            )
+            if reviewer is None:
+                raise LookupError(f"no reviewer with the email {email}")
+            reviewer.deactivated_at = _now()
+
     def _authenticate(self, tenant_id: uuid.UUID, email: str, pin: str) -> Reviewer:
         """The reviewer, if the PIN is right. A wrong PIN is counted, in its own transaction."""
         with self._sessions.begin() as session:
             reviewer = session.scalar(
                 select(Reviewer)
                 .where(Reviewer.tenant_id == tenant_id, Reviewer.email == email.strip().lower())
-                .with_for_update()
+                .with_for_update(key_share=True)
             )
-            if reviewer is None:
+            if reviewer is None or reviewer.deactivated_at is not None:
                 verify_pin(pin, _DUMMY_HASH)
                 raise NotAuthenticated
             now = _now()
             if reviewer.locked_until is not None and reviewer.locked_until > now:
                 raise ReviewerLocked
             if not verify_pin(pin, reviewer.pin_hash):
+                # Recorded, so a guessing attempt leaves a trail; nothing about the PIN is kept.
+                audit.append(
+                    session,
+                    tenant_id=tenant_id,
+                    actor="api",
+                    action="reviewer.pin_failed",
+                    target_type="reviewer",
+                    target_id=str(reviewer.id),
+                    details={"attempt": reviewer.failed_attempts + 1},
+                )
                 reviewer.failed_attempts += 1
                 if reviewer.failed_attempts >= MAX_FAILED_PINS:
                     reviewer.failed_attempts = 0
@@ -235,14 +274,36 @@ class ReviewService:
     # Reading
 
     def queue(self, tenant_id: uuid.UUID) -> list[QueueItem]:
-        """Documents whose newest extraction needs a person and has no signed review."""
+        """Documents whose newest extraction needs a person and has no signed review.
+
+        Signed documents are left out in the query; whether the rest need a person depends
+        on corrections and the order match, so it is decided per document, scanning at most
+        `_QUEUE_SCAN` documents for each entry the queue can hold.
+        """
+        newest = aliased(DocumentVersion)
+        signed = (
+            select(Review.id)
+            .join(DocumentVersion, DocumentVersion.id == Review.document_version_id)
+            .where(
+                DocumentVersion.document_id == Document.id,
+                DocumentVersion.version_no
+                == select(func.max(newest.version_no))
+                .where(newest.document_id == Document.id)
+                .scalar_subquery(),
+            )
+            .correlate(Document)
+        )
         items: list[QueueItem] = []
         with self._sessions() as session:
             documents = session.scalars(
                 select(Document)
-                .where(Document.tenant_id == tenant_id, Document.status == "extracted")
-                .order_by(Document.created_at)
-                .limit(_QUEUE_LIMIT)
+                .where(
+                    Document.tenant_id == tenant_id,
+                    Document.status == "extracted",
+                    ~exists(signed),
+                )
+                .order_by(Document.created_at, Document.id)
+                .limit(self._queue_limit * _QUEUE_SCAN)
             ).all()
             for document in documents:
                 try:
@@ -261,6 +322,8 @@ class ReviewService:
                             match_status=state.match_status,
                         )
                     )
+                    if len(items) >= self._queue_limit:
+                        break
         return items
 
     def detail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> ReviewDetail:
@@ -273,10 +336,11 @@ class ReviewService:
             document = self._find(session, tenant_id, document_id)
             key, pages = document.storage_key, document.page_count or 0
         if not 1 <= page <= pages:
-            raise LookupError(f"the document has no page {page}")
-        (image,) = render_pages(self._store.get(key), _PAGE_DPI, page, page)
-        out = io.BytesIO()
-        image.save(out, format="PNG", optimize=True)
+            raise PageNotFound(f"the document has no page {page}")
+        with self._renders:  # rendering holds the PDF library's lock; keep a queue short
+            (image,) = render_pages(self._store.get(key), _PAGE_DPI, page, page)
+            out = io.BytesIO()
+            image.save(out, format="PNG", optimize=True)
         return out.getvalue()
 
     # Changing
@@ -300,9 +364,7 @@ class ReviewService:
         reviewer = self._authenticate(tenant_id, email, pin)
         with self._sessions.begin() as session:
             document = self._find(session, tenant_id, document_id, lock=True)
-            state = self._state(session, document)
-            if state.review is not None:
-                raise AlreadySigned
+            state = self._changeable(self._state(session, document))
             current = state.reassessed.raw.model_dump()
             apply_corrections(state.raw, [Correction(path=path, text=text)])  # validates path
             old = _text_at(current, path)
@@ -341,31 +403,52 @@ class ReviewService:
         meaning: str,
         reason: str,
         override_reason: str | None,
+        expected_record_sha256: str,
         email: str,
         pin: str,
     ) -> SignedReview:
-        """Approve or reject the current record under the reviewer's signature."""
+        """Approve or reject the record under the reviewer's signature.
+
+        `expected_record_sha256` is the `record_sha256` of the record the reviewer was shown;
+        if the record has changed since, nothing is signed.
+        """
         if outcome not in ("approved", "rejected"):
             raise ValueError("outcome must be approved or rejected")
-        if not meaning.strip() or not reason.strip():
-            raise ValueError("a signature needs its meaning and a reason")
+        if not reason.strip():
+            raise ValueError("a signature needs a reason")
         override = override_reason.strip() if override_reason and override_reason.strip() else None
         with self._sessions() as session:
             self._find(session, tenant_id, document_id)
         reviewer = self._authenticate(tenant_id, email, pin)
         with self._sessions.begin() as session:
             document = self._find(session, tenant_id, document_id, lock=True)
-            state = self._state(session, document)
-            if state.review is not None:
-                raise AlreadySigned
+            state = self._changeable(self._state(session, document))
+            required = MEANINGS[document.doc_type][outcome]
+            if meaning.strip() != required:
+                raise ValueError(f"the meaning of this signature must be: {required}")
+            record = state.reassessed.extraction.model_dump(mode="json")
+            if record_digest(record) != expected_record_sha256:
+                raise RecordChanged
             blockers = state.blockers
             if outcome == "approved" and blockers and override is None:
                 raise ApprovalBlocked(
                     "approval needs an override reason because " + "; ".join(blockers)
                 )
-            record = state.reassessed.extraction.model_dump(mode="json")
-            digest = record_hash(record, outcome=outcome, meaning=meaning.strip())
             signed_at = _now()
+            signer = {"id": str(reviewer.id), "name": reviewer.name, "email": reviewer.email}
+            digest = record_hash(
+                record,
+                **_signed(
+                    document.id,
+                    state.version.id,
+                    signer,
+                    outcome,
+                    required,
+                    reason.strip(),
+                    override,
+                    signed_at,
+                ),
+            )
             extraction = state.reassessed.extraction
             draft = (
                 approval_draft(
@@ -384,7 +467,12 @@ class ReviewService:
                     reason=reason.strip(),
                     override_reason=override,
                     record_sha256=digest,
-                    data={"record": record, "draft": draft, "blockers": list(blockers)},
+                    data={
+                        "record": record,
+                        "draft": draft,
+                        "blockers": list(blockers),
+                        "signer": signer,
+                    },
                     signed_at=signed_at,
                 )
             )
@@ -425,7 +513,48 @@ class ReviewService:
             raise DocumentNotFound(document_id)
         return document
 
+    @staticmethod
+    def _changeable(state: _State) -> _State:
+        if state.review is not None:
+            raise AlreadySigned
+        if state.superseded:
+            raise NotReviewable("a newer version of this document is being processed")
+        return state
+
+    def _effective(
+        self, session: Session, version_id: uuid.UUID, doc_type: str
+    ) -> BaseModel | None:
+        """A version's record with its corrections applied; as extracted if it has no reply."""
+        row = session.execute(
+            select(Extraction, ParseOutput)
+            .join(ParseOutput, ParseOutput.document_version_id == Extraction.document_version_id)
+            .where(Extraction.document_version_id == version_id)
+        ).first()
+        spec = self._specs.get(doc_type)
+        if row is None or spec is None:
+            return None
+        extraction, parse_output = row
+        if extraction.raw is None:
+            schema = InvoiceExtraction if doc_type == "invoice" else PurchaseOrderExtraction
+            return schema.model_validate(extraction.data)
+        corrections = session.scalars(
+            select(CorrectionRow)
+            .where(CorrectionRow.document_version_id == version_id)
+            .order_by(CorrectionRow.created_at, CorrectionRow.id)
+        )
+        return reassess(
+            spec,
+            spec.raw_schema.model_validate(extraction.raw),
+            ParsedDocument.model_validate(parse_output.data),
+            [Correction(path=c.path, text=c.new_text) for c in corrections],
+        ).extraction
+
     def _state(self, session: Session, document: Document) -> _State:
+        newest_version = session.scalar(
+            select(func.max(DocumentVersion.version_no)).where(
+                DocumentVersion.document_id == document.id
+            )
+        )
         row = session.execute(
             select(DocumentVersion, Extraction, ParseOutput)
             .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
@@ -444,13 +573,13 @@ class ReviewService:
         raw = spec.raw_schema.model_validate(extraction.raw)
         parsed = ParsedDocument.model_validate(parse_output.data)
         corrections = [
-            (correction, name)
-            for correction, name in session.execute(
+            (row.Correction, row.name)
+            for row in session.execute(
                 select(CorrectionRow, Reviewer.name)
                 .join(Reviewer, Reviewer.id == CorrectionRow.reviewer_id)
                 .where(CorrectionRow.document_version_id == version.id)
                 .order_by(CorrectionRow.created_at, CorrectionRow.id)
-            ).tuples()
+            ).all()
         ]
         reassessed = reassess(
             spec, raw, parsed, [Correction(path=c.path, text=c.new_text) for c, _ in corrections]
@@ -464,20 +593,18 @@ class ReviewService:
                 if match.invoice_version_id == version.id
                 else match.invoice_version_id
             )
-            other = session.scalar(
-                select(Extraction).where(Extraction.document_version_id == other_id)
-            )
+            other_type = "purchase_order" if document.doc_type == "invoice" else "invoice"
+            # The counterpart as corrected, not as first extracted.
+            other = self._effective(session, other_id, other_type)
             if other is not None:
                 mine = reassessed.extraction
                 if isinstance(mine, InvoiceExtraction):
-                    found = match_invoice_to_order(
-                        mine, PurchaseOrderExtraction.model_validate(other.data)
-                    )
+                    assert isinstance(other, PurchaseOrderExtraction)  # noqa: S101
+                    found = match_invoice_to_order(mine, other)
                 else:
+                    assert isinstance(other, InvoiceExtraction)  # noqa: S101
                     assert isinstance(mine, PurchaseOrderExtraction)  # noqa: S101
-                    found = match_invoice_to_order(
-                        InvoiceExtraction.model_validate(other.data), mine
-                    )
+                    found = match_invoice_to_order(other, mine)
                 discrepancies = found
                 status = "mismatch" if any(d.severity == "error" for d in found) else "match"
         signed = session.execute(
@@ -497,6 +624,7 @@ class ReviewService:
             discrepancies=discrepancies,
             counterpart=counterpart,
             review=(signed[0], signed[1]) if signed is not None else None,
+            superseded=newest_version != version.version_no,
         )
 
     @staticmethod
@@ -515,10 +643,22 @@ class ReviewService:
                 record_sha256=row.record_sha256,
                 draft=row.data.get("draft"),
             )
-            stored = row.data.get("record")
+            # Recomputed from what was stored, so a change to any signed part shows; the live
+            # record is not used, so a later change to the normaliser does not void signatures.
             valid = (
-                stored == record
-                and record_hash(stored, outcome=row.outcome, meaning=row.meaning)
+                record_hash(
+                    row.data.get("record") or {},
+                    **_signed(
+                        state.document.id,
+                        state.version.id,
+                        row.data.get("signer"),
+                        row.outcome,
+                        row.meaning,
+                        row.reason,
+                        row.override_reason,
+                        row.signed_at,
+                    ),
+                )
                 == row.record_sha256
             )
         return ReviewDetail(
@@ -531,7 +671,7 @@ class ReviewService:
             pages=tuple(page.model_dump() for page in state.parsed.pages),
             record=record,
             assessment=state.reassessed.assessment,
-            editable_paths=tuple(_field_paths(state.raw.model_dump())),
+            editable_paths=tuple(field_paths(state.raw.model_dump())),
             corrections=tuple(
                 CorrectionView(
                     path=c.path,
@@ -549,7 +689,33 @@ class ReviewService:
             blockers=state.blockers,
             review=review,
             signature_valid=valid,
+            record_sha256=record_digest(record),
+            meanings=dict(MEANINGS[state.document.doc_type]),
+            superseded=state.superseded,
         )
+
+
+def _signed(
+    document_id: uuid.UUID,
+    version_id: uuid.UUID,
+    signer: Any,
+    outcome: str,
+    meaning: str,
+    reason: str,
+    override_reason: str | None,
+    signed_at: datetime,
+) -> dict[str, Any]:
+    """Everything a signature covers besides the record."""
+    return {
+        "document_id": str(document_id),
+        "version_id": str(version_id),
+        "signer": signer,
+        "outcome": outcome,
+        "meaning": meaning,
+        "reason": reason,
+        "override_reason": override_reason,
+        "signed_at": signed_at.astimezone(UTC).isoformat(),
+    }
 
 
 def _text_at(data: dict[str, Any], path: str) -> str | None:
@@ -565,6 +731,8 @@ __all__: Sequence[str] = (
     "ApprovalBlocked",
     "NotAuthenticated",
     "NotReviewable",
+    "PageNotFound",
+    "RecordChanged",
     "ReviewDetail",
     "ReviewService",
     "ReviewerLocked",

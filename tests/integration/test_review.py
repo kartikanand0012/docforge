@@ -476,8 +476,9 @@ def test_a_deactivated_reviewer_cannot_correct_or_sign(world: World, review: Rev
 def test_the_queue_finds_a_flagged_document_behind_ones_that_need_nobody(
     world: World, sessions: SessionFactory
 ) -> None:
+    # The invoice cites the wrong block for its number: it needs a person, its order does not.
+    world.invoice_raw["invoice_no"]["block_ids"] = ["b1"]
     world.process("purchase_order")  # older and accepted
-    world.reprint_invoice("lines[0].qty", "25")
     invoice_id = world.process("invoice")
     review = ReviewService(
         sessions,

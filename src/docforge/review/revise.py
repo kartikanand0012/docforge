@@ -54,10 +54,32 @@ def _field(data: dict[str, Any], path: str) -> dict[str, Any]:
     return node
 
 
+def field_paths(data: Any, prefix: str = "") -> list[str]:
+    """Every field path in a dumped reply, written the one way corrections must use."""
+    if isinstance(data, dict):
+        if set(data) == {"text", "block_ids"}:
+            return [prefix]
+        return [
+            path
+            for key, value in data.items()
+            for path in field_paths(value, f"{prefix}.{key}" if prefix else key)
+        ]
+    if isinstance(data, list):
+        return [p for i, item in enumerate(data) for p in field_paths(item, f"{prefix}[{i}]")]
+    return []
+
+
 def apply_corrections[R: BaseModel](raw: R, corrections: Sequence[Correction]) -> R:
-    """`raw` with each correction applied in order. Raises `ValueError` for a bad path."""
+    """`raw` with each correction applied in order. Raises `ValueError` for a bad path.
+
+    A path must be exactly one of `field_paths`: `lines[00].qty` is refused, so a correction
+    is always stored under the same path the checks use.
+    """
     data = raw.model_dump()
+    known = set(field_paths(data))
     for correction in corrections:
+        if correction.path not in known:
+            raise ValueError(f"{correction.path} is not a field of this document")
         _field(data, correction.path)["text"] = correction.text
     return type(raw).model_validate(data)
 

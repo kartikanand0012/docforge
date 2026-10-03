@@ -4,17 +4,16 @@ import { useState, type FormEvent } from "react";
 import { api, type ReviewDetail } from "@/lib/api";
 import { rememberEmail, savedEmail } from "@/lib/reviewer";
 
-const MEANINGS = {
-  approved: (type: string) => (type === "invoice" ? "I approve this invoice for payment" : "I approve this purchase order record"),
-  rejected: (type: string) => `I reject this ${type.replace("_", " ")}`,
-};
+type Props = { detail: ReviewDetail; onSigned: () => void; onFailed: () => void };
 
-/** Approve or reject under the reviewer's signature: name, PIN, and what the signature means. */
-export default function SignForm({ detail, onSigned }: { detail: ReviewDetail; onSigned: () => void }) {
+/** Approve or reject under the reviewer's signature. The signature binds to the record shown
+ * here (its hash is sent), and its meaning is the fixed sentence the server gives. */
+export default function SignForm({ detail, onSigned, onFailed }: Props) {
   const [outcome, setOutcome] = useState<"approved" | "rejected">("approved");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const needsOverride = outcome === "approved" && detail.blockers.length > 0;
+  const meaning = detail.meanings[outcome];
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -27,9 +26,10 @@ export default function SignForm({ detail, onSigned }: { detail: ReviewDetail; o
         detail.document_id,
         {
           outcome,
-          meaning: String(form.get("meaning")),
+          meaning,
           reason: String(form.get("reason")),
           override_reason: needsOverride ? String(form.get("override_reason")) : null,
+          expected_record_sha256: detail.record_sha256,
         },
         { email, pin: String(form.get("pin")) },
       );
@@ -38,6 +38,7 @@ export default function SignForm({ detail, onSigned }: { detail: ReviewDetail; o
     } catch (e) {
       setError((e as Error).message);
       setBusy(false);
+      onFailed(); // the record may have changed or been signed elsewhere: show the latest
     }
   }
 
@@ -47,14 +48,15 @@ export default function SignForm({ detail, onSigned }: { detail: ReviewDetail; o
       <fieldset>
         <legend>Decision</legend>
         <label>
-          <input type="radio" name="outcome" style={{ width: "auto" }} checked={outcome === "approved"} onChange={() => setOutcome("approved")} /> Approve
+          <input type="radio" name="outcome" className="inline" checked={outcome === "approved"} onChange={() => setOutcome("approved")} /> Approve
         </label>
         <label>
-          <input type="radio" name="outcome" style={{ width: "auto" }} checked={outcome === "rejected"} onChange={() => setOutcome("rejected")} /> Reject
+          <input type="radio" name="outcome" className="inline" checked={outcome === "rejected"} onChange={() => setOutcome("rejected")} /> Reject
         </label>
       </fieldset>
-      <label htmlFor="meaning">What your signature means</label>
-      <input id="meaning" name="meaning" required key={outcome} defaultValue={MEANINGS[outcome](detail.doc_type)} />
+      <p>
+        Your signature will mean: <strong>“{meaning}”</strong>
+      </p>
       <label htmlFor="sign-reason">Reason</label>
       <input id="sign-reason" name="reason" required placeholder={outcome === "approved" ? "e.g. matches the order and the goods received" : "e.g. duplicate of an earlier invoice"} />
       {needsOverride && (
@@ -66,7 +68,7 @@ export default function SignForm({ detail, onSigned }: { detail: ReviewDetail; o
       <label htmlFor="sign-email">Your email</label>
       <input id="sign-email" name="email" type="email" required defaultValue={savedEmail()} autoComplete="email" />
       <label htmlFor="sign-pin">Your PIN</label>
-      <input id="sign-pin" name="pin" type="password" inputMode="numeric" required autoComplete="off" />
+      <input id="sign-pin" name="pin" type="password" inputMode="numeric" required autoComplete="one-time-code" />
       {error && <p className="error" role="alert">{error}</p>}
       <p>
         <button className="primary" type="submit" disabled={busy}>

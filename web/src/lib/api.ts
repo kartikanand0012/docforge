@@ -69,6 +69,9 @@ export type ReviewDetail = {
   counterpart_document_id: string | null;
   review: Signed | null;
   signature_valid: boolean | null;
+  record_sha256: string;
+  meanings: { approved: string; rejected: string };
+  superseded: boolean;
 };
 
 export type QueueItem = {
@@ -127,7 +130,13 @@ export const api = {
     call<ReviewDetail>(`/v1/documents/${encodeURIComponent(id)}/corrections`, json({ path, text, reason, ...who })),
   sign: (
     id: string,
-    body: { outcome: "approved" | "rejected"; meaning: string; reason: string; override_reason: string | null },
+    body: {
+      outcome: "approved" | "rejected";
+      meaning: string;
+      reason: string;
+      override_reason: string | null;
+      expected_record_sha256: string;
+    },
     who: Credentials,
   ) => call<Signed>(`/v1/documents/${encodeURIComponent(id)}/review`, json({ ...body, ...who })),
   upload: (file: File, docType: string) => {

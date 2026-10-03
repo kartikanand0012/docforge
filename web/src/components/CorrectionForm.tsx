@@ -49,14 +49,14 @@ export default function CorrectionForm({ documentId, path, current, onDone }: Pr
       <label htmlFor="text">Value as printed</label>
       <input id="text" name="text" defaultValue={current ?? ""} autoFocus />
       <label>
-        <input type="checkbox" name="not_printed" style={{ width: "auto" }} /> Not printed on the document
+        <input type="checkbox" name="not_printed" className="inline" /> Not printed on the document
       </label>
       <label htmlFor="reason">Reason</label>
       <input id="reason" name="reason" required placeholder="e.g. checked against the paper copy" />
       <label htmlFor="email">Your email</label>
       <input id="email" name="email" type="email" required defaultValue={savedEmail()} autoComplete="email" />
       <label htmlFor="pin">Your PIN</label>
-      <input id="pin" name="pin" type="password" inputMode="numeric" required autoComplete="off" />
+      <input id="pin" name="pin" type="password" inputMode="numeric" required autoComplete="one-time-code" />
       {error && <p className="error" role="alert">{error}</p>}
       <p className="row">
         <button className="primary" type="submit" disabled={busy}>

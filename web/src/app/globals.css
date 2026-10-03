@@ -11,8 +11,12 @@
   --warn-bg: #fdf3dc;
   --bad: #b3261e;
   --bad-bg: #fbe9e7;
-  --highlight: rgba(29, 95, 209, 0.22);
-  --highlight-edge: #1d5fd1;
+  --on-accent: #ffffff;
+  --input-border: #8a8984;
+  /* Marks sit on the page image, which is always white: their colours do not follow the theme. */
+  --mark-needs: #b45309;
+  --mark-selected-fill: rgba(29, 95, 209, 0.25);
+  --mark-selected-edge: #1d4ed8;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -30,8 +34,8 @@
     --warn-bg: #352a12;
     --bad: #ff8f86;
     --bad-bg: #3a1a17;
-    --highlight: rgba(122, 167, 255, 0.28);
-    --highlight-edge: #7aa7ff;
+    --on-accent: #0b1a33;
+    --input-border: #8d8c85;
   }
 }
 
@@ -64,25 +68,30 @@ th { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
 .chip.mismatch, .chip.rejected, .chip.failed { background: var(--bad-bg); color: var(--bad); }
 
 button, .button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+button.link { all: unset; cursor: pointer; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
 button:disabled { opacity: 0.55; cursor: not-allowed; }
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-input, textarea, select { font: inherit; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text); width: 100%; }
+input, textarea, select { font: inherit; padding: 6px 8px; border: 1px solid var(--input-border); border-radius: 6px; background: var(--surface); color: var(--text); width: 100%; }
 label { display: block; font-size: 0.85rem; margin: 8px 0 2px; color: var(--muted); }
 fieldset { border: 1px solid var(--border); border-radius: 6px; margin: 8px 0; }
 
 .review { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (max-width: 900px) { .review { grid-template-columns: 1fr; } }
-.page { position: relative; border: 1px solid var(--border); background: #fff; margin-bottom: 12px; }
+.page { position: relative; border: 1px solid var(--border); background: #fff; margin: 0 0 12px; }
 .page img { display: block; width: 100%; height: auto; }
 .mark { position: absolute; border: 1px solid transparent; pointer-events: none; }
-.mark.needs { border-color: var(--warn); }
-.mark.selected { background: var(--highlight); border: 2px solid var(--highlight-edge); }
-.sticky { position: sticky; top: 8px; }
+.mark.needs { border: 2px dashed var(--mark-needs); }
+.mark.selected { background: var(--mark-selected-fill); border: 2px solid var(--mark-selected-edge); }
+.legend { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 0.85rem; }
+.swatch { display: inline-block; width: 18px; height: 10px; }
+.swatch.needs { border: 2px dashed var(--mark-needs); }
+.swatch.selected { background: var(--mark-selected-fill); border: 2px solid var(--mark-selected-edge); }
+.spaced { margin-top: 12px; }
+input.inline { width: auto; }
 .fields { max-height: 70vh; overflow: auto; }
-.field-row button { all: unset; cursor: pointer; display: block; width: 100%; }
-.field-row button:focus-visible { outline: 3px solid var(--accent); }
-.field-row.selected { background: var(--highlight); }
+.field-row button:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.field-row.selected { background: var(--mark-selected-fill); }
 .value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; word-break: break-word; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }

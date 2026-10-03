@@ -26,6 +26,13 @@ describe("toOverlay", () => {
     expect(overlay.width).toBe("100.000%");
   });
 
+  it("keeps a box that overhangs the right edge inside the page", () => {
+    const overlay = toOverlay({ page: 1, x0: 540, y0: 100, x1: 660, y1: 120 }, page);
+
+    expect(overlay.left).toBe("90.000%");
+    expect(overlay.width).toBe("10.000%");
+  });
+
   it("refuses a page without a size", () => {
     expect(() => toOverlay({ page: 1, x0: 0, y0: 0, x1: 1, y1: 1 }, { width: 0, height: 10 })).toThrow();
   });

@@ -3,6 +3,7 @@
 # (no key, no network), the built review app, and Playwright driving a browser through it.
 # Needs `make up` (Postgres and MinIO). Everything started here is stopped on exit.
 set -euo pipefail
+set -m  # each background job gets its own process group, so cleanup stops its children too
 
 cd "$(dirname "$0")/.."
 API_PORT="${E2E_API_PORT:-8011}"
@@ -11,7 +12,7 @@ LOGS="$(mktemp -d)"
 PIDS=()
 
 cleanup() {
-  for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null || true; done
+  for pid in "${PIDS[@]}"; do kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true
   uv run python - <<'PY' >/dev/null 2>&1 || true
 from sqlalchemy import create_engine, text
@@ -23,6 +24,13 @@ with create_engine(url, isolation_level="AUTOCOMMIT").connect() as conn:
 PY
 }
 trap cleanup EXIT
+
+for port in "$API_PORT" "$WEB_PORT"; do
+  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "port $port is already in use (an earlier run still going?); stop it first" >&2
+    exit 1
+  fi
+done
 
 E2E_URL="$(uv run python - <<'PY'
 from sqlalchemy import create_engine, text

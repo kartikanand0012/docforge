@@ -12,15 +12,18 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docforge.db import DEFAULT_TENANT_ID
+from docforge.documents import DocumentNotFound
 from docforge.parsing.base import ParseError
 from docforge.review.service import (
     AlreadySigned,
     ApprovalBlocked,
     NotAuthenticated,
     NotReviewable,
+    PageNotFound,
+    RecordChanged,
     ReviewDetail,
     ReviewerLocked,
     ReviewService,
@@ -46,6 +49,8 @@ class SignIn(_In):
     meaning: str = Field(min_length=1, max_length=500)
     reason: str = Field(min_length=1, max_length=2000)
     override_reason: str | None = Field(default=None, max_length=2000)
+    # The `record_sha256` of the record the reviewer was shown: a signature binds to it.
+    expected_record_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     email: str = Field(max_length=320)
     pin: str = Field(max_length=64)
 
@@ -104,6 +109,9 @@ class ReviewOut(BaseModel):
     counterpart_document_id: uuid.UUID | None
     review: SignedOut | None
     signature_valid: bool | None
+    record_sha256: str
+    meanings: dict[str, str]
+    superseded: bool
 
 
 def _review_out(detail: ReviewDetail) -> ReviewOut:
@@ -125,23 +133,34 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
         counterpart_document_id=detail.counterpart_document_id,
         review=SignedOut(**vars(detail.review)) if detail.review else None,
         signature_valid=detail.signature_valid,
+        record_sha256=detail.record_sha256,
+        meanings=detail.meanings,
+        superseded=detail.superseded,
     )
 
 
 def _errors(error: Exception) -> HTTPException:
-    if isinstance(error, NotAuthenticated):
+    """The HTTP answer for an expected failure; anything else is re-raised (500, logged)."""
+    if isinstance(error, NotAuthenticated | ReviewerLocked):
+        # One answer for unknown email, wrong PIN and a locked account: none says which.
         return _NOT_AUTHENTICATED
-    if isinstance(error, ReviewerLocked):
-        return HTTPException(423, "Too many wrong PINs. Try again in 15 minutes.")
     if isinstance(error, AlreadySigned):
         return HTTPException(409, "This version is already signed and can no longer change.")
+    if isinstance(error, RecordChanged):
+        return HTTPException(
+            409, "The record changed after you opened it. Look at it again before signing."
+        )
     if isinstance(error, ApprovalBlocked):
         return HTTPException(409, f"{str(error)[0].upper()}{str(error)[1:]}.")
     if isinstance(error, NotReviewable):
-        return HTTPException(409, "There is no extraction of this document to review yet.")
-    if isinstance(error, LookupError):
+        detail = error.args[0] if error.args and isinstance(error.args[0], str) else ""
+        return HTTPException(
+            409,
+            f"{detail[0].upper()}{detail[1:]}." if detail else "There is nothing to review yet.",
+        )
+    if isinstance(error, DocumentNotFound | PageNotFound):
         return HTTPException(404, "No such document or page.")
-    if isinstance(error, ValueError):
+    if isinstance(error, ValueError) and not isinstance(error, ValidationError):
         return HTTPException(422, str(error))
     raise error
 
@@ -192,6 +211,7 @@ def review_router(
                 meaning=body.meaning,
                 reason=body.reason,
                 override_reason=body.override_reason,
+                expected_record_sha256=body.expected_record_sha256,
                 email=body.email,
                 pin=body.pin,
             )
