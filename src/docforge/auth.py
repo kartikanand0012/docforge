@@ -19,6 +19,7 @@ from typing import Literal
 
 from sqlalchemy import func, select
 
+from docforge import audit
 from docforge.db.models import ApiKey, Reviewer, SessionToken, Tenant
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
@@ -36,6 +37,8 @@ _TOKEN = re.compile(r"^(dfk|dfs)_([0-9a-f]{12})_([A-Za-z0-9_-]{43})$")
 _KINDS: dict[str, Kind] = {"dfk": "api_key", "dfs": "session"}
 _SESSION_HOURS = 8
 _DUMMY_PIN_HASH = "scrypt$16384$8$1$00$00"
+_MAX_FAILED_PINS = 5  # as for a PIN re-entered to correct or sign
+_LOCK_FOR = timedelta(minutes=15)
 
 
 @dataclass(frozen=True)
@@ -160,42 +163,67 @@ class Authenticator:
     # Sessions
 
     def login(self, tenant_name: str, email: str, pin: str, client: str) -> str:
-        """A session token for a reviewer, after their PIN. Failures count against `client`."""
+        """A session token for a reviewer, after their PIN.
+
+        A wrong PIN counts against both the client address and the reviewer: five in a row
+        lock the reviewer for 15 minutes, from wherever the attempts come.
+        """
         self.limiter.check(client)
         with self._sessions() as session:
             tenant_id = session.scalar(select(Tenant.id).where(Tenant.name == tenant_name))
-        with tenant_scope(tenant_id or uuid.UUID(int=0)), self._sessions.begin() as session:
-            reviewer = None
-            if tenant_id is not None:
-                reviewer = session.scalar(
-                    select(Reviewer).where(
-                        Reviewer.tenant_id == tenant_id,
-                        Reviewer.email == email.strip().lower(),
-                        Reviewer.deactivated_at.is_(None),
-                    )
+        if tenant_id is None:
+            verify_pin(pin, _DUMMY_PIN_HASH)
+            self.limiter.failed(client)
+            raise LoginFailed
+        with tenant_scope(tenant_id), self._sessions.begin() as session:
+            reviewer = session.scalar(
+                select(Reviewer)
+                .where(
+                    Reviewer.tenant_id == tenant_id,
+                    Reviewer.email == email.strip().lower(),
+                    Reviewer.deactivated_at.is_(None),
                 )
-            now = datetime.now(UTC)
-            locked = (
-                reviewer is not None
-                and reviewer.locked_until is not None
-                and reviewer.locked_until > now
+                .with_for_update(key_share=True)
             )
-            ok = reviewer is not None and not locked and verify_pin(pin, reviewer.pin_hash)
+            now = datetime.now(UTC)
             if reviewer is None:
                 verify_pin(pin, _DUMMY_PIN_HASH)
-            if not ok or reviewer is None:
-                self.limiter.failed(client)
-                raise LoginFailed
-            token, prefix, digest = new_token("dfs")
-            session.add(
-                SessionToken(
-                    tenant_id=reviewer.tenant_id,
-                    reviewer_id=reviewer.id,
-                    prefix=prefix,
-                    digest=digest,
-                    expires_at=now + timedelta(hours=self._session_hours),
+                ok = False
+            elif reviewer.locked_until is not None and reviewer.locked_until > now:
+                ok = False
+            elif verify_pin(pin, reviewer.pin_hash):
+                reviewer.failed_attempts, reviewer.locked_until = 0, None
+                ok = True
+            else:
+                # Committed with this transaction, which then ends normally: the count holds.
+                audit.append(
+                    session,
+                    tenant_id=tenant_id,
+                    actor="api",
+                    action="reviewer.pin_failed",
+                    target_type="reviewer",
+                    target_id=str(reviewer.id),
+                    details={"attempt": reviewer.failed_attempts + 1, "at": "sign-in"},
                 )
-            )
+                reviewer.failed_attempts += 1
+                if reviewer.failed_attempts >= _MAX_FAILED_PINS:
+                    reviewer.failed_attempts, reviewer.locked_until = 0, now + _LOCK_FOR
+                ok = False
+            token = None
+            if ok and reviewer is not None:
+                token, prefix, digest = new_token("dfs")
+                session.add(
+                    SessionToken(
+                        tenant_id=reviewer.tenant_id,
+                        reviewer_id=reviewer.id,
+                        prefix=prefix,
+                        digest=digest,
+                        expires_at=now + timedelta(hours=self._session_hours),
+                    )
+                )
+        if token is None:
+            self.limiter.failed(client)
+            raise LoginFailed
         return token
 
     def logout(self, principal: Principal, token: str) -> None:

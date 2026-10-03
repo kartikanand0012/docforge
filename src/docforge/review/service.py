@@ -248,6 +248,20 @@ class ReviewService:
                 raise LookupError(f"no reviewer with the email {email}")
             reviewer.deactivated_at = _now()
 
+    def _acting_as(self, tenant_id: uuid.UUID, email: str, acting: uuid.UUID | None) -> None:
+        """Refuse before any PIN is checked when the email is not the signed-in reviewer's,
+        so a reviewer cannot test, or lock, someone else's PIN."""
+        if acting is None:
+            return
+        with self._sessions() as session:
+            owner = session.scalar(
+                select(Reviewer.id).where(
+                    Reviewer.tenant_id == tenant_id, Reviewer.email == email.strip().lower()
+                )
+            )
+        if owner != acting:
+            raise NotPermitted
+
     def _authenticate(self, tenant_id: uuid.UUID, email: str, pin: str) -> Reviewer:
         """The reviewer, if the PIN is right. A wrong PIN is counted, in its own transaction."""
         with self._sessions.begin() as session:
@@ -433,6 +447,7 @@ class ReviewService:
             raise ValueError("a correction needs a reason")
         with self._sessions() as session:
             self._find(session, tenant_id, document_id)  # unknown documents before PIN checks
+        self._acting_as(tenant_id, email, acting_reviewer_id)
         reviewer = self._authenticate(tenant_id, email, pin)
         if acting_reviewer_id is not None and reviewer.id != acting_reviewer_id:
             raise NotPermitted
@@ -495,6 +510,7 @@ class ReviewService:
         override = override_reason.strip() if override_reason and override_reason.strip() else None
         with self._sessions() as session:
             self._find(session, tenant_id, document_id)
+        self._acting_as(tenant_id, email, acting_reviewer_id)
         reviewer = self._authenticate(tenant_id, email, pin)
         if acting_reviewer_id is not None and reviewer.id != acting_reviewer_id:
             raise NotPermitted

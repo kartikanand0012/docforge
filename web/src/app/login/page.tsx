@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
+import { safeNext } from "@/lib/next";
 import { rememberEmail, savedEmail } from "@/lib/reviewer";
 
 function LoginForm() {
@@ -24,7 +25,7 @@ function LoginForm() {
       rememberEmail(email);
       // Only a path on this site: never an address taken from the query string. A full load,
       // because pages prefetched before sign-in were cached as redirects to this page.
-      const target = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+      const target = safeNext(next, window.location.origin);
       window.location.assign(target);
       return;
     }

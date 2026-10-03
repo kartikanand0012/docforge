@@ -34,7 +34,8 @@ def create_tenant(settings: Settings, name: str) -> uuid.UUID:
     name = name.strip()
     if not name:
         raise ValueError("an organisation needs a name")
-    sessions = make_session_factory(make_engine(settings.database_url.get_secret_value()))
+    # As the owner: the application's own role may read organisations, not create them.
+    sessions = make_session_factory(make_engine(settings.migration_database_url.get_secret_value()))
     with sessions.begin() as session:
         if session.scalar(select(Tenant.id).where(Tenant.name == name)) is not None:
             raise ValueError(f"an organisation called {name!r} already exists")

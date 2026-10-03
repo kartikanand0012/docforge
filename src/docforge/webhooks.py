@@ -33,21 +33,30 @@ from sqlalchemy.orm import Session
 
 from docforge.db.models import Webhook, WebhookDelivery
 from docforge.db.session import SessionFactory
-from docforge.db.tenancy import scoped, tenant_scope
+from docforge.db.tenancy import current_tenant, scoped, tenant_scope
 
 EVENTS = ("document.processed", "review.signed", "webhook.test")
 Defer = Callable[[Session, uuid.UUID, uuid.UUID], None]  # (session, delivery id, tenant id)
 Outcome = Literal["delivered", "retry", "failed", "skipped"]
 _TIMEOUT = httpx.Timeout(10.0, connect=5.0)
-_ERROR_LIMIT = 500  # characters of an error kept, so a receiver cannot fill the table
+_ERROR_LIMIT = 500
+_DEADLINE_SECONDS = 30  # characters of an error kept, so a receiver cannot fill the table
 
 
 class UnsafeDestination(ValueError):
     """The URL is not HTTPS, or its host resolves to an address that is not public."""
 
 
-def check_destination(url: str, *, allow_http: bool = False, allow_private: bool = False) -> None:
-    """Raise `UnsafeDestination` unless `url` may receive webhooks."""
+# Translated IPv6 that reaches IPv4 hosts, including internal ones, through a NAT64 gateway.
+_NAT64 = (ipaddress.ip_network("64:ff9b::/96"), ipaddress.ip_network("64:ff9b:1::/48"))
+
+
+def check_destination(url: str, *, allow_http: bool = False, allow_private: bool = False) -> str:
+    """The address to connect to; raises `UnsafeDestination` unless `url` may get webhooks.
+
+    The caller must connect to the returned address, not resolve the name again: a name can
+    answer differently the second time (DNS rebinding).
+    """
     try:
         parts = urlsplit(url)
         port = parts.port
@@ -65,12 +74,16 @@ def check_destination(url: str, *, allow_http: bool = False, allow_private: bool
         )
     except OSError as error:
         raise UnsafeDestination(f"{parts.hostname} cannot be resolved") from error
-    for *_, address in found:
-        ip = ipaddress.ip_address(address[0])
-        if not allow_private and not ip.is_global:
+    addresses = [ipaddress.ip_address(address[0]) for *_, address in found]
+    for ip in addresses:
+        translated = ip.version == 6 and any(ip in net for net in _NAT64)
+        if not allow_private and (not ip.is_global or translated):
             raise UnsafeDestination(
                 f"{parts.hostname} resolves to {ip}, which is not a public address"
             )
+    if not addresses:
+        raise UnsafeDestination(f"{parts.hostname} has no address")
+    return str(addresses[0])
 
 
 def derive_secret(key: bytes, webhook_id: uuid.UUID, version: int) -> str:
@@ -102,10 +115,15 @@ class WebhookService:
         self._allow_http = allow_http
         self._allow_private = allow_private
         self.max_attempts = max_attempts
-        self._client = client or (lambda: httpx.Client(timeout=_TIMEOUT, follow_redirects=False))
+        # trust_env=False: a proxy set in the environment must not route around the checks.
+        self._client = client or (
+            lambda: httpx.Client(timeout=_TIMEOUT, follow_redirects=False, trust_env=False)
+        )
 
-    def _check(self, url: str) -> None:
-        check_destination(url, allow_http=self._allow_http, allow_private=self._allow_private)
+    def _check(self, url: str) -> str:
+        return check_destination(
+            url, allow_http=self._allow_http, allow_private=self._allow_private
+        )
 
     # Managing
 
@@ -203,6 +221,10 @@ class WebhookService:
 
         The same `event_id` emitted again adds nothing.
         """
+        if current_tenant() != tenant_id:
+            # Under row-level security an unscoped session would find no webhooks and record
+            # nothing, silently.
+            raise RuntimeError("emit must run inside the tenant's scope")
         event_id = event_id or uuid.uuid4()
         payload = {
             "id": str(event_id),
@@ -235,54 +257,121 @@ class WebhookService:
         return event_id
 
     @scoped
-    def emit_test(self, tenant_id: uuid.UUID) -> uuid.UUID:
-        """A `webhook.test` event for the tenant's webhooks that subscribe to it."""
+    def emit_test(self, tenant_id: uuid.UUID, webhook_id: uuid.UUID) -> uuid.UUID:
+        """A `webhook.test` event for this one webhook, whatever it subscribes to."""
+        event_id = uuid.uuid4()
         with self._sessions.begin() as session:
-            return self.emit(session, tenant_id, "webhook.test", {"message": "test from DocForge"})
+            hook = session.scalar(
+                select(Webhook).where(Webhook.tenant_id == tenant_id, Webhook.id == webhook_id)
+            )
+            if hook is None:
+                raise LookupError("no such webhook")
+            delivery_id = session.execute(
+                insert(WebhookDelivery)
+                .values(
+                    tenant_id=tenant_id,
+                    webhook_id=hook.id,
+                    event_id=event_id,
+                    event_type="webhook.test",
+                    payload={
+                        "id": str(event_id),
+                        "type": "webhook.test",
+                        "created_at": datetime.now(UTC).isoformat(),
+                        "data": {"message": "test from DocForge"},
+                    },
+                )
+                .returning(WebhookDelivery.id)
+            ).scalar_one()
+            self._defer(session, delivery_id, tenant_id)
+        return event_id
 
     def deliver(self, delivery_id: uuid.UUID, tenant_id: uuid.UUID) -> Outcome:
-        """One attempt. `retry` means the queue should call again later."""
-        with tenant_scope(tenant_id), self._sessions.begin() as session:
-            # Locked for the attempt, so two workers never send the same delivery at once.
-            row = session.execute(
-                select(WebhookDelivery, Webhook)
-                .join(Webhook, Webhook.id == WebhookDelivery.webhook_id)
-                .where(WebhookDelivery.id == delivery_id)
-                .with_for_update(of=WebhookDelivery, skip_locked=True)
-            ).first()
-            if row is None:
-                return "skipped"
-            delivery, hook = row
-            if delivery.status != "pending" or not hook.active:
-                return "skipped"
-            delivery.attempts += 1
-            status, error = self._send(hook, delivery)
-            delivery.last_status, delivery.last_error = status, error
-            if status is not None and 200 <= status < 300:
-                delivery.status, delivery.delivered_at = "delivered", datetime.now(UTC)
-                return "delivered"
-            if delivery.attempts >= self.max_attempts:
-                delivery.status = "failed"
-                return "failed"
-            return "retry"
+        """One attempt. `retry` means the queue should call again later.
 
-    def _send(self, hook: Webhook, delivery: WebhookDelivery) -> tuple[int | None, str | None]:
+        The attempt is claimed in one short transaction, the request is sent with no
+        transaction open, and the result recorded in another: a slow receiver holds no lock
+        and no connection. If the process dies between sending and recording, the event is
+        sent again later with the same id, which the receiver can recognise.
+        """
+        with tenant_scope(tenant_id):
+            with self._sessions.begin() as session:
+                row = session.execute(
+                    select(WebhookDelivery, Webhook)
+                    .join(Webhook, Webhook.id == WebhookDelivery.webhook_id)
+                    .where(WebhookDelivery.id == delivery_id)
+                    .with_for_update(of=WebhookDelivery, skip_locked=True)
+                ).first()
+                if row is None:
+                    return "skipped"
+                delivery, hook = row
+                if delivery.status != "pending":
+                    return "skipped"
+                if not hook.active:
+                    delivery.status, delivery.last_error = "failed", "the webhook was removed"
+                    return "failed"
+                delivery.attempts += 1
+                attempt = delivery.attempts
+                request = (hook.url, hook.id, hook.secret_version, delivery.event_id)
+                event_type, payload = delivery.event_type, dict(delivery.payload)
+            status, error = self._send(*request, event_type, payload)
+            with self._sessions.begin() as session:
+                delivery = session.get_one(WebhookDelivery, delivery_id)
+                delivery.last_status, delivery.last_error = status, error
+                if status is not None and 200 <= status < 300:
+                    delivery.status, delivery.delivered_at = "delivered", datetime.now(UTC)
+                    return "delivered"
+                if attempt >= self.max_attempts:
+                    delivery.status = "failed"
+                    return "failed"
+                return "retry"
+
+    def _send(
+        self,
+        url: str,
+        webhook_id: uuid.UUID,
+        secret_version: int,
+        event_id: uuid.UUID,
+        event_type: str,
+        payload: dict[str, Any],
+    ) -> tuple[int | None, str | None]:
+        """POST once. Never raises: any failure comes back as an error to record."""
         try:
-            self._check(hook.url)
+            address = self._check(url)
         except UnsafeDestination as error:
             return None, str(error)[:_ERROR_LIMIT]
-        body = json.dumps(delivery.payload, separators=(",", ":"), sort_keys=True).encode()
-        secret = derive_secret(self._key, hook.id, hook.secret_version)
+        body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
+        secret = derive_secret(self._key, webhook_id, secret_version)
+        parts = urlsplit(url)
+        host = parts.hostname or ""
+        authority = f"{host}:{parts.port}" if parts.port else host
+        # Connect to the address that was checked; keep the name for Host and for TLS.
+        pinned = f"[{address}]" if ":" in address else address
+        target = parts._replace(netloc=f"{pinned}:{parts.port}" if parts.port else pinned)
         headers = {
+            "Host": authority,
             "Content-Type": "application/json",
             "User-Agent": "DocForge-Webhooks/1",
-            "DocForge-Event-Id": str(delivery.event_id),
-            "DocForge-Event-Type": delivery.event_type,
+            "DocForge-Event-Id": str(event_id),
+            "DocForge-Event-Type": event_type,
             "DocForge-Signature": sign(secret, body, timestamp=int(time.time())),
         }
+        deadline = time.monotonic() + _DEADLINE_SECONDS
         try:
-            with self._client() as client:
-                response = client.post(hook.url, content=body, headers=headers)
-        except httpx.HTTPError as error:
+            # Streamed and not read: the answer's status is all that is needed, and a
+            # receiver cannot make us hold a large or endless body.
+            with (
+                self._client() as client,
+                client.stream(
+                    "POST",
+                    target.geturl(),
+                    content=body,
+                    headers=headers,
+                    extensions={"sni_hostname": host},
+                ) as response,
+            ):
+                status = response.status_code
+        except Exception as error:  # any failure is an outcome to record, not a crash
             return None, f"{type(error).__name__}: {error}"[:_ERROR_LIMIT]
-        return response.status_code, None if response.is_success else f"HTTP {response.status_code}"
+        if time.monotonic() > deadline:
+            return None, "the receiver took too long to answer"
+        return status, None if 200 <= status < 300 else f"HTTP {status}"

@@ -154,9 +154,16 @@ def empty_database_url(settings: Settings) -> Iterator[URL]:
 
 
 @pytest.fixture(autouse=True)
-def default_tenant_scope() -> Iterator[None]:
+def default_tenant_scope(request: pytest.FixtureRequest) -> Iterator[None]:
     """Tests read as the default tenant, as its own services would. A service call for
-    another tenant opens that tenant's scope inside this one."""
+    another tenant opens that tenant's scope inside this one.
+
+    Tests marked `no_ambient_tenant` get no scope at all: every route they call must scope
+    its own work, or it sees nothing.
+    """
+    if request.node.get_closest_marker("no_ambient_tenant"):
+        yield
+        return
     with tenant_scope(DEFAULT_TENANT_ID):
         yield
 

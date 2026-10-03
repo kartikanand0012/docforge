@@ -8,7 +8,9 @@ export async function POST(request: Request) {
   const body = await request.text();
   const response = await fetch(`${apiBase()}/v1/sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-Forwarded-For": request.headers.get("x-forwarded-for") ?? "" },
+    // The client's own X-Forwarded-For is not passed on: it could be anything. In deployment
+    // the front proxy, not the browser, says where a request came from.
+    headers: { "Content-Type": "application/json" },
     body,
     cache: "no-store",
   });

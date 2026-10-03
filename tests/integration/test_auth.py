@@ -21,7 +21,7 @@ from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.review.service import ReviewService
 from worlds import World
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.no_ambient_tenant]
 
 RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 REPO = Path(__file__).resolve().parents[2]
@@ -234,12 +234,18 @@ def test_tokens_are_stored_only_as_hashes(stack: Stack, owner_engine: Engine) ->
 
 
 def test_the_admin_command_makes_organisations_and_keys(
-    engine: Engine, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    engine: Engine,
+    owner_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     from docforge.admin import main
     from docforge.config import get_settings
 
     monkeypatch.setenv("DATABASE_URL", engine.url.render_as_string(hide_password=False))
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", owner_engine.url.render_as_string(hide_password=False)
+    )
     get_settings.cache_clear()
     try:
         assert main(["create-tenant", "acme"]) == 0

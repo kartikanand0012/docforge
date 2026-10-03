@@ -23,7 +23,7 @@ migrate: ## Apply database migrations (as the owner), then make the application'
 	uv run python -m docforge.db.roles
 
 api: ## Run the API on http://127.0.0.1:8000 (needs GEMINI_API_KEY)
-	uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port 8000
+	uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port 8000 --no-proxy-headers
 
 worker: ## Run a worker that processes uploaded documents (needs GEMINI_API_KEY)
 	uv run python -m docforge.worker

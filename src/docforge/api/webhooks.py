@@ -85,12 +85,11 @@ def webhooks_router(hooks: WebhookService) -> APIRouter:
 
     @router.post("/{webhook_id}/test", status_code=202)
     def send_test(webhook_id: uuid.UUID, principal: Admin) -> dict[str, str]:
-        """Queue a `webhook.test` event for this webhook (it must subscribe to it)."""
+        """Queue a `webhook.test` event for this webhook."""
         try:
-            hooks.deliveries(principal.tenant_id, webhook_id)  # exists and is this tenant's
+            event = hooks.emit_test(principal.tenant_id, webhook_id)
         except LookupError as error:
             raise HTTPException(404, "No such webhook.") from error
-        event = hooks.emit_test(principal.tenant_id)
         return {"event_id": str(event)}
 
     return router

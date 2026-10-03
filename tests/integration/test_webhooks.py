@@ -322,19 +322,17 @@ def test_a_delivery_connects_to_the_address_that_was_checked(
     emit(hooks, sessions)
     ((delivery_id, tenant_id),) = deferred
     lookups: list[str] = []
-    monkeypatch.setattr(
-        socket,
-        "getaddrinfo",
-        lambda host, *a, **k: (
-            lookups.append(host),
-            real("127.0.0.1" if host == "hooks.test" else host, *a, **k),
-        )[1],
-    )
+
+    def counting(host: str, *args: Any, **kwargs: Any) -> Any:
+        lookups.append(host)
+        return real("127.0.0.1" if host == "hooks.test" else host, *args, **kwargs)
+
+    monkeypatch.setattr(socket, "getaddrinfo", counting)
 
     assert hooks.deliver(delivery_id, tenant_id) == "delivered"
     ((headers, _),) = receiver.received
     assert headers["host"] == f"hooks.test:{port}"
-    assert lookups == ["hooks.test"]  # resolved once, for the check
+    assert lookups.count("hooks.test") == 1  # the name resolved once, for the check
 
 
 def test_no_database_lock_is_held_while_the_receiver_answers(
@@ -352,14 +350,16 @@ def test_no_database_lock_is_held_while_the_receiver_answers(
         def __exit__(self, *args: object) -> None:
             return None
 
-        def post(self, url: str, **kwargs: Any) -> Any:
+        def stream(self, method: str, url: str, **kwargs: Any) -> Any:
+            import contextlib
+
+            import httpx
+
             with owner_engine.begin() as conn:
                 conn.execute(text("SET LOCAL lock_timeout = '200ms'"))
                 conn.execute(text("SELECT 1 FROM webhook_deliveries FOR UPDATE NOWAIT"))
                 seen.append("row free")
-            import httpx
-
-            return httpx.Response(200)
+            return contextlib.nullcontext(httpx.Response(200))
 
     hooks = WebhookService(
         sessions,

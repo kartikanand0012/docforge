@@ -16,8 +16,6 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/v1/[...path
   const headers = new Headers({ Authorization: `Bearer ${token}` });
   const type = request.headers.get("content-type");
   if (type) headers.set("Content-Type", type);
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) headers.set("X-Forwarded-For", forwardedFor);
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const upstream = await fetch(target, {
     method: request.method,

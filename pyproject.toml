@@ -62,6 +62,7 @@ addopts = "--strict-markers --cov=docforge --cov-report=term-missing --cov-fail-
 markers = [
     "integration: needs the Docker Compose services (run `make up` first)",
     "docling: runs the real Docling models (slow; downloads weights on first use)",
+    "no_ambient_tenant: run without the default tenant scope, as a real request would",
 ]
 
 [tool.coverage.run]

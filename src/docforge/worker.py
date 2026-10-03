@@ -11,7 +11,7 @@ import logging
 import procrastinate
 
 from docforge.config import get_settings
-from docforge.queue import QUEUES, JobQueue
+from docforge.queue import QUEUE_NAME, QUEUES, WEBHOOK_QUEUE, JobQueue
 
 logger = logging.getLogger(__name__)
 
@@ -62,16 +62,42 @@ async def run_worker(
             logger.exception("could not check for stalled jobs at startup; will try again")
         watcher = asyncio.create_task(_requeue_stalled_forever(queue.app, stalled_after_seconds))
         try:
-            await queue.app.run_worker_async(
-                queues=QUEUES,
-                # The parser takes one document at a time anyway; the second slot lets a
-                # webhook be delivered while a long document is being read.
-                concurrency=2,
-                wait=wait,
-                update_heartbeat_interval=heartbeat_seconds,
-                stalled_worker_timeout=stalled_after_seconds,
-                install_signal_handlers=wait,
-            )
+            # One worker per queue, so a webhook never waits behind a long document. When
+            # one stops (a signal, or nothing left to do) the other is stopped as well.
+            workers = [
+                asyncio.create_task(
+                    queue.app.run_worker_async(
+                        queues=[QUEUE_NAME],
+                        concurrency=1,  # the parser reads one document at a time
+                        wait=wait,
+                        update_heartbeat_interval=heartbeat_seconds,
+                        stalled_worker_timeout=stalled_after_seconds,
+                        install_signal_handlers=wait,
+                        name="extract",
+                    )
+                ),
+                asyncio.create_task(
+                    queue.app.run_worker_async(
+                        queues=[WEBHOOK_QUEUE],
+                        concurrency=2,
+                        wait=wait,
+                        update_heartbeat_interval=heartbeat_seconds,
+                        stalled_worker_timeout=stalled_after_seconds,
+                        install_signal_handlers=False,
+                        name="webhooks",
+                    )
+                ),
+            ]
+            if wait:
+                done, pending = await asyncio.wait(workers, return_when=asyncio.FIRST_COMPLETED)
+                for task in pending:
+                    task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await task
+                for task in done:
+                    task.result()
+            else:
+                await asyncio.gather(*workers)
         finally:
             watcher.cancel()
             with contextlib.suppress(asyncio.CancelledError):

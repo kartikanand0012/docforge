@@ -11,6 +11,7 @@ each anchored entry with the anchored hash.
 """
 
 import json
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -23,6 +24,8 @@ from docforge import audit
 from docforge.db.models import AuditEntry, Tenant
 from docforge.db.tenancy import tenant_scope
 from docforge.storage import ObjectNotFound, ObjectStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -95,13 +98,19 @@ def verify_with_anchors(
 
 
 def anchor_all(sessions: Any, anchors: AnchorStore) -> int:
-    """Anchor every tenant's chain. Returns how many tenants were anchored."""
+    """Anchor every tenant's chain. Returns how many were anchored; one tenant's failure
+    is logged and does not stop the others."""
     with sessions() as session:
         tenants = list(session.scalars(select(Tenant.id)))
+    done = 0
     for tenant_id in tenants:
-        with tenant_scope(tenant_id), sessions() as session:
-            anchors.anchor(session, tenant_id)
-    return len(tenants)
+        try:
+            with tenant_scope(tenant_id), sessions() as session:
+                anchors.anchor(session, tenant_id)
+            done += 1
+        except Exception:
+            logger.exception("could not anchor the audit chain of tenant %s", tenant_id)
+    return done
 
 
 def main() -> int:

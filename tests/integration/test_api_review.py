@@ -96,7 +96,9 @@ def test_a_correction_with_a_wrong_pin_is_refused_without_saying_why(
     )
 
     assert wrong.status_code == unknown.status_code == 403
-    assert wrong.json() == unknown.json()
+    # Another email is refused before any PIN is checked: as yourself only, whoever it is.
+    assert unknown.json() == {"detail": "You can only correct or sign as yourself."}
+    assert wrong.json() == {"detail": "The email or PIN is not right."}
     for _ in range(4):
         api.post(f"/v1/documents/{invoice_id}/corrections", json={**payload, "pin": "000000"})
     locked = api.post(f"/v1/documents/{invoice_id}/corrections", json={**payload, "pin": "482913"})

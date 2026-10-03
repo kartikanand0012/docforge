@@ -79,13 +79,14 @@ class JobQueue:
         self._task = process_document_version
         self._webhooks: WebhookService | None = None
 
-        # Waits grow exponentially (about 10 s, 20 s, 40 s ...); the service counts attempts
-        # and marks the delivery failed when they run out, so the queue allows a few more.
+        # Waits of 30 s, then 1.5, 2.5, 3.5 ... minutes (30 s + 60 s per attempt): about half
+        # an hour over eight attempts. The service counts attempts and marks the delivery
+        # failed when they run out, so the queue allows a few more than it needs.
         @self.app.task(
             name=WEBHOOK_TASK,
             queue=WEBHOOK_QUEUE,
             retry=procrastinate.RetryStrategy(
-                max_attempts=20, exponential_wait=10, retry_exceptions={DeliveryNotDone}
+                max_attempts=12, wait=30, linear_wait=60, retry_exceptions={DeliveryNotDone}
             ),
         )
         def deliver_webhook(delivery_id: str, tenant_id: str) -> None:

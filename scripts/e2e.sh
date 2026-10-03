@@ -58,7 +58,7 @@ uv run alembic upgrade head >/dev/null
 uv run python -m docforge.db.roles >/dev/null
 echo "246810" | uv run python -m docforge.review add-reviewer --admin --name "E2E Reviewer" --email e2e@example.com
 
-uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port "$API_PORT" >"$LOGS/api.log" 2>&1 &
+uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port "$API_PORT" --no-proxy-headers >"$LOGS/api.log" 2>&1 &
 PIDS+=($!)
 uv run python -m docforge.worker >"$LOGS/worker.log" 2>&1 &
 PIDS+=($!)

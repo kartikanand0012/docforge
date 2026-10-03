@@ -14,7 +14,7 @@ from docforge.db.session import SessionFactory
 from docforge.webhooks import WebhookService
 from fakes import signed_in
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.no_ambient_tenant]
 
 
 @pytest.fixture
