@@ -22,6 +22,7 @@ from docforge.api.auth import require, sessions_router
 from docforge.api.documents import documents_router
 from docforge.api.exports import exports_router
 from docforge.api.review import review_router
+from docforge.api.search import search_router
 from docforge.api.uploads import (
     DEFAULT_MAX_UPLOAD_BYTES,
     MULTIPART_OVERHEAD,
@@ -37,6 +38,7 @@ from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
 from docforge.review.service import ReviewService
+from docforge.search.service import SearchService
 from docforge.webhooks import WebhookService
 
 logger = logging.getLogger(__name__)
@@ -97,6 +99,7 @@ def create_app(
     cors_origins: Sequence[str] = (),
     authenticator: Authenticator | None = None,
     webhooks: WebhookService | None = None,
+    search: SearchService | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     app = FastAPI(title="DocForge", version=__version__)
@@ -151,6 +154,8 @@ def create_app(
         app.include_router(webhooks_router(webhooks))
     if review is not None:
         app.include_router(exports_router(review))
+    if search is not None:
+        app.include_router(search_router(search))
     if pipeline is not None:
         _add_preview_endpoint(app, pipeline, max_upload_bytes)
     return app

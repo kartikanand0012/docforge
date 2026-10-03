@@ -33,6 +33,7 @@ class World:
         events: EventSink | None = None,
     ) -> None:
         self.events = events
+        self.index: Callable[[Any, Any], None] | None = None  # set to queue indexing
         self.sessions = sessions
         self.label_text = (FIXTURES / pair / "label.json").read_text(encoding="utf-8")
         label = json.loads(self.label_text)
@@ -74,6 +75,7 @@ class World:
             },
             lambda session, version: self.queued.append(version.id),
             events=self.events,
+            index=self.index,
         )
         return self.service
 

@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -286,6 +287,25 @@ class WebhookDelivery(Base):
     last_status: Mapped[int | None] = mapped_column(Integer)
     last_error: Mapped[str | None] = mapped_column(Text)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ChunkRow(Base):
+    """One searchable piece of a document version, with where it is on the page."""
+
+    __tablename__ = "chunks"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"))
+    document_version_id: Mapped[uuid.UUID] = _version()
+    chunk_no: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(Text)
+    page: Mapped[int] = mapped_column(Integer)
+    block_ids: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    text: Mapped[str] = mapped_column(Text)
+    embedding_model: Mapped[str] = mapped_column(Text)
+    embedding: Mapped[list[float]] = mapped_column(Vector(768))
     created_at: Mapped[datetime] = _created_at()
 
 

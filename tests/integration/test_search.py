@@ -2,10 +2,10 @@
 
 import uuid
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
-from docforge.search.service import SearchService
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -13,13 +13,16 @@ from sqlalchemy.engine import Engine
 from docforge.api.app import create_app
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
+from docforge.parsing.cache import CachingParser
 from docforge.search.embeddings import FakeEmbedder
+from docforge.search.service import Mode, SearchService
 from fakes import signed_in
 from worlds import World
 
 pytestmark = pytest.mark.integration
 
 RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
+RECORDED = Path(__file__).resolve().parents[1] / "fixtures" / "recorded" / "parsed"
 
 
 @pytest.fixture
@@ -29,6 +32,8 @@ def indexed(
     raw_order_from_label: RawFromLabel,
 ) -> tuple[World, SearchService, uuid.UUID, uuid.UUID]:
     world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    # The real parse of the invoice (recorded), so its table rows are cells, as in use.
+    world.invoice_parsed = CachingParser(RECORDED).parse(world.invoice_pdf)
     search = SearchService(sessions, FakeEmbedder())
     order_id = world.process("purchase_order")
     invoice_id = world.process("invoice")
@@ -52,7 +57,7 @@ def test_a_batch_number_finds_its_invoice_and_the_row_that_prints_it(
 
 @pytest.mark.parametrize("mode", ["keyword", "vector", "hybrid"])
 def test_every_mode_finds_the_document_a_question_is_about(
-    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], mode: str
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], mode: Mode
 ) -> None:
     world, search, _, order_id = indexed
     po_no = world.order_raw["po_no"]["text"]
@@ -106,3 +111,42 @@ def test_the_search_api_returns_cited_results(
     assert top["document_id"] == str(invoice_id)
     assert top["doc_type"] == "invoice" and top["boxes"]
     assert client.get("/v1/search", params={"q": ""}).status_code == 422
+
+
+def test_a_processed_document_is_queued_for_indexing_with_its_extraction(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    queued: list[uuid.UUID] = []
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    world.index = lambda session, version: queued.append(version.id)
+
+    world.process("invoice")
+
+    assert len(queued) == 1
+
+
+def test_the_index_job_runs_through_the_real_queue(
+    sessions: SessionFactory,
+    engine: Engine,
+    owner_engine: Engine,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    import asyncio
+
+    from docforge.queue import JobQueue
+    from docforge.worker import run_worker
+
+    queue = JobQueue(engine.url)
+    search = SearchService(sessions, FakeEmbedder())
+    queue.bind_search(search)
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    world.index = queue.defer_index
+
+    world.process("invoice")
+    asyncio.run(run_worker(queue, wait=False))
+
+    with owner_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM chunks")).scalar_one() > 0
