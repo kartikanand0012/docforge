@@ -31,6 +31,7 @@ from docforge.db.models import (
     Reviewer,
 )
 from docforge.db.session import SessionFactory
+from docforge.db.tenancy import scoped
 from docforge.documents import DocumentNotFound, current_match
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
@@ -206,6 +207,7 @@ class ReviewService:
 
     # Reviewers
 
+    @scoped
     def add_reviewer(
         self, tenant_id: uuid.UUID, *, name: str, email: str, pin: str, role: str = "reviewer"
     ) -> uuid.UUID:
@@ -231,6 +233,7 @@ class ReviewService:
             session.flush()
             return reviewer.id
 
+    @scoped
     def deactivate_reviewer(self, tenant_id: uuid.UUID, email: str) -> None:
         """Stop a reviewer from correcting or signing. Their past signatures stay."""
         with self._sessions.begin() as session:
@@ -285,6 +288,7 @@ class ReviewService:
 
     # Reading
 
+    @scoped
     def queue(self, tenant_id: uuid.UUID) -> list[QueueItem]:
         """Documents whose newest extraction needs a person and has no signed review.
 
@@ -338,10 +342,12 @@ class ReviewService:
                         break
         return items
 
+    @scoped
     def detail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> ReviewDetail:
         with self._sessions() as session:
             return self._detail(self._state(session, self._find(session, tenant_id, document_id)))
 
+    @scoped
     def page_image(self, tenant_id: uuid.UUID, document_id: uuid.UUID, page: int) -> bytes:
         """Page `page` of the original as uploaded, as PNG: what the reviewer compares with."""
         with self._sessions() as session:
@@ -357,6 +363,7 @@ class ReviewService:
 
     # Changing
 
+    @scoped
     def correct(
         self,
         tenant_id: uuid.UUID,
@@ -412,6 +419,7 @@ class ReviewService:
             )
         return self.detail(tenant_id, document_id)
 
+    @scoped
     def sign(
         self,
         tenant_id: uuid.UUID,

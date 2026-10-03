@@ -39,6 +39,7 @@ from docforge.db.models import (
     ParseOutput,
 )
 from docforge.db.session import SessionFactory
+from docforge.db.tenancy import scoped, tenant_scope
 from docforge.extraction.pipeline import ExtractionError, PipelineResult
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
@@ -214,6 +215,7 @@ class DocumentService:
 
     # --- ingest -----------------------------------------------------------------------------
 
+    @scoped
     def ingest(
         self, *, tenant_id: uuid.UUID, doc_type: str, filename: str, data: bytes, actor: str
     ) -> IngestResult:
@@ -279,6 +281,7 @@ class DocumentService:
             self._enqueue(session, version)
             return IngestResult(document, version, created=True)
 
+    @scoped
     def reprocess(
         self, *, tenant_id: uuid.UUID, document_id: uuid.UUID, actor: str
     ) -> DocumentVersion:
@@ -312,6 +315,15 @@ class DocumentService:
 
         Raises `TransientProcessingError` when the queue should deliver the job again.
         """
+        # The job carries only the version; its tenant is looked up before anything is read.
+        with self._sessions() as session:
+            tenant_id = session.scalar(select(func.docforge_version_tenant(version_id)))
+        if tenant_id is None:
+            raise DocumentNotFound(version_id)
+        with tenant_scope(tenant_id):
+            return self._process(version_id)
+
+    def _process(self, version_id: uuid.UUID) -> Outcome:
         with self._sessions.begin() as session:
             document, version = self._locked(session, version_id)
             if version.status not in IN_FLIGHT:
@@ -608,6 +620,7 @@ class DocumentService:
 
     # --- reads ------------------------------------------------------------------------------
 
+    @scoped
     def detail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> DocumentDetail:
         with self._sessions() as session:
             document = self._document(session, tenant_id, document_id)
@@ -618,6 +631,7 @@ class DocumentService:
             )
             return DocumentDetail(document, list(versions))
 
+    @scoped
     def latest_extraction(
         self, tenant_id: uuid.UUID, document_id: uuid.UUID
     ) -> ExtractionDetail | None:
@@ -644,6 +658,7 @@ class DocumentService:
             )
             return ExtractionDetail(version, extraction, list(runs))
 
+    @scoped
     def assessment(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> AssessmentDetail | None:
         """The checks on the newest version that succeeded, with its match if there is one."""
         with self._sessions() as session:
@@ -664,6 +679,7 @@ class DocumentService:
             match, counterpart = current_match(session, tenant_id, version.id)
             return AssessmentDetail(version, record, match, counterpart, document.doc_type)
 
+    @scoped
     def audit_trail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> list[AuditEntry]:
         with self._sessions() as session:
             document = self._document(session, tenant_id, document_id)
@@ -678,6 +694,7 @@ class DocumentService:
             )
             return list(entries)
 
+    @scoped
     def verify_audit_chain(self, tenant_id: uuid.UUID) -> audit.ChainReport:
         with self._sessions() as session:
             return audit.verify_chain(session, tenant_id)

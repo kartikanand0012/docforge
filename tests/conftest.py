@@ -12,8 +12,10 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import URL, Engine, make_url
 
 from docforge.config import Settings, get_settings
-from docforge.db import alembic_config
+from docforge.db import DEFAULT_TENANT_ID, alembic_config
+from docforge.db.roles import ensure_app_login
 from docforge.db.session import SessionFactory, make_engine, make_session_factory
+from docforge.db.tenancy import tenant_scope
 
 # Real-parser tests use the models already on disk when they are there. A new converter
 # otherwise asks the model hub whether its files are current, and a dropped connection then
@@ -135,7 +137,7 @@ def raw_order_from_label() -> Callable[[dict[str, Any]], dict[str, Any]]:
 @pytest.fixture
 def empty_database_url(settings: Settings) -> Iterator[URL]:
     """A freshly created, empty database on the Compose Postgres, dropped afterwards."""
-    admin_url = make_url(settings.database_url.get_secret_value())
+    admin_url = make_url(settings.migration_database_url.get_secret_value())
     if admin_url.host not in LOCAL_HOSTS:
         # These tests create and drop a database; never do that on a shared server.
         pytest.fail(f"integration tests only run against a local Postgres, not {admin_url.host}")
@@ -151,10 +153,39 @@ def empty_database_url(settings: Settings) -> Iterator[URL]:
         admin.dispose()
 
 
+@pytest.fixture(autouse=True)
+def default_tenant_scope() -> Iterator[None]:
+    """Tests read as the default tenant, as its own services would. A service call for
+    another tenant opens that tenant's scope inside this one."""
+    with tenant_scope(DEFAULT_TENANT_ID):
+        yield
+
+
+@pytest.fixture(scope="session")
+def app_login(settings: Settings) -> URL:
+    """The application's own database login, created once: subject to row-level security."""
+    ensure_app_login(
+        settings.migration_database_url.get_secret_value(), settings.database_url.get_secret_value()
+    )
+    return make_url(settings.database_url.get_secret_value())
+
+
 @pytest.fixture
-def engine(empty_database_url: URL) -> Iterator[Engine]:
+def owner_engine(empty_database_url: URL) -> Iterator[Engine]:
+    """The migrated test database as its owner: for setting up and inspecting, not for
+    running services, which must work under the application's role."""
     command.upgrade(alembic_config(empty_database_url), "head")
     engine = make_engine(empty_database_url)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def engine(owner_engine: Engine, empty_database_url: URL, app_login: URL) -> Iterator[Engine]:
+    """The migrated test database as the application connects to it."""
+    engine = make_engine(
+        empty_database_url.set(username=app_login.username, password=app_login.password)
+    )
     yield engine
     engine.dispose()
 
@@ -165,8 +196,15 @@ def sessions(engine: Engine) -> SessionFactory:
 
 
 @pytest.fixture
-def other_tenant(engine: Engine) -> uuid.UUID:
-    with engine.begin() as conn:
+def owner_sessions(owner_engine: Engine) -> SessionFactory:
+    """Sessions as the owner, which row-level security does not apply to: for tests of
+    database mechanics across tenants, not of the services."""
+    return make_session_factory(owner_engine)
+
+
+@pytest.fixture
+def other_tenant(owner_engine: Engine) -> uuid.UUID:
+    with owner_engine.begin() as conn:
         tenant_id: uuid.UUID = conn.execute(
             text("INSERT INTO tenants (name) VALUES ('other') RETURNING id")
         ).scalar_one()

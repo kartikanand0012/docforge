@@ -123,12 +123,14 @@ def test_the_application_role_neither_bypasses_security_nor_owns_tables(engine: 
     with engine.connect() as conn:
         role = conn.execute(
             text(
-                "SELECT rolsuper, rolbypassrls, rolcreaterole FROM pg_roles WHERE rolname = current_user"
+                "SELECT rolsuper, rolbypassrls, rolcreaterole FROM pg_roles "
+                "WHERE rolname = current_user"
             )
         ).one()
         owned = conn.execute(
             text(
-                "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tableowner = current_user"
+                "SELECT count(*) FROM pg_tables "
+                "WHERE schemaname = 'public' AND tableowner = current_user"
             )
         ).scalar_one()
 

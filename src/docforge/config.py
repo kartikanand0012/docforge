@@ -11,7 +11,12 @@ from sqlalchemy.exc import ArgumentError
 
 DATABASE_DRIVER = "postgresql+psycopg"
 _FACTORY = re.compile(r"[A-Za-z_][\w.]*:[A-Za-z_]\w*")
+# The owner, for migrations only, and the restricted login the API and worker use.
 _LOCAL_DATABASE_URL = "postgresql+psycopg://docforge:docforge@127.0.0.1:5432/docforge"
+_LOCAL_APP_PASSWORD = "docforge-app-local"  # noqa: S105 - local Compose default, not a real secret
+_LOCAL_APP_DATABASE_URL = (
+    f"postgresql+psycopg://docforge_app_user:{_LOCAL_APP_PASSWORD}@127.0.0.1:5432/docforge"
+)
 _LOCAL_S3_SECRET_KEY = "docforge-local-secret"  # noqa: S105 - local Compose default, not a real secret
 
 
@@ -25,8 +30,10 @@ class Settings(BaseSettings):
 
     environment: Literal["local", "production"] = "local"
 
-    # A secret because the URL embeds the password.
-    database_url: SecretStr = SecretStr(_LOCAL_DATABASE_URL)
+    # Secrets because the URLs embed passwords. The API and worker connect as a role that row-
+    # level security applies to and that owns nothing; migrations connect as the owner.
+    database_url: SecretStr = SecretStr(_LOCAL_APP_DATABASE_URL)
+    migration_database_url: SecretStr = SecretStr(_LOCAL_DATABASE_URL)
 
     s3_endpoint_url: str = "http://127.0.0.1:9000"
     s3_access_key: str = "docforge"
@@ -71,7 +78,7 @@ class Settings(BaseSettings):
     worker_heartbeat_seconds: float = 10
     worker_stalled_after_seconds: float = 30
 
-    @field_validator("database_url")
+    @field_validator("database_url", "migration_database_url")
     @classmethod
     def _require_postgres_psycopg(cls, value: SecretStr) -> SecretStr:
         # The message must not echo the value: it contains the password.
@@ -80,7 +87,7 @@ class Settings(BaseSettings):
         except ArgumentError:
             driver = None
         if driver != DATABASE_DRIVER:
-            raise ValueError(f"DATABASE_URL must be a {DATABASE_DRIVER}:// URL")
+            raise ValueError(f"database URLs must be {DATABASE_DRIVER}:// URLs")
         return value
 
     @field_validator("pipeline_factory")
@@ -100,7 +107,9 @@ class Settings(BaseSettings):
         if self.environment != "production":
             return self
         defaults = {
-            "DATABASE_URL": self.database_url.get_secret_value() == _LOCAL_DATABASE_URL,
+            "DATABASE_URL": self.database_url.get_secret_value() == _LOCAL_APP_DATABASE_URL,
+            "MIGRATION_DATABASE_URL": self.migration_database_url.get_secret_value()
+            == _LOCAL_DATABASE_URL,
             "S3_SECRET_KEY": self.s3_secret_key.get_secret_value() == _LOCAL_S3_SECRET_KEY,
         }
         unset = [name for name, is_default in defaults.items() if is_default]

@@ -2,7 +2,8 @@ import pytest
 
 from docforge.config import Settings
 
-LOCAL_URL = "postgresql+psycopg://docforge:docforge@127.0.0.1:5432/docforge"
+LOCAL_OWNER_URL = "postgresql+psycopg://docforge:docforge@127.0.0.1:5432/docforge"
+LOCAL_APP_URL = "postgresql+psycopg://docforge_app_user:docforge-app-local@127.0.0.1:5432/docforge"
 
 
 def make_settings(**overrides: str) -> Settings:
@@ -14,6 +15,7 @@ def make_settings(**overrides: str) -> Settings:
 def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "DATABASE_URL",
+        "MIGRATION_DATABASE_URL",
         "ENVIRONMENT",
         "S3_ENDPOINT_URL",
         "S3_BUCKET",
@@ -28,7 +30,9 @@ def test_defaults_point_at_local_compose_services() -> None:
     settings = make_settings()
 
     assert settings.environment == "local"
-    assert settings.database_url.get_secret_value() == LOCAL_URL
+    # The services connect as a restricted login; only migrations use the owner.
+    assert settings.database_url.get_secret_value() == LOCAL_APP_URL
+    assert settings.migration_database_url.get_secret_value() == LOCAL_OWNER_URL
     assert settings.s3_endpoint_url == "http://127.0.0.1:9000"
     assert settings.s3_bucket == "docforge-originals"
     assert settings.gemini_api_key is None
@@ -102,6 +106,9 @@ def test_production_refuses_the_local_default_credentials(
 def test_production_accepts_explicit_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
     monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
 
     assert make_settings().environment == "production"
@@ -122,8 +129,22 @@ def test_production_only_loads_pipelines_from_this_package(
 ) -> None:
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
     monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
     monkeypatch.setenv("PIPELINE_FACTORY", "somewhere_else:build")
 
     with pytest.raises(ValueError, match="PIPELINE_FACTORY"):
+        make_settings()
+
+
+def test_production_refuses_the_local_owner_credentials_for_migrations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+
+    with pytest.raises(ValueError, match="MIGRATION_DATABASE_URL"):
         make_settings()

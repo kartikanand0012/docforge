@@ -271,14 +271,14 @@ def test_a_signed_document_cannot_be_corrected_or_signed_again(
 
 
 def test_a_signature_no_longer_matches_if_the_signed_record_is_altered(
-    world: World, review: ReviewService, engine: Engine
+    world: World, review: ReviewService, owner_engine: Engine
 ) -> None:
     """Reviews are append-only; this goes round that, as an owner of the database could."""
     world.process("purchase_order")
     invoice_id = world.process("invoice")
     sign(review, invoice_id)
 
-    with engine.begin() as conn:
+    with owner_engine.begin() as conn:
         conn.execute(text("ALTER TABLE reviews DISABLE TRIGGER reviews_append_only"))
         conn.execute(
             text(
@@ -407,12 +407,12 @@ def test_a_correction_path_must_be_written_the_one_way(world: World, review: Rev
 
 
 def test_the_signature_covers_who_signed_why_and_when_not_only_the_record(
-    world: World, review: ReviewService, engine: Engine
+    world: World, review: ReviewService, owner_engine: Engine
 ) -> None:
     invoice_id = world.process("invoice")
     sign(review, invoice_id, override_reason="order placed by phone")
 
-    with engine.begin() as conn:
+    with owner_engine.begin() as conn:
         conn.execute(text("ALTER TABLE reviews DISABLE TRIGGER reviews_append_only"))
         conn.execute(text("UPDATE reviews SET override_reason = 'something else'"))
         conn.execute(text("ALTER TABLE reviews ENABLE ALWAYS TRIGGER reviews_append_only"))
@@ -430,13 +430,13 @@ def test_only_the_stated_meanings_can_be_signed(world: World, review: ReviewServ
 
 
 def test_the_database_refuses_a_correction_to_a_signed_version(
-    world: World, review: ReviewService, engine: Engine
+    world: World, review: ReviewService, owner_engine: Engine
 ) -> None:
     world.process("purchase_order")
     invoice_id = world.process("invoice")
     sign(review, invoice_id)
 
-    with pytest.raises(DBAPIError, match="signed"), engine.begin() as conn:
+    with pytest.raises(DBAPIError, match="signed"), owner_engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO corrections (tenant_id, document_version_id, reviewer_id, path, "
@@ -447,21 +447,21 @@ def test_the_database_refuses_a_correction_to_a_signed_version(
 
 
 def test_the_database_refuses_an_approval_over_open_checks_without_an_override(
-    world: World, review: ReviewService, engine: Engine
+    world: World, review: ReviewService, owner_engine: Engine
 ) -> None:
     invoice_id = world.process("invoice")
     sign(review, invoice_id, override_reason="order placed by phone")
 
-    with pytest.raises(DBAPIError), engine.begin() as conn:
+    with pytest.raises(DBAPIError), owner_engine.begin() as conn:
         conn.execute(text("ALTER TABLE reviews DISABLE TRIGGER reviews_append_only"))
         conn.execute(text("UPDATE reviews SET override_reason = NULL"))
 
 
 def test_a_reviewer_cannot_be_deleted_or_renamed_once_created(
-    review: ReviewService, engine: Engine
+    review: ReviewService, owner_engine: Engine
 ) -> None:
     for statement in ("DELETE FROM reviewers", "UPDATE reviewers SET name = 'Someone else'"):
-        with pytest.raises(DBAPIError), engine.begin() as conn:
+        with pytest.raises(DBAPIError), owner_engine.begin() as conn:
             conn.execute(text(statement))
 
 

@@ -18,8 +18,9 @@ up: install ## Start Postgres and MinIO, wait until healthy, apply migrations
 down: ## Stop services (keeps volumes)
 	docker compose down
 
-migrate: ## Apply database migrations
+migrate: ## Apply database migrations (as the owner), then make the application's restricted login
 	uv run alembic upgrade head
+	uv run python -m docforge.db.roles
 
 api: ## Run the API on http://127.0.0.1:8000 (needs GEMINI_API_KEY)
 	uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port 8000

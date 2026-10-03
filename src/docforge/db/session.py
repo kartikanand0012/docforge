@@ -4,6 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.engine import URL, Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from docforge.db import tenancy  # noqa: F401 - registers the per-transaction tenant setting
+
 SessionFactory = sessionmaker[Session]
 
 

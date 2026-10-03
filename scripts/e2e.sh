@@ -18,7 +18,7 @@ cleanup() {
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from docforge.config import get_settings
-url = make_url(get_settings().database_url.get_secret_value())
+url = make_url(get_settings().migration_database_url.get_secret_value())
 with create_engine(url, isolation_level="AUTOCOMMIT").connect() as conn:
     conn.execute(text('DROP DATABASE IF EXISTS "docforge_e2e" WITH (FORCE)'))
 PY
@@ -32,24 +32,30 @@ for port in "$API_PORT" "$WEB_PORT"; do
   fi
 done
 
-E2E_URL="$(uv run python - <<'PY'
+# Two lines out: the owner's URL (for migrations) and the application's (for the services).
+URLS="$(uv run python - <<'PY'
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from docforge.config import get_settings
-url = make_url(get_settings().database_url.get_secret_value())
-if url.host not in {"127.0.0.1", "localhost", "::1"}:
+settings = get_settings()
+owner = make_url(settings.migration_database_url.get_secret_value())
+app = make_url(settings.database_url.get_secret_value())
+if owner.host not in {"127.0.0.1", "localhost", "::1"}:
     raise SystemExit("the end-to-end test only runs against a local Postgres")
-with create_engine(url, isolation_level="AUTOCOMMIT").connect() as conn:
+with create_engine(owner, isolation_level="AUTOCOMMIT").connect() as conn:
     conn.execute(text('DROP DATABASE IF EXISTS "docforge_e2e" WITH (FORCE)'))
     conn.execute(text('CREATE DATABASE "docforge_e2e"'))
-print(url.set(database="docforge_e2e").render_as_string(hide_password=False))
+print(owner.set(database="docforge_e2e").render_as_string(hide_password=False))
+print(app.set(database="docforge_e2e").render_as_string(hide_password=False))
 PY
 )"
-export DATABASE_URL="$E2E_URL"
+export MIGRATION_DATABASE_URL="$(echo "$URLS" | sed -n 1p)"
+export DATABASE_URL="$(echo "$URLS" | sed -n 2p)"
 export PIPELINE_FACTORY="docforge.wiring:build_replay_pipelines"
 export GEMINI_API_KEY=""
 
 uv run alembic upgrade head >/dev/null
+uv run python -m docforge.db.roles >/dev/null
 echo "246810" | uv run python -m docforge.review add-reviewer --admin --name "E2E Reviewer" --email e2e@example.com
 
 uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port "$API_PORT" >"$LOGS/api.log" 2>&1 &

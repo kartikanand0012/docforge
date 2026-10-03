@@ -17,10 +17,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from docforge.db.models import ApiKey, Reviewer, SessionToken, Tenant
 from docforge.db.session import SessionFactory
+from docforge.db.tenancy import scoped, tenant_scope
 from docforge.review.signing import verify_pin
 
 Role = Literal["integrator", "reviewer", "admin"]
@@ -130,6 +131,7 @@ class Authenticator:
 
     # API keys
 
+    @scoped
     def create_api_key(self, tenant_id: uuid.UUID, *, name: str, role: str) -> str:
         """A new key. The token is returned once and cannot be recovered later."""
         if role not in PERMISSIONS:
@@ -143,6 +145,7 @@ class Authenticator:
             )
         return token
 
+    @scoped
     def revoke_api_key(self, tenant_id: uuid.UUID, token_or_prefix: str) -> None:
         parsed = parse_token(token_or_prefix)
         prefix = parsed[1] if parsed else token_or_prefix
@@ -159,13 +162,14 @@ class Authenticator:
     def login(self, tenant_name: str, email: str, pin: str, client: str) -> str:
         """A session token for a reviewer, after their PIN. Failures count against `client`."""
         self.limiter.check(client)
-        with self._sessions.begin() as session:
-            tenant = session.scalar(select(Tenant).where(Tenant.name == tenant_name))
+        with self._sessions() as session:
+            tenant_id = session.scalar(select(Tenant.id).where(Tenant.name == tenant_name))
+        with tenant_scope(tenant_id or uuid.UUID(int=0)), self._sessions.begin() as session:
             reviewer = None
-            if tenant is not None:
+            if tenant_id is not None:
                 reviewer = session.scalar(
                     select(Reviewer).where(
-                        Reviewer.tenant_id == tenant.id,
+                        Reviewer.tenant_id == tenant_id,
                         Reviewer.email == email.strip().lower(),
                         Reviewer.deactivated_at.is_(None),
                     )
@@ -198,7 +202,7 @@ class Authenticator:
         parsed = parse_token(token)
         if parsed is None or principal.kind != "session":
             return
-        with self._sessions.begin() as session:
+        with tenant_scope(principal.tenant_id), self._sessions.begin() as session:
             row = session.scalar(select(SessionToken).where(SessionToken.prefix == parsed[1]))
             if row is not None:
                 row.revoked_at = row.revoked_at or datetime.now(UTC)
@@ -212,7 +216,16 @@ class Authenticator:
             return None
         kind, prefix = parsed
         now = datetime.now(UTC)
-        with self._sessions.begin() as session:
+        lookup = (
+            func.docforge_api_key_tenant
+            if _KINDS[kind] == "api_key"
+            else func.docforge_session_tenant
+        )
+        with self._sessions() as session:
+            tenant_id = session.scalar(select(lookup(prefix)))
+        if tenant_id is None:
+            return None
+        with tenant_scope(tenant_id), self._sessions.begin() as session:
             if _KINDS[kind] == "api_key":
                 key = session.scalar(select(ApiKey).where(ApiKey.prefix == prefix))
                 if (

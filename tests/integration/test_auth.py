@@ -15,6 +15,7 @@ from docforge.auth import Authenticator
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.models import AuditEntry
 from docforge.db.session import SessionFactory
+from docforge.db.tenancy import tenant_scope
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.review.service import ReviewService
@@ -127,7 +128,7 @@ def test_an_upload_belongs_to_the_tenant_of_the_key(stack: Stack, sessions: Sess
         == 404
     )
     assert stack.client.get(f"/v1/documents/{document_id}", headers=theirs).status_code == 200
-    with sessions() as session:
+    with tenant_scope(stack.other_tenant), sessions() as session:
         entry = session.scalars(select(AuditEntry).order_by(AuditEntry.id.desc())).first()
     assert entry is not None and entry.actor.startswith("key:")
 
@@ -208,9 +209,9 @@ def test_a_revoked_key_and_an_ended_session_stop_working(stack: Stack, engine: E
     )
 
 
-def test_an_expired_session_is_refused(stack: Stack, engine: Engine) -> None:
+def test_an_expired_session_is_refused(stack: Stack, owner_engine: Engine) -> None:
     session = stack.login()
-    with engine.begin() as conn:
+    with owner_engine.begin() as conn:
         conn.execute(
             text(
                 "UPDATE sessions SET created_at = now() - interval '9 hours', "
@@ -221,11 +222,11 @@ def test_an_expired_session_is_refused(stack: Stack, engine: Engine) -> None:
     assert stack.client.get("/v1/review/queue", headers=session).status_code == 401
 
 
-def test_tokens_are_stored_only_as_hashes(stack: Stack, engine: Engine) -> None:
+def test_tokens_are_stored_only_as_hashes(stack: Stack, owner_engine: Engine) -> None:
     key = stack.key("admin")["Authorization"].split()[1]
     session = stack.login()["Authorization"].split()[1]
 
-    with engine.connect() as conn:
+    with owner_engine.connect() as conn:
         stored = " ".join(str(row) for row in conn.execute(text("SELECT * FROM api_keys")))
         stored += " ".join(str(row) for row in conn.execute(text("SELECT * FROM sessions")))
     assert key.split("_")[2] not in stored

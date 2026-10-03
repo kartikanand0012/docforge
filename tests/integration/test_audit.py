@@ -16,9 +16,11 @@ from docforge.db.session import SessionFactory
 pytestmark = pytest.mark.integration
 
 
-def append(sessions: SessionFactory, n: int, tenant_id: uuid.UUID = DEFAULT_TENANT_ID) -> None:
+def append(
+    owner_sessions: SessionFactory, n: int, tenant_id: uuid.UUID = DEFAULT_TENANT_ID
+) -> None:
     for index in range(n):
-        with sessions.begin() as session:
+        with owner_sessions.begin() as session:
             audit.append(
                 session,
                 tenant_id=tenant_id,
@@ -30,55 +32,59 @@ def append(sessions: SessionFactory, n: int, tenant_id: uuid.UUID = DEFAULT_TENA
             )
 
 
-def entries(sessions: SessionFactory, tenant_id: uuid.UUID = DEFAULT_TENANT_ID) -> list[AuditEntry]:
-    with sessions() as session:
+def entries(
+    owner_sessions: SessionFactory, tenant_id: uuid.UUID = DEFAULT_TENANT_ID
+) -> list[AuditEntry]:
+    with owner_sessions() as session:
         query = select(AuditEntry).where(AuditEntry.tenant_id == tenant_id).order_by(AuditEntry.id)
         return list(session.scalars(query))
 
 
-def tamper(engine: Engine, statement: str, **params: object) -> None:
+def tamper(owner_engine: Engine, statement: str, **params: object) -> None:
     """Change the log the way someone with table-owner rights could."""
-    with engine.begin() as conn:
+    with owner_engine.begin() as conn:
         conn.execute(text("ALTER TABLE audit_log DISABLE TRIGGER USER"))
         conn.execute(text(statement), params)
         conn.execute(text("ALTER TABLE audit_log ENABLE TRIGGER USER"))
 
 
-def test_each_entry_links_to_the_one_before(sessions: SessionFactory) -> None:
-    append(sessions, 3)
+def test_each_entry_links_to_the_one_before(owner_sessions: SessionFactory) -> None:
+    append(owner_sessions, 3)
 
-    first, second, third = entries(sessions)
+    first, second, third = entries(owner_sessions)
 
     assert first.prev_hash is None
     assert second.prev_hash == first.hash
     assert third.prev_hash == second.hash
 
 
-def test_an_untouched_chain_verifies(sessions: SessionFactory) -> None:
-    append(sessions, 5)
+def test_an_untouched_chain_verifies(owner_sessions: SessionFactory) -> None:
+    append(owner_sessions, 5)
 
-    with sessions() as session:
+    with owner_sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
 
     assert (report.consistent, report.entries, report.first_bad_id) == (True, 5, None)
 
 
-def test_an_empty_chain_verifies(sessions: SessionFactory) -> None:
-    with sessions() as session:
+def test_an_empty_chain_verifies(owner_sessions: SessionFactory) -> None:
+    with owner_sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
 
     assert (report.consistent, report.entries) == (True, 0)
 
 
-def test_each_tenant_has_its_own_chain(sessions: SessionFactory, other_tenant: uuid.UUID) -> None:
-    append(sessions, 2)
-    append(sessions, 2, other_tenant)
-    append(sessions, 1)
+def test_each_tenant_has_its_own_chain(
+    owner_sessions: SessionFactory, other_tenant: uuid.UUID
+) -> None:
+    append(owner_sessions, 2)
+    append(owner_sessions, 2, other_tenant)
+    append(owner_sessions, 1)
 
-    assert entries(sessions, other_tenant)[0].prev_hash is None
-    mine = entries(sessions)
+    assert entries(owner_sessions, other_tenant)[0].prev_hash is None
+    mine = entries(owner_sessions)
     assert mine[2].prev_hash == mine[1].hash
-    with sessions() as session:
+    with owner_sessions() as session:
         assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
         assert audit.verify_chain(session, other_tenant).consistent
 
@@ -92,13 +98,15 @@ def test_each_tenant_has_its_own_chain(sessions: SessionFactory, other_tenant: u
         "WHERE target_id = 'doc-2'",
     ],
 )
-def test_an_edited_entry_is_detected(sessions: SessionFactory, engine: Engine, change: str) -> None:
-    append(sessions, 5)
-    edited = entries(sessions)[2]
+def test_an_edited_entry_is_detected(
+    owner_sessions: SessionFactory, owner_engine: Engine, change: str
+) -> None:
+    append(owner_sessions, 5)
+    edited = entries(owner_sessions)[2]
 
-    tamper(engine, change)
+    tamper(owner_engine, change)
 
-    with sessions() as session:
+    with owner_sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
     assert not report.consistent
     assert report.first_bad_id == edited.id
@@ -106,14 +114,14 @@ def test_an_edited_entry_is_detected(sessions: SessionFactory, engine: Engine, c
 
 
 def test_a_removed_entry_is_detected_at_the_next_one(
-    sessions: SessionFactory, engine: Engine
+    owner_sessions: SessionFactory, owner_engine: Engine
 ) -> None:
-    append(sessions, 5)
-    after_removed = entries(sessions)[3]
+    append(owner_sessions, 5)
+    after_removed = entries(owner_sessions)[3]
 
-    tamper(engine, "DELETE FROM audit_log WHERE target_id = 'doc-2'")
+    tamper(owner_engine, "DELETE FROM audit_log WHERE target_id = 'doc-2'")
 
-    with sessions() as session:
+    with owner_sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
     assert not report.consistent
     assert report.first_bad_id == after_removed.id
@@ -121,10 +129,10 @@ def test_a_removed_entry_is_detected_at_the_next_one(
 
 
 def test_a_rewritten_entry_with_a_recomputed_hash_breaks_the_link_after_it(
-    sessions: SessionFactory, engine: Engine
+    owner_sessions: SessionFactory, owner_engine: Engine
 ) -> None:
-    append(sessions, 4)
-    target, following = entries(sessions)[1:3]
+    append(owner_sessions, 4)
+    target, following = entries(owner_sessions)[1:3]
     forged = audit.entry_hash(
         prev_hash=target.prev_hash,
         tenant_id=target.tenant_id,
@@ -137,34 +145,34 @@ def test_a_rewritten_entry_with_a_recomputed_hash_breaks_the_link_after_it(
     )
 
     tamper(
-        engine,
+        owner_engine,
         "UPDATE audit_log SET actor = 'forger', hash = :hash WHERE id = :id",
         hash=forged,
         id=target.id,
     )
 
-    with sessions() as session:
+    with owner_sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
     assert not report.consistent
     assert report.first_bad_id == following.id
 
 
-def test_concurrent_appends_form_one_unbroken_chain(sessions: SessionFactory) -> None:
+def test_concurrent_appends_form_one_unbroken_chain(owner_sessions: SessionFactory) -> None:
     with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(lambda _: append(sessions, 5), range(8)))
+        list(pool.map(lambda _: append(owner_sessions, 5), range(8)))
 
-    chain = entries(sessions)
+    chain = entries(owner_sessions)
     assert len(chain) == 40
     assert len({entry.prev_hash for entry in chain}) == 40  # no two entries share a parent
-    with sessions() as session:
+    with owner_sessions() as session:
         assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
 
 
 def test_an_append_that_is_rolled_back_leaves_no_gap_in_the_chain(
-    sessions: SessionFactory,
+    owner_sessions: SessionFactory,
 ) -> None:
-    append(sessions, 1)
-    session = sessions()
+    append(owner_sessions, 1)
+    session = owner_sessions()
     audit.append(
         session,
         tenant_id=DEFAULT_TENANT_ID,
@@ -176,21 +184,21 @@ def test_an_append_that_is_rolled_back_leaves_no_gap_in_the_chain(
     )
     session.rollback()
     session.close()
-    append(sessions, 1)
+    append(owner_sessions, 1)
 
-    assert len(entries(sessions)) == 2
-    with sessions() as session:
+    assert len(entries(owner_sessions)) == 2
+    with owner_sessions() as session:
         assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
 
 
 def test_the_database_refuses_a_second_entry_with_the_same_parent(
-    sessions: SessionFactory, engine: Engine
+    owner_sessions: SessionFactory, owner_engine: Engine
 ) -> None:
     """A fork of the chain is impossible even for a writer that bypasses `audit.append`."""
-    append(sessions, 2)
-    first = entries(sessions)[0]
+    append(owner_sessions, 2)
+    first = entries(owner_sessions)[0]
 
-    with pytest.raises(IntegrityError), engine.begin() as conn:
+    with pytest.raises(IntegrityError), owner_engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO audit_log (tenant_id, occurred_at, actor, action, target_type, "
@@ -202,11 +210,11 @@ def test_the_database_refuses_a_second_entry_with_the_same_parent(
 
 
 def test_the_database_refuses_a_second_first_entry(
-    sessions: SessionFactory, engine: Engine
+    owner_sessions: SessionFactory, owner_engine: Engine
 ) -> None:
-    append(sessions, 1)
+    append(owner_sessions, 1)
 
-    with pytest.raises(IntegrityError), engine.begin() as conn:
+    with pytest.raises(IntegrityError), owner_engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO audit_log (tenant_id, occurred_at, actor, action, target_type, "
@@ -217,10 +225,10 @@ def test_the_database_refuses_a_second_first_entry(
         )
 
 
-def test_timestamps_never_run_backwards_along_the_chain(sessions: SessionFactory) -> None:
+def test_timestamps_never_run_backwards_along_the_chain(owner_sessions: SessionFactory) -> None:
     with ThreadPoolExecutor(max_workers=4) as pool:
-        list(pool.map(lambda _: append(sessions, 5), range(4)))
+        list(pool.map(lambda _: append(owner_sessions, 5), range(4)))
 
-    times = [entry.occurred_at for entry in entries(sessions)]
+    times = [entry.occurred_at for entry in entries(owner_sessions)]
 
     assert times == sorted(times)

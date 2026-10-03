@@ -191,13 +191,13 @@ def test_a_match_with_an_order_version_that_was_replaced_no_longer_counts(world:
 
 @pytest.mark.parametrize("table", ["assessments", "matches"])
 def test_stored_assessments_and_matches_cannot_be_changed(
-    world: World, engine: Engine, table: str
+    world: World, owner_engine: Engine, table: str
 ) -> None:
     world.process("purchase_order")
     world.process("invoice")
 
     for statement in (f"UPDATE {table} SET decision = 'accept'", f"DELETE FROM {table}"):  # noqa: S608
-        with pytest.raises(DBAPIError, match="append-only"), engine.begin() as conn:
+        with pytest.raises(DBAPIError, match="append-only"), owner_engine.begin() as conn:
             conn.execute(text(statement))
 
 
