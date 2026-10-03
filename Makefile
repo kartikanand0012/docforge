@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate api worker test test-unit lint format generate generate-scans models web web-check e2e eval eval-record gate
+.PHONY: help install up down migrate api worker test test-unit lint format generate generate-scans models web web-check e2e eval eval-record gate ops-check
 
 SYNTH_DIR := tests/fixtures/synthetic
 SYNTH_SEED := 20261002
@@ -74,6 +74,9 @@ eval: ## Re-run the invoice eval offline from recordings and rewrite the baselin
 
 gate: ## Check the eval reports against the floors in evals/gate.json (CI blocks on a failure)
 	uv run python -m docforge.evals.gate
+
+ops-check: ## What in the running system needs a person (exit 0 ok, 1 warning, 2 critical)
+	uv run python -m docforge.ops check
 
 eval-record: ## Run the eval live for anything not yet recorded (needs GEMINI_API_KEY; resumable)
 	uv run python -m docforge.evals --mode record

@@ -7,48 +7,50 @@ import uuid
 from collections.abc import Callable
 
 import pytest
-from docforge.ops import Thresholds, check, main, snapshot
 from sqlalchemy import text
 from sqlalchemy.engine import URL, Engine
 
 from docforge.db import DEFAULT_TENANT_ID
+from docforge.ops import Thresholds, check, main, snapshot
 
 pytestmark = pytest.mark.integration
 
-Run = Callable[[str], None]
+Run = Callable[..., None]
 
 
 @pytest.fixture
 def run(owner_engine: Engine) -> Run:
-    def execute(sql: str) -> None:
+    def execute(sql: str, **params: object) -> None:
         with owner_engine.begin() as conn:
-            conn.execute(text(sql))
+            conn.execute(text(sql), params)
 
     return execute
 
 
 def job(run: Run, queue: str, status: str, *, age_minutes: float = 0) -> None:
     run(
-        f"WITH j AS (INSERT INTO procrastinate_jobs (queue_name, task_name, status) "
-        f"VALUES ('{queue}', 't', 'todo') RETURNING id) "
-        f"UPDATE procrastinate_events SET at = now() - interval '{age_minutes} minutes' "
-        f"WHERE job_id = (SELECT id FROM j)"
+        "INSERT INTO procrastinate_jobs (queue_name, task_name, status) "
+        "VALUES (:queue, 't', 'todo')",
+        queue=queue,
     )
     if status != "todo":
         run(
-            f"UPDATE procrastinate_jobs SET status = '{status}' "
-            f"WHERE id = (SELECT max(id) FROM procrastinate_jobs)"
+            "UPDATE procrastinate_jobs SET status = CAST(:status AS procrastinate_job_status) "
+            "WHERE id = (SELECT max(id) FROM procrastinate_jobs)",
+            status=status,
         )
-        run(
-            f"UPDATE procrastinate_events SET at = now() - interval '{age_minutes} minutes' "
-            f"WHERE job_id = (SELECT max(id) FROM procrastinate_jobs)"
-        )
+    run(
+        "UPDATE procrastinate_events SET at = now() - make_interval(mins => :age) "
+        "WHERE job_id = (SELECT max(id) FROM procrastinate_jobs)",
+        age=age_minutes,
+    )
 
 
 def worker(run: Run, *, silent_seconds: int = 0) -> None:
     run(
         "INSERT INTO procrastinate_workers (last_heartbeat) "
-        f"VALUES (now() - interval '{silent_seconds} seconds')"
+        "VALUES (now() - make_interval(secs => :silent))",
+        silent=silent_seconds,
     )
 
 
@@ -56,10 +58,12 @@ def versions(run: Run, statuses: list[str]) -> None:
     for status in statuses:
         run(
             "WITH d AS (INSERT INTO documents (tenant_id, doc_type, sha256, storage_key, filename, "
-            f"size_bytes) VALUES ('{DEFAULT_TENANT_ID}', 'invoice', '{uuid.uuid4().hex * 2}', "
-            "'k', 'a.pdf', 1) RETURNING id) INSERT INTO document_versions (tenant_id, document_id, "
-            f"version_no, status, finished_at) SELECT '{DEFAULT_TENANT_ID}', id, 1, '{status}', "
-            "now() FROM d"
+            "size_bytes) VALUES (:tenant, 'invoice', :sha, 'k', 'a.pdf', 1) RETURNING id) "
+            "INSERT INTO document_versions (tenant_id, document_id, version_no, status, "
+            "finished_at) SELECT :tenant, id, 1, :status, now() FROM d",
+            tenant=DEFAULT_TENANT_ID,
+            sha=uuid.uuid4().hex * 2,
+            status=status,
         )
 
 
