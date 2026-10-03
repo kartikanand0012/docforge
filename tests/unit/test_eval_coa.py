@@ -67,3 +67,27 @@ def test_a_misread_result_that_hides_a_defect_is_counted_as_missed(
     assert (report.summary.seeded, report.summary.seeded_caught) == (1, 0)
     assert report.summary.fields_correct < report.summary.fields_total
     assert "coa_002" in format_coa_report(report)
+
+
+REPO = Path(__file__).resolve().parents[2]
+BASELINE = REPO / "evals" / "baselines" / "coa.json"
+
+
+def test_the_committed_certificate_report_is_reproduced_offline_and_holds_its_floors() -> None:
+    from docforge.evals.coa import CoaReport
+    from docforge.llm.replay import RecordingProvider
+    from docforge.parsing.cache import CachingParser
+
+    report = CoaReport.model_validate_json(BASELINE.read_text(encoding="utf-8"))
+    recordings = REPO / "tests" / "fixtures" / "recorded"
+    pipeline = ExtractionPipeline(
+        CachingParser(recordings / "parsed"),
+        RecordingProvider(recordings / "llm", report.model),
+        COA_SPEC,
+    )
+
+    assert run_coa_eval(FIXTURES, pipeline) == report
+    s = report.summary
+    assert s.seeded_caught == s.seeded == 6
+    assert s.contradictions_caught == s.contradictions_expected == 3
+    assert s.clean_flagged == 0
