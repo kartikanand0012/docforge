@@ -8,7 +8,7 @@ from pathlib import Path
 from docforge.auth import Authenticator
 from docforge.config import Settings
 from docforge.db.session import make_engine, make_session_factory
-from docforge.documents import DocumentService, Pipeline
+from docforge.documents import DocumentService, EventSink, Pipeline
 from docforge.extraction.pipeline import INVOICE_SPEC, ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
 from docforge.llm.gemini import GeminiProvider
@@ -19,6 +19,7 @@ from docforge.parsing.isolation import IsolatedParser
 from docforge.queue import JobQueue
 from docforge.review.service import ReviewService
 from docforge.storage import S3ObjectStore
+from docforge.webhooks import WebhookService
 
 
 def build_pipeline(settings: Settings) -> InvoicePipeline:
@@ -73,13 +74,25 @@ def load_pipelines(settings: Settings) -> dict[str, Pipeline]:
     return pipelines
 
 
-def build_review(settings: Settings) -> ReviewService:
+def build_webhooks(settings: Settings, queue: JobQueue) -> WebhookService:
+    database_url = settings.database_url.get_secret_value()
+    return WebhookService(
+        make_session_factory(make_engine(database_url)),
+        settings.webhook_signing_key.get_secret_value().encode(),
+        queue.defer_delivery,
+        allow_http=settings.webhook_allow_local,
+        allow_private=settings.webhook_allow_local,
+    )
+
+
+def build_review(settings: Settings, events: EventSink | None = None) -> ReviewService:
     """The review service, over the same database and store as the document service."""
     database_url = settings.database_url.get_secret_value()
     return ReviewService(
         make_session_factory(make_engine(database_url)),
         S3ObjectStore.from_settings(settings),
         {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC},
+        events=events,
     )
 
 
@@ -98,13 +111,17 @@ def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
         max_attempts=settings.job_max_attempts,
         retry_wait_seconds=settings.job_retry_wait_seconds,
     )
+    sessions = make_session_factory(make_engine(database_url))
+    webhooks = build_webhooks(settings, queue)
     service = DocumentService(
-        make_session_factory(make_engine(database_url)),
+        sessions,
         S3ObjectStore.from_settings(settings),
         load_pipelines(settings),
         queue.enqueue,
         max_attempts=settings.job_max_attempts,
         max_pending=settings.max_pending_documents,
+        events=webhooks,
     )
     queue.bind(service)
+    queue.bind_webhooks(webhooks)
     return service, queue

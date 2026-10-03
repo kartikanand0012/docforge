@@ -7,12 +7,19 @@ from fastapi import FastAPI
 from docforge.api.app import create_app
 from docforge.config import get_settings
 from docforge.extraction.pipeline import InvoicePipeline
-from docforge.wiring import build_authenticator, build_review, build_service, load_pipelines
+from docforge.wiring import (
+    build_authenticator,
+    build_review,
+    build_service,
+    build_webhooks,
+    load_pipelines,
+)
 
 
 def create_default_app() -> FastAPI:
     settings = get_settings()
-    service, _queue = build_service(settings)
+    service, queue = build_service(settings)
+    webhooks = build_webhooks(settings, queue)
     # The stateless preview endpoint uses the invoice pipeline directly.
     preview = load_pipelines(settings).get("invoice")
     prices = None
@@ -26,9 +33,10 @@ def create_default_app() -> FastAPI:
         max_upload_bytes=settings.max_upload_bytes,
         service=service,
         max_pages=settings.max_pages,
-        review=build_review(settings),
+        review=build_review(settings, events=webhooks),
         evals_dir=Path(settings.evals_dir),
         prices=prices,
         cors_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
         authenticator=build_authenticator(settings),
+        webhooks=webhooks,
     )

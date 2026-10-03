@@ -9,7 +9,7 @@ from typing import Any
 
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
-from docforge.documents import DocumentService
+from docforge.documents import DocumentService, EventSink
 from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
 from docforge.parsing.base import ParsedDocument
@@ -24,8 +24,14 @@ class World:
     """A service whose parser and model reproduce a fixture pair exactly, unless edited."""
 
     def __init__(
-        self, sessions: SessionFactory, invoice: RawFromLabel, order: RawFromLabel, pair: str
+        self,
+        sessions: SessionFactory,
+        invoice: RawFromLabel,
+        order: RawFromLabel,
+        pair: str,
+        events: EventSink | None = None,
     ) -> None:
+        self.events = events
         self.sessions = sessions
         label = json.loads((FIXTURES / pair / "label.json").read_text(encoding="utf-8"))
         self.invoice_pdf = (FIXTURES / pair / "invoice.pdf").read_bytes()
@@ -58,6 +64,7 @@ class World:
                 "purchase_order": order_pipeline,
             },
             lambda session, version: self.queued.append(version.id),
+            events=self.events,
         )
         return self.service
 

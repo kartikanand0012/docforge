@@ -270,3 +270,30 @@ def test_processing_a_document_and_signing_its_review_emit_events(
     signed = events[2]["data"]
     assert signed["outcome"] == "approved" and signed["draft"]["type"] == "payment_approval_draft"
     assert signed["record_sha256"] == signed["draft"]["record_sha256"]
+
+
+def test_a_delivery_goes_through_the_real_queue_and_worker(
+    sessions: SessionFactory, engine: Any, receiver: Receiver
+) -> None:
+    """Deferred in the emitting transaction, picked up by a worker running as the app role."""
+    import asyncio
+
+    from docforge.queue import JobQueue
+    from docforge.worker import run_worker
+
+    queue = JobQueue(engine.url)
+    hooks = WebhookService(sessions, KEY, queue.defer_delivery, allow_http=True, allow_private=True)
+    queue.bind_webhooks(hooks)
+    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
+    receiver.statuses = [500]  # the first attempt fails; the queue tries again
+
+    emit(hooks, sessions)
+    asyncio.run(run_worker(queue, wait=False))
+    asyncio.run(run_worker(queue, wait=False))
+
+    assert len(receiver.received) >= 1
+    with sessions() as session:
+        (delivery,) = session.scalars(select(WebhookDelivery)).all()
+    assert delivery.attempts == len(receiver.received)
+    if delivery.status != "delivered":  # the retry waits; it is scheduled, not lost
+        assert delivery.status == "pending"

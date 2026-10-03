@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     ColumnElement,
     DateTime,
     Float,
@@ -15,8 +16,9 @@ from sqlalchemy import (
     Text,
     literal_column,
     text,
+    true,
 )
-from sqlalchemy.dialects.postgresql import CHAR, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, CHAR, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 _NEW_UUID = text("gen_random_uuid()")
@@ -245,6 +247,40 @@ class SessionToken(Base):
     created_at: Mapped[datetime] = _created_at()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Webhook(Base):
+    """Where events are sent. Its signing secret is derived, never stored."""
+
+    __tablename__ = "webhooks"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    url: Mapped[str] = mapped_column(Text)
+    events: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    secret_version: Mapped[int] = mapped_column(Integer, server_default="1")
+    active: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class WebhookDelivery(Base):
+    """One event for one webhook, with its delivery state."""
+
+    __tablename__ = "webhook_deliveries"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    webhook_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("webhooks.id"))
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    event_type: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(Text, server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    last_status: Mapped[int | None] = mapped_column(Integer)
+    last_error: Mapped[str | None] = mapped_column(Text)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
 
 
 class AuditEntry(Base):

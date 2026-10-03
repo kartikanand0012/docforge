@@ -18,6 +18,7 @@ _LOCAL_APP_DATABASE_URL = (
     f"postgresql+psycopg://docforge_app_user:{_LOCAL_APP_PASSWORD}@127.0.0.1:5432/docforge"
 )
 _LOCAL_S3_SECRET_KEY = "docforge-local-secret"  # noqa: S105 - local Compose default, not a real secret
+_LOCAL_WEBHOOK_KEY = "docforge-local-webhook-key"
 
 
 class Settings(BaseSettings):
@@ -60,6 +61,11 @@ class Settings(BaseSettings):
     # the parser or model without changing this package.
     pipeline_factory: str = "docforge.wiring:build_pipelines"
 
+    # Signs webhook deliveries; each webhook's secret is derived from it. Changing it changes
+    # every webhook's secret.
+    webhook_signing_key: SecretStr = SecretStr(_LOCAL_WEBHOOK_KEY)
+    # Only for local development and tests: let webhooks reach http:// and this machine.
+    webhook_allow_local: bool = False
     # Failed sign-ins and PINs allowed per client address in five minutes, per API process.
     failed_logins_per_window: int = 20
     # The review screen's origin(s), comma-separated, e.g. http://localhost:3000.
@@ -111,10 +117,14 @@ class Settings(BaseSettings):
             "MIGRATION_DATABASE_URL": self.migration_database_url.get_secret_value()
             == _LOCAL_DATABASE_URL,
             "S3_SECRET_KEY": self.s3_secret_key.get_secret_value() == _LOCAL_S3_SECRET_KEY,
+            "WEBHOOK_SIGNING_KEY": self.webhook_signing_key.get_secret_value()
+            == _LOCAL_WEBHOOK_KEY,
         }
         unset = [name for name, is_default in defaults.items() if is_default]
         if unset:
             raise ValueError(f"{', '.join(unset)} still has its local default value")
+        if self.webhook_allow_local:
+            raise ValueError("WEBHOOK_ALLOW_LOCAL is for local development only")
         if not self.pipeline_factory.startswith("docforge."):
             # The factory is imported and called with every secret in these settings.
             raise ValueError("PIPELINE_FACTORY must name a function in this package")

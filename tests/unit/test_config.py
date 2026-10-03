@@ -22,6 +22,8 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "S3_SECRET_KEY",
         "GEMINI_API_KEY",
         "PIPELINE_FACTORY",
+        "WEBHOOK_SIGNING_KEY",
+        "WEBHOOK_ALLOW_LOCAL",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -110,6 +112,7 @@ def test_production_accepts_explicit_credentials(monkeypatch: pytest.MonkeyPatch
         "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
     )
     monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
 
     assert make_settings().environment == "production"
 
@@ -133,6 +136,7 @@ def test_production_only_loads_pipelines_from_this_package(
         "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
     )
     monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
     monkeypatch.setenv("PIPELINE_FACTORY", "somewhere_else:build")
 
     with pytest.raises(ValueError, match="PIPELINE_FACTORY"):
@@ -145,6 +149,21 @@ def test_production_refuses_the_local_owner_credentials_for_migrations(
     monkeypatch.setenv("ENVIRONMENT", "production")
     monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
     monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
 
     with pytest.raises(ValueError, match="MIGRATION_DATABASE_URL"):
+        make_settings()
+
+
+def test_production_refuses_webhooks_to_local_addresses(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
+    monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("WEBHOOK_ALLOW_LOCAL", "true")
+
+    with pytest.raises(ValueError, match="WEBHOOK_ALLOW_LOCAL"):
         make_settings()

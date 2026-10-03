@@ -87,6 +87,27 @@ class TransientProcessingError(Exception):
     """Processing failed in a way that may succeed later; the queue should retry the job."""
 
 
+class EventSink(Protocol):
+    def emit(
+        self,
+        session: Session,
+        tenant_id: uuid.UUID,
+        event_type: str,
+        data: dict[str, Any],
+        *,
+        event_id: uuid.UUID | None = None,
+    ) -> uuid.UUID: ...
+
+
+_EVENTS = uuid.UUID("6f1c3c0e-8a51-4c3a-9a4f-2f0d9d6b7c11")
+
+
+def event_id(event_type: str, subject: uuid.UUID) -> uuid.UUID:
+    """The same event for the same subject always has the same id, so a job delivered twice
+    emits it once."""
+    return uuid.uuid5(_EVENTS, f"{event_type}:{subject}")
+
+
 class Pipeline(Protocol):
     def run(self, pdf: bytes) -> PipelineResult[BaseModel]: ...
 
@@ -201,8 +222,10 @@ class DocumentService:
         *,
         max_attempts: int = 5,
         max_pending: int = 1000,
+        events: EventSink | None = None,
     ) -> None:
         self._sessions = sessions
+        self._events = events
         self._store = store
         self._pipelines = pipelines  # one per document type
         self._enqueue = enqueue
@@ -479,6 +502,21 @@ class DocumentService:
                     for rule in assessment.rules
                 ),
             )
+            if self._events is not None:
+                # In this transaction: the event exists if and only if the extraction does.
+                self._events.emit(
+                    session,
+                    document.tenant_id,
+                    "document.processed",
+                    {
+                        "document_id": str(document.id),
+                        "doc_type": document.doc_type,
+                        "version_no": version.version_no,
+                        "decision": assessment.decision,
+                        "reasons": list(assessment.reasons),
+                    },
+                    event_id=event_id("document.processed", version.id),
+                )
         return "succeeded"
 
     def _match(self, version_id: uuid.UUID) -> None:

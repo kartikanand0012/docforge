@@ -18,11 +18,21 @@ from docforge.documents import DocumentNotFound
 
 if TYPE_CHECKING:
     from docforge.documents import DocumentService
+    from docforge.webhooks import WebhookService
 
 logger = logging.getLogger(__name__)
 
 QUEUE_NAME = "extract"
 TASK_NAME = "process_document_version"
+WEBHOOK_QUEUE = "webhooks"
+WEBHOOK_TASK = "deliver_webhook"
+QUEUES = [QUEUE_NAME, WEBHOOK_QUEUE]
+
+
+class DeliveryNotDone(Exception):
+    """The receiver did not accept the event yet: the queue tries again later."""
+
+
 DEFAULT_MAX_ATTEMPTS = 5
 
 
@@ -67,11 +77,42 @@ class JobQueue:
                 logger.error("dropping job for version %s: it does not exist", version_id)
 
         self._task = process_document_version
+        self._webhooks: WebhookService | None = None
+
+        # Waits grow exponentially (about 10 s, 20 s, 40 s ...); the service counts attempts
+        # and marks the delivery failed when they run out, so the queue allows a few more.
+        @self.app.task(
+            name=WEBHOOK_TASK,
+            queue=WEBHOOK_QUEUE,
+            retry=procrastinate.RetryStrategy(
+                max_attempts=20, exponential_wait=10, retry_exceptions={DeliveryNotDone}
+            ),
+        )
+        def deliver_webhook(delivery_id: str, tenant_id: str) -> None:
+            if self._webhooks is None:
+                raise RuntimeError("the queue is not bound to a webhook service")
+            outcome = self._webhooks.deliver(uuid.UUID(delivery_id), uuid.UUID(tenant_id))
+            if outcome == "retry":
+                raise DeliveryNotDone(delivery_id)
+
+        self._deliver = deliver_webhook
 
     def bind(self, service: "DocumentService") -> None:
         """Give the task the service it runs. The service is built with `enqueue`, so the
         two are connected after both exist."""
         self._service = service
+
+    def bind_webhooks(self, webhooks: "WebhookService") -> None:
+        self._webhooks = webhooks
+
+    def defer_delivery(
+        self, session: Session, delivery_id: uuid.UUID, tenant_id: uuid.UUID
+    ) -> None:
+        """Queue one webhook delivery in the session's transaction."""
+        connection = session.connection().connection.driver_connection
+        self._deliver.configure(connection=connection).defer(
+            delivery_id=str(delivery_id), tenant_id=str(tenant_id)
+        )
 
     def enqueue(self, session: Session, version: DocumentVersion) -> None:
         """Add the job for `version` in the session's transaction."""

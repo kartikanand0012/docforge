@@ -32,7 +32,7 @@ from docforge.db.models import (
 )
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
-from docforge.documents import DocumentNotFound, current_match
+from docforge.documents import DocumentNotFound, EventSink, current_match, event_id
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
@@ -198,7 +198,9 @@ class ReviewService:
         specs: Mapping[str, DocumentSpec[Any]],
         *,
         queue_limit: int = _QUEUE_LIMIT,
+        events: EventSink | None = None,
     ) -> None:
+        self._events = events
         self._sessions = sessions
         self._store = store
         self._specs = dict(specs)
@@ -505,6 +507,25 @@ class ReviewService:
                     signed_at=signed_at,
                 )
             )
+            if self._events is not None:
+                session.flush()
+                self._events.emit(
+                    session,
+                    tenant_id,
+                    "review.signed",
+                    {
+                        "document_id": str(document.id),
+                        "doc_type": document.doc_type,
+                        "version_no": state.version.version_no,
+                        "outcome": outcome,
+                        "meaning": required,
+                        "signed_by": reviewer.name,
+                        "signed_at": signed_at.isoformat(),
+                        "record_sha256": digest,
+                        "draft": draft,
+                    },
+                    event_id=event_id("review.signed", state.version.id),
+                )
             audit.append(
                 session,
                 tenant_id=tenant_id,

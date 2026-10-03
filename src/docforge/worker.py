@@ -11,18 +11,20 @@ import logging
 import procrastinate
 
 from docforge.config import get_settings
-from docforge.queue import QUEUE_NAME, JobQueue
+from docforge.queue import QUEUES, JobQueue
 
 logger = logging.getLogger(__name__)
 
 
 async def requeue_stalled(app: procrastinate.App, *, stalled_after_seconds: float) -> int:
     """Put jobs held by dead workers back on the queue. Returns how many."""
-    jobs = list(
-        await app.job_manager.get_stalled_jobs(
-            queue=QUEUE_NAME, seconds_since_heartbeat=stalled_after_seconds
+    jobs = []
+    for queue in QUEUES:
+        jobs += list(
+            await app.job_manager.get_stalled_jobs(
+                queue=queue, seconds_since_heartbeat=stalled_after_seconds
+            )
         )
-    )
     requeued = 0
     for job in jobs:
         try:
@@ -61,8 +63,10 @@ async def run_worker(
         watcher = asyncio.create_task(_requeue_stalled_forever(queue.app, stalled_after_seconds))
         try:
             await queue.app.run_worker_async(
-                queues=[QUEUE_NAME],
-                concurrency=1,  # the parser runs one document at a time
+                queues=QUEUES,
+                # The parser takes one document at a time anyway; the second slot lets a
+                # webhook be delivered while a long document is being read.
+                concurrency=2,
                 wait=wait,
                 update_heartbeat_interval=heartbeat_seconds,
                 stalled_worker_timeout=stalled_after_seconds,
