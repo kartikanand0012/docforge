@@ -1,0 +1,86 @@
+# The demo on one host: Postgres, the API, the worker, the review app and Caddy for HTTPS.
+# Values come from .env (written by bootstrap.sh from SSM Parameter Store; see env.example).
+# Only Caddy publishes ports. Originals go to S3 with the instance's role; the `local` profile
+# adds MinIO instead, for trying this file on a laptop.
+name: docforge-demo  # not "docforge": that is the development stack
+
+services:
+  postgres:
+    # pgvector/pgvector:pg16 (PostgreSQL 16.15, pgvector 0.8.7), pinned by digest.
+    image: pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    environment:
+      POSTGRES_USER: docforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      POSTGRES_DB: docforge
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docforge -d docforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    image: ${APP_IMAGE:?set in .env}
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  worker:
+    image: ${APP_IMAGE:?set in .env}
+    command: ["python", "-m", "docforge.worker"]
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    image: ${WEB_IMAGE:?set in .env}
+    environment:
+      DOCFORGE_API_URL: http://api:8000
+      # The public demo shows its shared sign-in on the sign-in page; unset elsewhere.
+      DOCFORGE_DEMO_PIN: ${DEMO_PIN:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    # caddy:2.10-alpine
+    image: caddy:2.10-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - web
+    restart: unless-stopped
+
+  minio:
+    profiles: ["local"]
+    image: cgr.dev/chainguard/minio@sha256:0f95aa412a12351a95bb43c3b54b66440eb0aa022bb3f3458942678a489e915b
+    environment:
+      MINIO_ROOT_USER: docforge
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-docforge-local-secret}
+      MC_CONFIG_DIR: /tmp/.mc
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/$${S3_BUCKET:-docforge-originals} && exec minio server /data"]
+    volumes:
+      - miniodata:/data
+
+volumes:
+  pgdata:
+  caddy_data:
+  miniodata:
