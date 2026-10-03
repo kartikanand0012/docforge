@@ -121,3 +121,10 @@ Each checkpoint runs as before: tests first, ECC reviewers, gate, records.
 3. **Chat model:** Gemini Flash-Lite (cheapest) or a stronger model for answers? Answers are judged by the C11 eval either way.
 4. **The public demo:** should visitors be able to chat? It would need the model key on the demo and a cost cap.
 5. **Order:** C10 → C13 as above, or the connector earlier?
+
+## 8. Decided (2026-10-03)
+
+1. Drive connector: the shared folder with our service account first (option A).
+2. Any document can be uploaded for chat: a `general` type alongside the checked packs.
+3. Chat answers with Gemini Flash-Lite; the C11 answer eval decides if it is good enough.
+4. Build in order: C10 status and general documents, C11 chat, C12 knowledge bases, C13 Drive.
