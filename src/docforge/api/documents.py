@@ -118,6 +118,7 @@ class ChainOut(_Out):
     entries: int
     first_bad_id: int | None
     reason: str | None
+    anchors_checked: int  # 0 when no anchor has been taken outside the database
 
 
 _NOT_FOUND = HTTPException(404, "No such document.")

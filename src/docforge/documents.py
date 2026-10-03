@@ -19,7 +19,7 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from pydantic import BaseModel
 from sqlalchemy import case, func, select
@@ -52,6 +52,9 @@ from docforge.parsing.base import (
 )
 from docforge.storage import ObjectNotFound, ObjectStore, StorageUnavailable, original_key
 from docforge.trust.match import match_invoice_to_order
+
+if TYPE_CHECKING:
+    from docforge.anchors import AnchoredReport, AnchorStore
 
 logger = logging.getLogger(__name__)
 
@@ -223,9 +226,11 @@ class DocumentService:
         max_attempts: int = 5,
         max_pending: int = 1000,
         events: EventSink | None = None,
+        anchors: "AnchorStore | None" = None,
     ) -> None:
         self._sessions = sessions
         self._events = events
+        self._anchors = anchors
         self._store = store
         self._pipelines = pipelines  # one per document type
         self._enqueue = enqueue
@@ -733,9 +738,17 @@ class DocumentService:
             return list(entries)
 
     @scoped
-    def verify_audit_chain(self, tenant_id: uuid.UUID) -> audit.ChainReport:
+    def verify_audit_chain(self, tenant_id: uuid.UUID) -> "AnchoredReport":
+        """The chain, and, where anchors are kept, the chain against its latest anchor."""
+        from docforge.anchors import AnchoredReport, verify_with_anchors
+
         with self._sessions() as session:
-            return audit.verify_chain(session, tenant_id)
+            if self._anchors is not None:
+                return verify_with_anchors(session, tenant_id, self._anchors)
+            chain = audit.verify_chain(session, tenant_id)
+            return AnchoredReport(
+                chain.consistent, chain.entries, chain.first_bad_id, chain.reason, 0
+            )
 
     # --- helpers ----------------------------------------------------------------------------
 

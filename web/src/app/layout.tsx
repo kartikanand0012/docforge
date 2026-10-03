@@ -20,6 +20,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/">Review queue</Link>
             <Link href="/upload">Upload</Link>
             <Link href="/evals">Evals and cost</Link>
+            {/* A file download through the session proxy, not a page. */}
+            <a href="/api/v1/exports/documents.csv" download>
+              Export signed records (CSV)
+            </a>
           </nav>
           <SignOut />
         </header>

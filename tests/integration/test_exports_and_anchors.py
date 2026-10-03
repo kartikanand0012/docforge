@@ -8,11 +8,11 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
-from docforge.anchors import AnchorStore, verify_with_anchors
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 
 from docforge import audit
+from docforge.anchors import AnchorStore, verify_with_anchors
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.models import AuditEntry
 from docforge.db.session import SessionFactory
@@ -152,3 +152,39 @@ def test_a_rewritten_log_that_still_chains_is_caught_by_its_anchor(
     assert chain.consistent  # the chain alone cannot tell
     assert not report.consistent
     assert report.first_bad_id == last.id and "anchor" in (report.reason or "")
+
+
+def test_the_export_endpoints_serve_csv_and_json(
+    signed: tuple[World, ReviewService, uuid.UUID],
+) -> None:
+    from fastapi.testclient import TestClient
+
+    from docforge.api.app import create_app
+    from fakes import signed_in
+
+    world, review, invoice_id = signed
+    client = TestClient(signed_in(create_app(None, review=review), role="integrator"))
+
+    as_csv = client.get("/v1/exports/documents.csv")
+    as_json = client.get("/v1/exports/documents.json")
+
+    assert as_csv.status_code == 200 and as_csv.headers["content-type"].startswith("text/csv")
+    (row,) = list(csv.DictReader(io.StringIO(as_csv.text)))
+    assert row["document_id"] == str(invoice_id) and row["outcome"] == "approved"
+    (record,) = as_json.json()
+    assert record["draft"]["type"] == "payment_approval_draft"
+    assert record["record"]["invoice_no"]["raw"] == world.invoice_raw["invoice_no"]["text"]
+
+
+def test_the_anchor_command_anchors_every_organisation(
+    signed: tuple[World, ReviewService, uuid.UUID],
+    sessions: SessionFactory,
+    other_tenant: uuid.UUID,
+) -> None:
+    from docforge.anchors import anchor_all
+
+    anchors = AnchorStore(MemoryObjectStore())
+
+    assert anchor_all(sessions, anchors) == 2
+    assert anchors.latest(DEFAULT_TENANT_ID)["last_id"] is not None  # type: ignore[index]
+    assert anchors.latest(other_tenant)["last_id"] is None  # type: ignore[index]

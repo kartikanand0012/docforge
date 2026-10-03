@@ -20,6 +20,7 @@ from sqlalchemy.exc import OperationalError
 from docforge import __version__
 from docforge.api.auth import require, sessions_router
 from docforge.api.documents import documents_router
+from docforge.api.exports import exports_router
 from docforge.api.review import review_router
 from docforge.api.uploads import (
     DEFAULT_MAX_UPLOAD_BYTES,
@@ -148,6 +149,8 @@ def create_app(
         app.include_router(review_router(review, evals_dir, prices, limiter))
     if webhooks is not None:
         app.include_router(webhooks_router(webhooks))
+    if review is not None:
+        app.include_router(exports_router(review))
     if pipeline is not None:
         _add_preview_endpoint(app, pipeline, max_upload_bytes)
     return app

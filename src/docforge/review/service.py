@@ -363,6 +363,53 @@ class ReviewService:
             image.save(out, format="PNG", optimize=True)
         return out.getvalue()
 
+    @scoped
+    def export(
+        self, tenant_id: uuid.UUID, *, include_records: bool = False, limit: int = 10_000
+    ) -> list[dict[str, Any]]:
+        """Signed records, newest first: one flat row each, and the record itself if asked."""
+        with self._sessions() as session:
+            rows = session.execute(
+                select(Review, DocumentVersion, Document)
+                .join(DocumentVersion, DocumentVersion.id == Review.document_version_id)
+                .join(Document, Document.id == DocumentVersion.document_id)
+                .where(Review.tenant_id == tenant_id)
+                .order_by(Review.signed_at.desc())
+                .limit(limit)
+            ).all()
+        out: list[dict[str, Any]] = []
+        for signed, version, document in rows:
+            record: dict[str, Any] = signed.data.get("record") or {}
+            invoice = document.doc_type == "invoice"
+
+            def value(*path: str, record: dict[str, Any] = record) -> Any:
+                node: Any = record
+                for part in path:
+                    node = node.get(part) if isinstance(node, dict) else None
+                return node.get("value") if isinstance(node, dict) else None
+
+            row: dict[str, Any] = {
+                "document_id": str(document.id),
+                "doc_type": document.doc_type,
+                "filename": document.filename,
+                "version_no": version.version_no,
+                "outcome": signed.outcome,
+                "signed_by": (signed.data.get("signer") or {}).get("name"),
+                "signed_at": signed.signed_at.isoformat(),
+                "invoice_no": value("invoice_no") if invoice else None,
+                "po_no": value("po_no"),
+                "supplier_gstin": value("seller", "gstin") if invoice else value("supplier_gstin"),
+                "buyer_gstin": value("buyer", "gstin"),
+                "grand_total": value("totals", "grand_total") if invoice else None,
+                "override_reason": signed.override_reason,
+                "record_sha256": signed.record_sha256,
+            }
+            if include_records:
+                row["record"] = record
+                row["draft"] = signed.data.get("draft")
+            out.append(row)
+        return out
+
     # Changing
 
     @scoped

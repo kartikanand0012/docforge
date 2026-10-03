@@ -5,6 +5,7 @@ from importlib import import_module
 from importlib.metadata import version
 from pathlib import Path
 
+from docforge.anchors import AnchorStore
 from docforge.auth import Authenticator
 from docforge.config import Settings
 from docforge.db.session import make_engine, make_session_factory
@@ -121,6 +122,7 @@ def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
         max_attempts=settings.job_max_attempts,
         max_pending=settings.max_pending_documents,
         events=webhooks,
+        anchors=AnchorStore(S3ObjectStore.from_settings(settings)),
     )
     queue.bind(service)
     queue.bind_webhooks(webhooks)
