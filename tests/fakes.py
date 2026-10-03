@@ -79,7 +79,7 @@ def cited(label: dict[str, Any], kind: str, raw: dict[str, Any]) -> ParsedDocume
 
     Together they are what a perfect parser and a perfect model would produce.
     """
-    document = label["documents"][kind]
+    document = label["document"] if kind == "coa" else label["documents"][kind]
     blocks = []
     for number, box in enumerate(document["boxes"], start=1):
         blocks.append(

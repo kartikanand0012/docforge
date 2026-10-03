@@ -10,6 +10,7 @@ from typing import Any
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
 from docforge.documents import DocumentService, EventSink
+from docforge.extraction.coa import COA_SPEC, CoaExtraction
 from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
 from docforge.parsing.base import ParsedDocument
@@ -42,6 +43,7 @@ class World:
         self.invoice_parsed: ParsedDocument = cited(label, "invoice", self.invoice_raw)
         self.order_parsed: ParsedDocument = cited(label, "purchase_order", self.order_raw)
         self.queued: list[uuid.UUID] = []
+        self.coas: list[tuple[bytes, ParsedDocument, dict[str, Any]]] = []  # added before build
         self.store = MemoryObjectStore()  # kept across rebuilds, so reprocessing finds the file
         self.service: DocumentService | None = None
 
@@ -52,6 +54,11 @@ class World:
         parser = MappedParser()
         parser.add(self.invoice_pdf, self.invoice_parsed)
         parser.add(self.order_pdf, self.order_parsed)
+        for pdf, parsed, _ in self.coas:
+            parser.add(pdf, parsed)
+        coa_pipeline: ExtractionPipeline[CoaExtraction] = ExtractionPipeline(
+            parser, ScriptedProvider([json.dumps(raw) for _, _, raw in self.coas] * 3), COA_SPEC
+        )
         replies = [json.dumps(self.invoice_raw)] * 3
         order_replies = [json.dumps(self.order_raw)] * 3
         order_pipeline: ExtractionPipeline[PurchaseOrderExtraction] = ExtractionPipeline(
@@ -63,11 +70,34 @@ class World:
             {
                 "invoice": InvoicePipeline(parser, ScriptedProvider(replies)),
                 "purchase_order": order_pipeline,
+                "coa": coa_pipeline,
             },
             lambda session, version: self.queued.append(version.id),
             events=self.events,
         )
         return self.service
+
+    def add_coa(self, case_id: str, build: RawFromLabel) -> bytes:
+        """A certificate from the fixtures, read perfectly. Call before anything is processed."""
+        directory = FIXTURES.parent / "coa" / case_id
+        label = json.loads((directory / "label.json").read_text(encoding="utf-8"))
+        raw = build(label)
+        pdf = (directory / "coa.pdf").read_bytes()
+        self.coas.append((pdf, cited(label, "coa", raw), raw))
+        return pdf
+
+    def process_pdf(self, doc_type: str, pdf: bytes, filename: str) -> uuid.UUID:
+        service = self.service or self.build()
+        result = service.ingest(
+            tenant_id=DEFAULT_TENANT_ID,
+            doc_type=doc_type,
+            filename=filename,
+            data=pdf,
+            actor="api:upload",
+        )
+        assert result.version is not None
+        assert service.process(result.version.id) == "succeeded"
+        return result.document.id
 
     def process(self, doc_type: str) -> uuid.UUID:
         service = self.service or self.build()
