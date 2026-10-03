@@ -1,0 +1,325 @@
+{
+  "schema_version": "1",
+  "case_id": "coa_017",
+  "pair_id": "pair_017",
+  "seed": 20261002,
+  "out_of_limit": [
+    "Related substances"
+  ],
+  "coa": {
+    "coa_no": "COA/KTP/25/862",
+    "manufacturer": "Kaveri Therapeutics Pvt. Ltd.",
+    "product_name": "Insulin Injection IP 40IU/ml",
+    "batch_no": "ED4657",
+    "mfg": "2025-07",
+    "expiry": "2027-01",
+    "analysis_date": "2025-07-16",
+    "tests": [
+      {
+        "name": "Description",
+        "specification": "Complies",
+        "result": "Complies"
+      },
+      {
+        "name": "Identification",
+        "specification": "Positive",
+        "result": "Positive"
+      },
+      {
+        "name": "pH",
+        "specification": "3.5 - 5.5",
+        "result": "4.8"
+      },
+      {
+        "name": "Assay",
+        "specification": "95.0 - 105.0 %",
+        "result": "102.6 %"
+      },
+      {
+        "name": "Related substances",
+        "specification": "NMT 1.0 %",
+        "result": "2.00 %"
+      },
+      {
+        "name": "Bacterial endotoxins",
+        "specification": "NMT 0.5 EU/mL",
+        "result": "0.14 EU/mL"
+      },
+      {
+        "name": "Sterility",
+        "specification": "Sterile",
+        "result": "Complies"
+      }
+    ],
+    "conclusion": "The batch does not comply with the specification."
+  },
+  "document": {
+    "file": "coa.pdf",
+    "page_width": 595.2755905511812,
+    "page_height": 841.8897637795277,
+    "boxes": [
+      {
+        "path": "manufacturer",
+        "text": "Kaveri Therapeutics Pvt. Ltd.",
+        "page": 1,
+        "x0": 30.0,
+        "y0": 779.63,
+        "x1": 147.15,
+        "y1": 787.49
+      },
+      {
+        "path": "coa_no",
+        "text": "COA/KTP/25/862",
+        "page": 1,
+        "x0": 89.21,
+        "y0": 761.13,
+        "x1": 154.88,
+        "y1": 768.99
+      },
+      {
+        "path": "product_name",
+        "text": "Insulin Injection IP 40IU/ml",
+        "page": 1,
+        "x0": 64.65,
+        "y0": 746.63,
+        "x1": 165.28,
+        "y1": 754.49
+      },
+      {
+        "path": "batch_no",
+        "text": "ED4657",
+        "page": 1,
+        "x0": 72.69,
+        "y0": 732.13,
+        "x1": 103.4,
+        "y1": 739.99
+      },
+      {
+        "path": "mfg",
+        "text": "07/25",
+        "page": 1,
+        "x0": 72.21,
+        "y0": 717.63,
+        "x1": 93.48,
+        "y1": 725.49
+      },
+      {
+        "path": "expiry",
+        "text": "01/27",
+        "page": 1,
+        "x0": 72.69,
+        "y0": 703.13,
+        "x1": 93.95,
+        "y1": 710.99
+      },
+      {
+        "path": "analysis_date",
+        "text": "16-Jul-2025",
+        "page": 1,
+        "x0": 96.78,
+        "y0": 688.63,
+        "x1": 141.66,
+        "y1": 696.49
+      },
+      {
+        "path": "tests[0].name",
+        "text": "Description",
+        "page": 1,
+        "x0": 32.0,
+        "y0": 643.63,
+        "x1": 74.51,
+        "y1": 651.49
+      },
+      {
+        "path": "tests[0].specification",
+        "text": "Complies",
+        "page": 1,
+        "x0": 200.23,
+        "y0": 643.63,
+        "x1": 235.65,
+        "y1": 651.49
+      },
+      {
+        "path": "tests[0].result",
+        "text": "Complies",
+        "page": 1,
+        "x0": 429.63,
+        "y0": 643.63,
+        "x1": 465.05,
+        "y1": 651.49
+      },
+      {
+        "path": "tests[1].name",
+        "text": "Identification",
+        "page": 1,
+        "x0": 32.0,
+        "y0": 627.63,
+        "x1": 79.72,
+        "y1": 635.49
+      },
+      {
+        "path": "tests[1].specification",
+        "text": "Positive",
+        "page": 1,
+        "x0": 200.23,
+        "y0": 627.63,
+        "x1": 229.99,
+        "y1": 635.49
+      },
+      {
+        "path": "tests[1].result",
+        "text": "Positive",
+        "page": 1,
+        "x0": 429.63,
+        "y0": 627.63,
+        "x1": 459.39,
+        "y1": 635.49
+      },
+      {
+        "path": "tests[2].name",
+        "text": "pH",
+        "page": 1,
+        "x0": 32.0,
+        "y0": 611.63,
+        "x1": 42.86,
+        "y1": 619.49
+      },
+      {
+        "path": "tests[2].specification",
+        "text": "3.5 - 5.5",
+        "page": 1,
+        "x0": 200.23,
+        "y0": 611.63,
+        "x1": 231.42,
+        "y1": 619.49
+      },
+      {
+        "path": "tests[2].result",
+        "text": "4.8",
+        "page": 1,
+        "x0": 429.63,
+        "y0": 611.63,
+        "x1": 441.45,
+        "y1": 619.49
+      },
+      {
+        "path": "tests[3].name",
+        "text": "Assay",
+        "page": 1,
+        "x0": 32.0,
+        "y0": 595.63,
+        "x1": 55.15,
+        "y1": 603.49
+      },
+      {
+        "path": "tests[3].specification",
+        "text": "95.0 - 105.0 %",
+        "page": 1,
+        "x0": 200.23,
+        "y0": 595.63,
+        "x1": 255.51,
+        "y1": 603.49
+      },
+      {
+        "path": "tests[3].result",
+        "text": "102.6 %",
+        "page": 1,
+        "x0": 429.63,
+        "y0": 595.63,
+        "x1": 460.82,
+        "y1": 603.49
+      },
+      {
+        "path": "tests[4].name",
+        "text": "Related substances",
+        "page": 1,
+        "x0": 32.0,
+        "y0": 579.63,
+        "x1": 106.65,
+        "y1": 587.49
+      },
+      {
+        "path": "tests[4].specification",
+        "text": "NMT 1.0 %",
+        "page": 1,
+        "x0": 200.23,
+        "y0": 579.63,
+        "x1": 242.74,
+        "y1": 587.49
+      },
+      {
+        "path": "tests[4].result",
+        "text": "2.00 %",
+        "page": 1,
+        "x0": 429.63,
+        "y0": 579.63,
+        "x1": 456.09,
+        "y1": 587.49
+      },
+      {
+        "path": "tests[5].name",
+        "text": "Bacterial endotoxins",
+        "page": 1,
+        "x0": 32.0,
+        "y0": 563.63,
+        "x1": 108.53,
+        "y1": 571.49
+      },
+      {
+        "path": "tests[5].specification",
+        "text": "NMT 0.5 EU/mL",
+        "page": 1,
+        "x0": 200.23,
+        "y0": 563.63,
+        "x1": 261.16,
+        "y1": 571.49
+      },
+      {
+        "path": "tests[5].result",
+        "text": "0.14 EU/mL",
+        "page": 1,
+        "x0": 429.63,
+        "y0": 563.63,
+        "x1": 474.51,
+        "y1": 571.49
+      },
+      {
+        "path": "tests[6].name",
+        "text": "Sterility",
+        "page": 1,
+        "x0": 32.0,
+        "y0": 547.63,
+        "x1": 59.86,
+        "y1": 555.49
+      },
+      {
+        "path": "tests[6].specification",
+        "text": "Sterile",
+        "page": 1,
+        "x0": 200.23,
+        "y0": 547.63,
+        "x1": 224.32,
+        "y1": 555.49
+      },
+      {
+        "path": "tests[6].result",
+        "text": "Complies",
+        "page": 1,
+        "x0": 429.63,
+        "y0": 547.63,
+        "x1": 465.05,
+        "y1": 555.49
+      },
+      {
+        "path": "conclusion",
+        "text": "The batch does not comply with the specification.",
+        "page": 1,
+        "x0": 90.0,
+        "y0": 521.53,
+        "x1": 275.2,
+        "y1": 529.39
+      }
+    ],
+    "unprinted": []
+  }
+}

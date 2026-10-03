@@ -135,7 +135,11 @@ class _Page:
         self._canvas.line(_MARGIN, y, self.width - _MARGIN, y)
 
     def table[LineT](
-        self, top: float, columns: tuple[_Column[LineT], ...], rows: tuple[LineT, ...]
+        self,
+        top: float,
+        columns: tuple[_Column[LineT], ...],
+        rows: tuple[LineT, ...],
+        prefix: str = "lines",
     ) -> float:
         """Draw a header at baseline `top` and one row per line; return the y below the table.
 
@@ -154,7 +158,7 @@ class _Page:
                 value = column.text(row)
                 if value is None:
                     continue
-                path = f"lines[{row_index}].{column.field}"
+                path = f"{prefix}[{row_index}].{column.field}"
                 self.text(anchor, y, value, align=column.align, path=path)
         bottom = y - self.style.row_pitch * 0.35
         self.rule(bottom)

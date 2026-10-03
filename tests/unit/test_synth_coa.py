@@ -33,24 +33,16 @@ def test_a_clean_certificate_passes_every_test() -> None:
         assert "complies with" in coa.conclusion
 
 
-def test_a_seeded_certificate_has_exactly_the_named_test_out_of_limit() -> None:
-    pair = build_pair(3, DEFAULT_SEED)
-    clean = build_coa(pair, seed=DEFAULT_SEED, out_of_limit=None)
-    name = next(
-        t.name for t in clean.tests if check_result(t.specification, "0") != "not_evaluated" or True
-    )
-    numeric = next(
-        t.name
-        for t in clean.tests
-        if t.specification[0].isdigit() or t.specification.startswith(("NMT", "NLT"))
-    )
-
-    seeded = build_coa(pair, seed=DEFAULT_SEED, out_of_limit=numeric)
+@pytest.mark.parametrize("test_name", ["Assay", "Related substances"])
+@pytest.mark.parametrize("index", [3, 5, 8])  # a capsule, a tablet and another form among them
+def test_a_seeded_certificate_has_exactly_the_named_test_out_of_limit(
+    index: int, test_name: str
+) -> None:
+    seeded = build_coa(build_pair(index, DEFAULT_SEED), seed=DEFAULT_SEED, out_of_limit=test_name)
 
     outcomes = {t.name: check_result(t.specification, t.result) for t in seeded.tests}
-    assert outcomes[numeric] == "failed"
-    assert [n for n, o in outcomes.items() if o == "failed"] == [numeric]
-    assert name
+    assert outcomes[test_name] == "failed"
+    assert [n for n, o in outcomes.items() if o == "failed"] == [test_name]
 
 
 def test_the_rendered_certificate_prints_every_labelled_value_where_its_box_says() -> None:

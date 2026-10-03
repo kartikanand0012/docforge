@@ -6,6 +6,7 @@ from pathlib import Path
 
 from docforge.synth import DEFAULT_COUNT, DEFAULT_SEED
 from docforge.synth.dataset import generate_dataset, generate_multipage
+from docforge.synth.coa import generate_coas
 from docforge.synth.scans import generate_scans
 from docforge.synth.seeded import generate_seeded
 
@@ -27,6 +28,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="write the seeded-defect cases (case_NNN) instead of the clean pairs",
     )
     parser.add_argument(
+        "--coa",
+        action="store_true",
+        help="write the certificates of analysis for the pairs' batches",
+    )
+    parser.add_argument(
         "--multipage",
         action="store_true",
         help="write the long pairs whose tables run over several pages",
@@ -44,6 +50,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.scans_from is not None:
         written = generate_scans(args.scans_from, args.out)
         print(f"Wrote {written} scanned invoices to {args.out}")
+        return 0
+    if args.coa:
+        coas = generate_coas(args.out, seed=args.seed)
+        print(f"Wrote {len(coas)} certificates of analysis to {args.out}")
         return 0
     if args.multipage:
         labels = generate_multipage(args.out, seed=args.seed)
