@@ -139,9 +139,13 @@ def test_killing_a_worker_mid_job_loses_nothing(
     ]
 
     with engine.connect() as conn:
-        jobs = conn.execute(
-            text("SELECT status::text FROM procrastinate_jobs WHERE queue_name = 'extract'")
-        ).scalars().all()
+        jobs = (
+            conn.execute(
+                text("SELECT status::text FROM procrastinate_jobs WHERE queue_name = 'extract'")
+            )
+            .scalars()
+            .all()
+        )
     assert jobs == ["succeeded"]  # (a search-index job for the version is queued as well)
 
     second.send_signal(signal.SIGTERM)  # and a worker asked to stop does so cleanly
