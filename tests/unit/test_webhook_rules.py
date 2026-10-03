@@ -46,7 +46,7 @@ def test_only_plain_https_urls_are_accepted(url: str, monkeypatch: pytest.Monkey
         "172.16.0.1",
         "::1",
         "fc00::1",
-        "0.0.0.0",
+        "0.0.0.0",  # noqa: S104 - an address to refuse, not to bind
     ],
 )
 def test_a_host_that_resolves_to_an_internal_address_is_refused(

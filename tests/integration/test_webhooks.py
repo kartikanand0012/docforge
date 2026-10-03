@@ -31,7 +31,7 @@ class Receiver:
         receiver = self
 
         class Handler(BaseHTTPRequestHandler):
-            def do_POST(self) -> None:  # noqa: N802 - http.server's name
+            def do_POST(self) -> None:
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 receiver.received.append(({k.lower(): v for k, v in self.headers.items()}, body))
                 self.send_response(receiver.statuses.pop(0) if receiver.statuses else 200)
@@ -192,7 +192,7 @@ def test_another_tenants_webhooks_and_deliveries_are_invisible(
 ) -> None:
     hook_id, _ = hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
 
-    assert hooks.list(other_tenant) == []
+    assert hooks.webhooks(other_tenant) == []
     with pytest.raises(LookupError):
         hooks.deliveries(other_tenant, hook_id)
     with pytest.raises(LookupError):
@@ -209,7 +209,64 @@ def test_the_secret_is_shown_once_and_not_stored(
     with owner_engine.connect() as conn:
         stored = " ".join(str(row) for row in conn.execute(text("SELECT * FROM webhooks")))
     assert secret not in stored
-    assert all("secret" not in str(hook) for hook in hooks.list(DEFAULT_TENANT_ID))
+    assert all("secret" not in str(hook) for hook in hooks.webhooks(DEFAULT_TENANT_ID))
 
 
 Factory = Callable[..., Any]
+
+
+def test_processing_a_document_and_signing_its_review_emit_events(
+    sessions: SessionFactory,
+    raw_invoice_from_label: Factory,
+    raw_order_from_label: Factory,
+    deferred: list[Any],
+    receiver: Receiver,
+) -> None:
+    from docforge.extraction.pipeline import INVOICE_SPEC
+    from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
+    from docforge.review.service import ReviewService
+    from worlds import World
+
+    hooks = WebhookService(
+        sessions, KEY, lambda s, d, t: deferred.append((d, t)), allow_http=True, allow_private=True
+    )
+    hooks.create(
+        DEFAULT_TENANT_ID, url=receiver.url, events=["document.processed", "review.signed"]
+    )
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001", events=hooks)
+    review = ReviewService(
+        sessions,
+        world.store,
+        {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC},
+        events=hooks,
+    )
+    review.add_reviewer(DEFAULT_TENANT_ID, name="Asha Rao", email="asha@example.com", pin="482913")
+
+    world.process("purchase_order")
+    invoice_id = world.process("invoice")
+    seen = review.detail(DEFAULT_TENANT_ID, invoice_id).record_sha256
+    review.sign(
+        DEFAULT_TENANT_ID,
+        invoice_id,
+        outcome="approved",
+        meaning="I approve this invoice for payment",
+        reason="ok",
+        override_reason=None,
+        expected_record_sha256=seen,
+        email="asha@example.com",
+        pin="482913",
+    )
+
+    for delivery_id, tenant_id in deferred:
+        assert hooks.deliver(delivery_id, tenant_id) == "delivered"
+    events = [json.loads(body) for _, body in receiver.received]
+    assert [e["type"] for e in events] == [
+        "document.processed",
+        "document.processed",
+        "review.signed",
+    ]
+    processed = events[1]["data"]
+    assert processed["document_id"] == str(invoice_id) and processed["doc_type"] == "invoice"
+    signed = events[2]["data"]
+    assert signed["outcome"] == "approved" and signed["draft"]["type"] == "payment_approval_draft"
+    assert signed["record_sha256"] == signed["draft"]["record_sha256"]
