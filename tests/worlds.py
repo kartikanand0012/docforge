@@ -33,7 +33,8 @@ class World:
     ) -> None:
         self.events = events
         self.sessions = sessions
-        label = json.loads((FIXTURES / pair / "label.json").read_text(encoding="utf-8"))
+        self.label_text = (FIXTURES / pair / "label.json").read_text(encoding="utf-8")
+        label = json.loads(self.label_text)
         self.invoice_pdf = (FIXTURES / pair / "invoice.pdf").read_bytes()
         self.order_pdf = (FIXTURES / pair / "purchase_order.pdf").read_bytes()
         self.invoice_raw = copy.deepcopy(invoice(label))
