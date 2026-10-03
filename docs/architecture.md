@@ -53,11 +53,11 @@ upload ─▶ ingest ─▶ classify ─▶ parse ─▶ extract ─▶ validate
 | Parse | Produces `blocks`: text, type (paragraph, table cell, key-value), page, bounding box, OCR confidence | Docling for born-digital. Scans go through the OCR adapter. Runs in subprocess workers recycled every N documents (parser memory leaks). |
 | Extract | One schema per document type (Pydantic). LLM returns each field with the block IDs it came from | Per-document-type prompts. Line items extracted table-by-table, not whole-document. Structured output for shape; our validators for truth. |
 | Verify | Every numeric and identifier field is compared to the text of its cited blocks | Mismatch means the field is flagged, never silently corrected. |
-| Validate | Deterministic rules in code | GSTIN checksum, HSN format, dates (expiry after invoice date), line arithmetic, tax totals, scheme quantity ("10+1"), PTR ≤ MRP, drug licence format, CoA result vs limit. |
+| Validate | Deterministic rules in code | GSTIN checksum, HSN format, dates (expiry after invoice date), line arithmetic, tax totals, scheme quantity ("10+1"), PTR ≤ MRP, drug licence format, CoA result vs limit (a limit or conclusion not fully understood is "not evaluated", never passed). |
 | Match | Invoice ↔ PO ↔ CoA on batch, product, quantity, price | Produces a discrepancy list with severity. |
 | Score | Field confidence from OCR confidence, block-alignment, rule results and cross-document agreement | Thresholds per field class, set from the eval set, not guessed. |
 | Route | Accept, or create a review task | A random 1–2% of accepted documents also goes to audit review (silent-error detection). |
-| Index | Chunk by layout blocks, embed, write `tsvector` | Hybrid search with reciprocal rank fusion. |
+| Index | Chunk by layout blocks (a summary, one chunk per table row with its headers, text), embed, write `tsvector` | A queue job after extraction. Hybrid search with reciprocal rank fusion; a code in the question must match a keyword hit; only each document's newest version is searched. Built in C7. |
 
 ## 4. Components and stack
 

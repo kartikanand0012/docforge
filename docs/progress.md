@@ -2,6 +2,78 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C7 Search and certificates of analysis (2026-10-03): gate passed
+
+Branch `c7-search`, PR #8 (stacked on C6).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Retrieval recall measured on a labelled question set, with and without the tenant filter | Pass | 124 generated questions over 60 documents in two organisations, through the real upload, extraction, indexing and search services. Recall@5 within the asker's organisation: hybrid 1.00, keyword 0.99, vector 0.87. With every organisation's documents as candidates: hybrid 0.99, keyword 0.98, vector 0.84. Results from the other organisation: 0 in every mode (`evals/baselines/search.json`, `test_eval_search.py` replays it with floors) |
+| Out-of-limit CoA results are flagged | Pass | 20 synthetic certificates: 511 of 511 values read; 6 of 6 seeded out-of-limit results caught; 3 of 3 certificates that still claim compliance flagged as contradictory; 0 of 14 clean certificates flagged (`evals/baselines/coa.json`). An invoice whose batch has an out-of-limit certificate is held back (`test_coa_link.py`) |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 1,480 Python (1,148 unit, 290 integration, 42 real-parser), 29 web unit, 7 browser steps |
+| Coverage | 93% |
+
+### What was built
+
+- Certificate of analysis as a third document type (`coa`): specifications read into limits
+  (not less than, not more than, ranges, "complies"), each result checked against its limit, and
+  anything that cannot be read with certainty (a compound or partial specification, a
+  conclusion that is neither "complies" nor "does not comply") left as not evaluated rather than
+  passed. A conclusion that claims compliance next to a failed result is flagged.
+- An invoice is linked to the newest certificate for each of its batches (batch numbers compared
+  without case or spacing, and the product must agree). Out of limit holds the invoice back;
+  a certificate that could not be fully checked is shown as such and goes to a person.
+- Search: each document is cut into a summary, one chunk per table row (with its column headers)
+  and text chunks, each citing its blocks. Embeddings (`gemini-embedding-001`, 768 dimensions)
+  and full text in Postgres (migration 0011, row-level security as for every tenant table).
+  Keyword, vector and hybrid (reciprocal rank fusion) modes; a code in the question (a batch,
+  invoice number or GSTIN) must appear in a keyword hit. Only the newest version of a document
+  is searched. Indexing is a queue job after extraction.
+- `GET /v1/search`, limited per caller (60 a minute by default; vector search is a paid call),
+  503 when the embedding service is unavailable. A search page in the review app.
+- Synthetic certificates for the invoices' batches; a certificate eval and a search eval, both
+  recorded live once and replayed offline in CI.
+
+### Departures from the plan
+
+- pgvector tuning is limited to switching on iterative scans and a wider candidate list. At 60
+  documents Postgres sorts exactly and never uses the approximate index, so its behaviour with
+  the tenant filter at scale is unmeasured; that is part of the C8 load test.
+
+### Honest limits
+
+- The question set is generated from the same documents and the search was tuned against it
+  (codes must match, keyword hits weigh double). The recall figures are an upper bound until C8
+  adds a held-out set with near-duplicates, questions that have no answer, and OCR noise.
+- Chunks of superseded versions are kept (the record is append-only) and filtered out at query
+  time. Deleting an organisation's data on request is not yet built for chunks or anything else.
+
+### Review (ECC rag-pipeline-reviewer, security-reviewer, database-reviewer, python-reviewer)
+
+Fixed, each with a failing test first:
+
+- A specification such as "NLT 98.0% and NMT 102.0%" or "≤ 0.5% (each)" was read as only its
+  first half, so a result could pass on half a limit. Anything not fully understood is now not
+  evaluated.
+- A conclusion worded other than "complies" or "does not comply" counted as compliance.
+- A certificate that could not be fully checked showed as within limits; batch numbers written
+  in another case or with spaces did not link; the same batch number for another product did.
+- A reprocessed document was found twice, once with its old text.
+- "Code" detection treated years, strengths and pack sizes (2026, 500mg, 10x10) as codes that
+  had to match, so ordinary questions returned nothing.
+- The summary chunk printed "None" for unread values and cited every line of the document.
+- Search had no per-caller limit, and a missing embedding was a 500. The query is now embedded
+  before a database connection is taken, and repeats are cached.
+- Two jobs indexing one version could both insert; the second now waits and finds the chunks.
+- The search eval used a fixed database name, so two runs at once dropped each other's.
+
 ## C6 Multi-tenant product surface (2026-10-03): gate passed
 
 Branch `c6-tenancy`, PR #7 (stacked on C5).

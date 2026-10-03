@@ -40,6 +40,15 @@ the third lost one line where the parser merged two table rows, and its checks s
 A 301-page invoice parses in its isolated process with a peak of 3.4 GB in 24 minutes on a laptop
 CPU; a 31-page scan in 7 minutes (4.0 GB).
 
+Certificates of analysis (20 synthetic, one per invoice batch): 511 of 511 values read, 6 of 6
+out-of-limit results caught, 3 of 3 certificates that still claim compliance flagged, none of the
+14 clean ones flagged. An invoice whose batch failed is held back.
+
+Search over 60 documents in two organisations, 124 generated questions: the right document in
+the top five for 100% of questions with hybrid search (99% for keyword alone, 87% for vectors
+alone), and never a document from the other organisation. The questions come from the same
+documents the search was tuned on, so treat this as an upper bound.
+
 `make eval` reproduces every report offline from recorded parses and model replies.
 
 ## Review screen

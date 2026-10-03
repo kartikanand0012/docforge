@@ -103,6 +103,19 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C7 Search and certificates of analysis (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| How do you chunk documents with tables? | One chunk per table row with its column headers, so "batch X" lands on the line that has it; a summary chunk per document for "who sold what"; text chunks for the rest. Each cites the blocks it came from. | `search/chunking.py` |
+| Why hybrid and not just vectors? | Measured: vectors alone found 73% of exact-code questions (an embedding does not know 32001 from 32010); keyword alone missed certificates asked about in other words. Fused with reciprocal rank fusion, 100% on this set. | `evals/baselines/search.json` |
+| Debugging a wrong answer | Two real misses: Postgres read "NVM/26-27/32001" as a path, so 32001 was never a word (fixed with a second index over the text without punctuation); generic words outranked the code the person typed (codes now must match). Then review found years and "500mg" were being treated as codes. | `search/service.py::_codes` |
+| Tenant isolation in vector search | Row-level security and an explicit tenant filter. The eval counts results from the other organisation with and without the filter: 0. Caveat: with an approximate index, filtering after the nearest-neighbour step can lose results, so iterative scans are on; not yet measured at scale. | `_vector`, C8 load test |
+| Is your recall number honest? | Partly: the questions are generated from the same documents and the search was tuned on them. It is an upper bound; C8 adds a held-out set. | `evals/search.py` |
+| Never pass what you could not read | "NLT 98.0% and NMT 102.0%" was read as its first half, so a result could pass on half a limit. Anything not fully understood is now "not evaluated" and goes to a person. | `trust/limits.py` |
+| Recording paid calls for CI | Every embedding is recorded once, keyed by its text; CI replays and fails if a text was never recorded. Changing chunk text means re-recording, which made the summary fix visible. | `search/embeddings.py::RecordingEmbedder` |
+| Free-tier quotas | 100 embeddings a minute: indexing waits as long as the server says; a question someone is waiting on retries once and then answers 503. | `GeminiEmbedder._call` |
+
 ### C6 Multi-tenant product surface (2026-10-03)
 
 | Question it answers | What happened in this project | Where to point |
