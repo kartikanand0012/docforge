@@ -15,22 +15,17 @@ import json
 import math
 import re
 import uuid
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-from alembic import command
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL, make_url
 
 from docforge.config import get_settings
-from docforge.db import alembic_config
-from docforge.db.roles import ensure_app_login
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService
+from docforge.evals.database import temporary_database
 from docforge.extraction.coa import COA_SPEC, CoaExtraction
 from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
@@ -41,7 +36,6 @@ from docforge.search.service import Mode, SearchService
 from docforge.storage import MemoryObjectStore
 
 MODES: tuple[Mode, ...] = ("keyword", "vector", "hybrid")
-_EVAL_DATABASE = "docforge_search_eval"
 _TOP = 5
 
 
@@ -151,33 +145,6 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 20) -> list[Questio
     return questions
 
 
-@contextmanager
-def _database(database_url: URL | None) -> Iterator[tuple[URL, URL]]:
-    """(owner URL, application URL) of a migrated database; a temporary one if none given."""
-    settings = get_settings()
-    owner = make_url(settings.migration_database_url.get_secret_value())
-    temporary = database_url is None
-    # A name of its own, so two runs at once (CI workers, a developer) never drop each other's.
-    name = f"{_EVAL_DATABASE}_{uuid.uuid4().hex[:12]}"
-    url = owner.set(database=name) if database_url is None else make_url(database_url)
-    if url.host not in {"127.0.0.1", "localhost", "::1"}:
-        raise RuntimeError("the search eval only runs against a local Postgres")
-    admin = create_engine(owner, isolation_level="AUTOCOMMIT")
-    try:
-        if temporary:
-            with admin.connect() as conn:
-                conn.execute(text(f'CREATE DATABASE "{name}"'))
-        command.upgrade(alembic_config(url), "head")
-        app = make_url(settings.database_url.get_secret_value())
-        ensure_app_login(owner, app)
-        yield url, url.set(username=app.username, password=app.password)
-    finally:
-        if temporary:
-            with admin.connect() as conn:
-                conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
-        admin.dispose()
-
-
 def run_search_eval(
     synthetic: Path,
     coa: Path,
@@ -189,7 +156,7 @@ def run_search_eval(
 ) -> SearchReport:
     questions = build_questions(synthetic, coa, pairs)
     model = get_settings().gemini_model
-    with _database(database_url) as (owner_url, app_url):
+    with temporary_database("docforge_search_eval", database_url) as (owner_url, app_url):
         owner = create_engine(owner_url)
         with owner.begin() as conn:
             tenants = {

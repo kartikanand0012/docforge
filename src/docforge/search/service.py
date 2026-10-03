@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import func, literal_column, select, text
+from sqlalchemy import Select, func, literal_column, select, text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session, aliased
 
 from docforge.db.models import ChunkRow, Document, DocumentVersion, Extraction, ParseOutput
@@ -47,6 +48,15 @@ def _words(query: str) -> list[str]:
 
 
 _STRENGTH_OR_PACK = re.compile(r"\d+(?:mg|mcg|ml|g|kg|iu|l|x\d+)")
+
+
+def _approximate(session: Session) -> None:
+    session.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
+    session.execute(text("SET LOCAL hnsw.ef_search = 100"))
+
+
+def _vector_literal(values: list[float]) -> str:
+    return "[" + ",".join(repr(float(v)) for v in values) + "]"
 
 
 def _codes(words: list[str]) -> list[str]:
@@ -278,9 +288,13 @@ class SearchService:
     ) -> list[uuid.UUID]:
         # When the approximate index is used, keep scanning until enough rows pass the tenant
         # filter (pgvector 0.8), rather than filtering a fixed handful of nearest rows.
-        session.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
-        session.execute(text("SET LOCAL hnsw.ef_search = 100"))
-        rows = session.execute(
+        _approximate(session)
+        return list(session.scalars(self._vector_query(tenant_id, vector, doc_type)))
+
+    def _vector_query(
+        self, tenant_id: uuid.UUID, vector: list[float], doc_type: str | None
+    ) -> Select[uuid.UUID]:
+        return (
             select(ChunkRow.id)
             .join(Document, Document.id == ChunkRow.document_id)
             .where(
@@ -290,7 +304,24 @@ class SearchService:
             .order_by(ChunkRow.embedding.cosine_distance(vector), *_TIE_BREAK)
             .limit(_CANDIDATES)
         )
-        return [row[0] for row in rows]
+
+    @scoped
+    def explain_vector(
+        self, tenant_id: uuid.UUID, vector: list[float], doc_type: str | None = None
+    ) -> str:
+        """The plan Postgres gives the vector query, as the application runs it: for checking
+        whether the approximate index is used at a given size."""
+        with self._sessions() as session:
+            _approximate(session)
+            statement = self._vector_query(tenant_id, vector, doc_type).compile(
+                dialect=postgresql.dialect()  # type: ignore[no-untyped-call]
+            )
+            params = {
+                name: _vector_literal(value) if isinstance(value, list) else value
+                for name, value in statement.params.items()
+            }
+            rows = session.connection().exec_driver_sql(f"EXPLAIN {statement}", params)
+            return "\n".join(row[0] for row in rows)
 
     @staticmethod
     def _hits(
