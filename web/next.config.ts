@@ -17,6 +17,8 @@ const contentSecurityPolicy = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // A self-contained server for the container image (web/Dockerfile).
+  output: "standalone",
   async headers() {
     return [
       {

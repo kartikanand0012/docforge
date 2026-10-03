@@ -1,0 +1,18 @@
+# Never in an image: secrets, local state, and what the image builds itself.
+.env
+.env.*
+.git
+.venv
+**/__pycache__
+.mypy_cache
+.ruff_cache
+.pytest_cache
+.coverage
+htmlcov
+data
+web/node_modules
+web/.next
+web/test-results
+web/playwright-report
+docs
+infra
