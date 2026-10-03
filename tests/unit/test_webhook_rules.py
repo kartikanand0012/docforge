@@ -98,3 +98,22 @@ def test_the_signature_covers_the_timestamp_and_the_exact_body() -> None:
 
     expected = hmac.new(secret.encode(), b"1700000000." + body, hashlib.sha256).hexdigest()
     assert header == f"t=1700000000,v1={expected}"
+
+
+@pytest.mark.parametrize("address", ["64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "64:ff9b:1::1"])
+def test_nat64_addresses_that_reach_internal_hosts_are_refused(
+    address: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(socket, "getaddrinfo", resolving_to(address))
+
+    with pytest.raises(UnsafeDestination):
+        check_destination("https://hooks.example.com/in")
+
+
+def test_the_checked_address_is_the_one_returned_for_connecting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Resolving again when connecting would let a name change between check and use."""
+    monkeypatch.setattr(socket, "getaddrinfo", resolving_to("93.184.216.34"))
+
+    assert check_destination("https://hooks.example.com/in") == "93.184.216.34"

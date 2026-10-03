@@ -266,3 +266,23 @@ def test_an_admin_reviewer_may_upload_and_a_plain_reviewer_may_not(stack: Stack)
     )
 
     assert upload.status_code == 202
+
+
+def test_wrong_pins_at_sign_in_lock_the_reviewer_whatever_address_they_come_from(
+    stack: Stack,
+) -> None:
+    """The address limit can be dodged; the reviewer's own count cannot."""
+    for attempt in range(5):
+        response = stack.client.post(
+            "/v1/sessions",
+            json={"tenant": "default", "email": "asha@example.com", "pin": "000000"},
+            headers={"X-Forwarded-For": f"203.0.113.{attempt}"},
+        )
+        assert response.status_code == 401
+    locked = stack.client.post(
+        "/v1/sessions",
+        json={"tenant": "default", "email": "asha@example.com", "pin": "482913"},
+        headers={"X-Forwarded-For": "198.51.100.1"},
+    )
+
+    assert locked.status_code == 401  # the right PIN, but the reviewer is locked for now

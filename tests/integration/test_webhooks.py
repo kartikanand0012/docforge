@@ -297,3 +297,81 @@ def test_a_delivery_goes_through_the_real_queue_and_worker(
     assert delivery.attempts == len(receiver.received)
     if delivery.status != "delivered":  # the retry waits; it is scheduled, not lost
         assert delivery.status == "pending"
+
+
+def test_a_delivery_connects_to_the_address_that_was_checked(
+    sessions: SessionFactory,
+    receiver: Receiver,
+    deferred: list[Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The name is resolved once; the request goes to that address with the name as Host."""
+    import socket
+
+    real = socket.getaddrinfo
+    hooks = WebhookService(
+        sessions, KEY, lambda s, d, t: deferred.append((d, t)), allow_http=True, allow_private=True
+    )
+    port = receiver.url.split(":")[2].split("/")[0]
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, *a, **k: real("127.0.0.1" if host == "hooks.test" else host, *a, **k),
+    )
+    hooks.create(DEFAULT_TENANT_ID, url=f"http://hooks.test:{port}/hooks", events=["review.signed"])
+    emit(hooks, sessions)
+    ((delivery_id, tenant_id),) = deferred
+    lookups: list[str] = []
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda host, *a, **k: (
+            lookups.append(host),
+            real("127.0.0.1" if host == "hooks.test" else host, *a, **k),
+        )[1],
+    )
+
+    assert hooks.deliver(delivery_id, tenant_id) == "delivered"
+    ((headers, _),) = receiver.received
+    assert headers["host"] == f"hooks.test:{port}"
+    assert lookups == ["hooks.test"]  # resolved once, for the check
+
+
+def test_no_database_lock_is_held_while_the_receiver_answers(
+    sessions: SessionFactory, deferred: list[Any], owner_engine: Any
+) -> None:
+    """A slow receiver must not hold a row lock or a transaction open."""
+    from sqlalchemy import text
+
+    seen: list[str] = []
+
+    class Probe:
+        def __enter__(self) -> "Probe":
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def post(self, url: str, **kwargs: Any) -> Any:
+            with owner_engine.begin() as conn:
+                conn.execute(text("SET LOCAL lock_timeout = '200ms'"))
+                conn.execute(text("SELECT 1 FROM webhook_deliveries FOR UPDATE NOWAIT"))
+                seen.append("row free")
+            import httpx
+
+            return httpx.Response(200)
+
+    hooks = WebhookService(
+        sessions,
+        KEY,
+        lambda s, d, t: deferred.append((d, t)),
+        allow_http=True,
+        allow_private=True,
+        client=lambda: Probe(),  # type: ignore[arg-type,return-value]
+    )
+    hooks.create(DEFAULT_TENANT_ID, url="http://127.0.0.1:9/hooks", events=["review.signed"])
+    emit(hooks, sessions)
+    ((delivery_id, tenant_id),) = deferred
+
+    assert hooks.deliver(delivery_id, tenant_id) == "delivered"
+    assert seen == ["row free"]
