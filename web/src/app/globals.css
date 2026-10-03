@@ -99,3 +99,17 @@ input.inline { width: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .signout { margin-left: auto; }
+
+/* Processing stages */
+.timeline { list-style: none; padding: 0; margin: 12px 0; display: grid; gap: 8px; }
+.timeline li { display: grid; grid-template-columns: 1.5em auto auto 1fr; gap: 8px; align-items: baseline; }
+.timeline .stage-mark { font-weight: 700; text-align: center; }
+.timeline .stage-done .stage-mark { color: var(--ok); }
+.timeline .stage-current .stage-mark { color: var(--accent); }
+.timeline .stage-current .stage-label { font-weight: 600; }
+.timeline .stage-waiting { color: var(--muted); }
+.timeline .stage-failed .stage-mark, .timeline .stage-failed .stage-label { color: var(--bad); }
+.timeline-compact { margin: 4px 0 12px; }
+.chip.stage-done { background: var(--ok-bg); color: var(--ok); }
+.chip.stage-current { background: var(--warn-bg); color: var(--warn); }
+.chip.stage-failed { background: var(--bad-bg); color: var(--bad); }

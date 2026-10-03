@@ -3,6 +3,8 @@
 import type { Box } from "./geometry";
 
 /** Every call goes to this site's own `/api/v1/...`, which adds the session token server-side. */
+import type { Step } from "@/lib/stages";
+
 export const API_URL = "/api";
 
 export type FieldStatus = "verified" | "confirmed" | "not_in_cited_blocks" | "no_citation";
@@ -86,7 +88,15 @@ export type QueueItem = {
 };
 
 export type DocumentSummary = {
-  document: { id: string; doc_type: string; filename: string; status: string; page_count: number | null };
+  document: {
+    id: string;
+    doc_type: string;
+    filename: string;
+    status: string;
+    stage: string;
+    ready_for_chat: boolean;
+    page_count: number | null;
+  };
   versions: { version_no: number; status: string; error: string | null }[];
 };
 
@@ -152,5 +162,6 @@ export const api = {
     return call<{ document: { id: string }; created: boolean }>("/v1/documents", { method: "POST", body: form });
   },
   evals: () => call<Record<string, unknown>>("/v1/evals"),
+  timeline: (id: string) => call<Step[]>(`/v1/documents/${encodeURIComponent(id)}/timeline`),
   pageUrl: (id: string, page: number) => `${API_URL}/v1/documents/${encodeURIComponent(id)}/pages/${page}`,
 };

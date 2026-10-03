@@ -50,6 +50,8 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     invoiceId = await upload(page, "invoice.pdf", "invoice");
     await expect(page.getByText("Needs a person")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("order: match")).toBeVisible();
+    // Indexed for search and chat after the extraction: the page says so as it happens.
+    await expect(page.locator(".timeline-compact")).toContainText("Ready to chat", { timeout: 60_000 });
   });
 
   test("the invoice waits in the review queue with its reason", async ({ page }) => {

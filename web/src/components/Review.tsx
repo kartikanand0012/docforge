@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Timeline from "@/components/Timeline";
 import { ApiError, api, type FieldAssessment, type ReviewDetail } from "@/lib/api";
 import { fieldAt, label, section } from "@/lib/fields";
 import PageView from "./PageView";
@@ -62,6 +63,9 @@ export default function Review({ id }: { id: string }) {
     }
   }, [id]);
 
+  // A stage moved on (matched with its order, indexed): show what it changed.
+  const reload = useCallback(() => void refresh(), [refresh]);
+
   useEffect(() => {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -90,14 +94,12 @@ export default function Review({ id }: { id: string }) {
       const failed = waiting.status === "failed";
       return (
         <div className="card">
-          <h1>{failed ? "Extraction failed" : "Processing"}</h1>
-          <p aria-live="polite">
-            Status: <strong>{waiting.status}</strong>
-          </p>
+          <h1>{failed ? "Processing failed" : "Processing"}</h1>
+          <Timeline id={id} />
           {failed ? (
-            <p className="error" role="alert">{waiting.error ?? "The document could not be extracted."}</p>
+            <p className="error" role="alert">{waiting.error ?? "The document could not be processed."}</p>
           ) : (
-            <p className="muted">This page updates when the extraction is ready.</p>
+            <p className="muted">This page updates as each stage finishes.</p>
           )}
         </div>
       );
@@ -137,6 +139,7 @@ export default function Review({ id }: { id: string }) {
       <h1>
         {d.filename} <span className="muted">· {d.doc_type.replace("_", " ")} · version {d.version_no}</span>
       </h1>
+      <Timeline id={id} compact onChange={reload} />
       <p className="sr-only" aria-live="polite">{announcement}</p>
       {problem && <p className="error" role="alert">{problem}</p>}
       {d.superseded && <p className="notice warn">A newer version of this document is being processed. This version can be read but not corrected or signed.</p>}
