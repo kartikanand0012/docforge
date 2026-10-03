@@ -3,6 +3,7 @@ each search and API request is a span. No document content, question or credenti
 a span: traces go to a third-party backend."""
 
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -12,14 +13,18 @@ from opentelemetry.sdk.trace import ReadableSpan
 from docforge.api.app import create_app
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
+from docforge.extraction.pipeline import ExtractionError, InvoicePipeline
+from docforge.parsing.cache import CachingParser
 from docforge.search.embeddings import FakeEmbedder
 from docforge.search.service import SearchService
 from docforge.telemetry import set_prices
+from fakes import ScriptedProvider
 from tracing import EXPORTER
 from worlds import World
 
 pytestmark = pytest.mark.integration
 
+RECORDED = Path(__file__).resolve().parents[1] / "fixtures" / "recorded" / "parsed"
 RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 
 
@@ -126,3 +131,48 @@ def test_an_api_request_is_traced_by_route_without_its_query(
     assert (requests["GET /v1/search"].attributes or {})["http.response.status_code"] == 401
     assert (requests["GET /healthz"].attributes or {})["http.response.status_code"] == 200
     assert "secret-question" not in every_value(spans())
+
+
+def everything_on(spans: list[ReadableSpan]) -> str:
+    """Attributes, events (a recorded exception's message and stack) and status text."""
+    parts = [every_value(spans)]
+    for span in spans:
+        parts += [span.status.description or ""]
+        for event in span.events:
+            parts += [event.name, *(str(v) for v in (event.attributes or {}).values())]
+    return " ".join(parts)
+
+
+class _FailingEmbedder(FakeEmbedder):
+    def embed(self, texts: list[str], task: str) -> list[list[float]]:
+        raise RuntimeError(f"embedding failed for {texts}")
+
+
+def test_a_failing_search_puts_the_error_type_on_its_span_but_not_the_question(
+    sessions: SessionFactory, spans: Callable[[], list[ReadableSpan]]
+) -> None:
+    search = SearchService(sessions, _FailingEmbedder())
+
+    with pytest.raises(RuntimeError):
+        search.search(DEFAULT_TENANT_ID, "secret-question", mode="hybrid")
+
+    named = by_name(spans())
+    assert (named["search.query"].attributes or {})["docforge.error"] == "RuntimeError"
+    assert "secret-question" not in everything_on(spans())
+
+
+def test_a_malformed_model_reply_does_not_reach_a_span(
+    world: World, spans: Callable[[], list[ReadableSpan]]
+) -> None:
+    parsed = CachingParser(RECORDED).parse(world.invoice_pdf)
+    pipeline = InvoicePipeline(
+        CachingParser(RECORDED), ScriptedProvider(['{"invoice_no": "SECRET-VALUE-42"}'] * 2)
+    )
+
+    with pytest.raises(ExtractionError):
+        pipeline.extract(parsed)
+
+    assert "SECRET-VALUE-42" not in everything_on(spans())
+    assert (by_name(spans())["pipeline.extract"].attributes or {})["docforge.error"] == (
+        "ExtractionError"
+    )
