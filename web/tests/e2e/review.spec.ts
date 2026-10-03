@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -120,6 +121,20 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     expect(entries.find((e) => e.action === "review.signed")?.actor).toMatch(/^reviewer:/);
     const chain = (await (await page.request.get("/api/v1/audit/verification")).json()) as { consistent: boolean };
     expect(chain.consistent).toBe(true);
+  });
+
+  test("search finds the invoice by its batch and opens it", async ({ page }) => {
+    const label = JSON.parse(readFileSync(path.join(FIXTURES, "label.json"), "utf-8")) as {
+      invoice: { lines: { batch_no: string }[] };
+    };
+    const batch = label.invoice.lines[0].batch_no;
+    await page.goto("/search");
+    await page.getByLabel("Question or words").fill(`Which invoice billed batch ${batch}?`);
+    await page.getByRole("button", { name: "Search" }).click();
+    const first = page.getByRole("listitem").first();
+    await expect(first).toContainText(batch, { timeout: 30_000 });
+    await first.getByRole("link", { name: "invoice.pdf" }).click();
+    await expect(page).toHaveURL(new RegExp(`/documents/${invoiceId}$`));
   });
 
   test("the queue is empty again and the eval page shows the measured results", async ({ page }) => {

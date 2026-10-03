@@ -19,6 +19,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <nav aria-label="Main">
             <Link href="/">Review queue</Link>
             <Link href="/upload">Upload</Link>
+            <Link href="/search">Search</Link>
             <Link href="/evals">Evals and cost</Link>
             {/* A file download through the session proxy, not a page. */}
             <a href="/api/v1/exports/documents.csv" download>
