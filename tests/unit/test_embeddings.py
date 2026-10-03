@@ -101,3 +101,24 @@ def test_a_per_minute_quota_is_waited_out_as_the_server_says(
     vectors = embedder.embed(["a", "b"], "document")
 
     assert len(vectors) == 2 and waits == [33.0]
+
+
+def test_a_rejected_key_is_an_error_not_a_busy_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a quota (429) means "try words only"; a bad key or model must surface."""
+    from google.genai import errors
+
+    from docforge.search import embeddings
+
+    monkeypatch.setattr("docforge.search.embeddings.time.sleep", lambda _: None)
+
+    class Models:
+        def embed_content(self, **kwargs: object) -> object:
+            raise errors.ClientError(403, {"error": {"code": 403, "message": "denied"}}, None)
+
+    embedder = embeddings.GeminiEmbedder.__new__(embeddings.GeminiEmbedder)
+    embedder.model, embedder.dimensions = "gemini-embedding-001", 2
+    embedder._client = type("C", (), {"models": Models()})()
+
+    with pytest.raises(errors.ClientError) as raised:
+        embedder.embed(["a"], "query")
+    assert not isinstance(raised.value, embeddings.EmbeddingUnavailable)

@@ -62,3 +62,16 @@ def test_a_weak_demo_pin_is_refused(sessions: SessionFactory, owner_engine: Engi
 
     with pytest.raises(ValueError):
         seed_demo(owner_engine, service, review, [], pin="12")
+
+
+def test_seeding_with_no_documents_found_is_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from docforge.demo import main
+
+    monkeypatch.setenv("DEMO_PIN", "482915")
+
+    assert (
+        main(["seed", "--synthetic", str(tmp_path / "none"), "--coa", str(tmp_path / "none")]) == 1
+    )
+    assert "no demo documents" in capsys.readouterr().err

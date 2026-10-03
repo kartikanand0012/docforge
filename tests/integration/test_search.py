@@ -392,3 +392,40 @@ def test_hybrid_search_falls_back_to_words_when_the_question_cannot_be_embedded(
     assert hits and hits[0].document_id == invoice_id
     with pytest.raises(EmbeddingMissing):
         replay_only.search(DEFAULT_TENANT_ID, batch, mode="vector")
+
+
+def test_a_fallback_to_words_is_said_in_the_answer_and_not_retried_for_a_minute(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], sessions: SessionFactory
+) -> None:
+    world, _, _, _ = indexed
+    calls: list[str] = []
+
+    class Busy(FakeEmbedder):
+        def embed(self, texts: list[str], task: str) -> list[list[float]]:
+            calls.append(task)
+            from docforge.search.embeddings import EmbeddingUnavailable
+
+            raise EmbeddingUnavailable("quota")
+
+    search = SearchService(sessions, Busy())
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    first = search.search(DEFAULT_TENANT_ID, batch, mode="hybrid")
+    second = search.search(DEFAULT_TENANT_ID, "another question " + batch, mode="hybrid")
+
+    assert first.words_only and second.words_only
+    assert calls == ["query"]  # the second question did not wait on a busy service
+    response = TestClient(signed_in(create_app(None, search=search), role="integrator")).get(
+        "/v1/search", params={"q": batch}
+    )
+    assert response.json()["words_only"] is True
+
+
+def test_a_normal_hybrid_search_is_not_words_only(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID],
+) -> None:
+    world, search, _, _ = indexed
+
+    hits = search.search(DEFAULT_TENANT_ID, world.invoice_raw["lines"][0]["batch_no"]["text"])
+
+    assert hits and not hits.words_only

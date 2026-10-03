@@ -15,6 +15,6 @@ def test_without_an_endpoint_the_store_talks_to_aws_in_its_region() -> None:
 
 
 def test_with_an_endpoint_the_store_uses_its_keys() -> None:
-    store = S3ObjectStore.from_settings(Settings())
+    store = S3ObjectStore.from_settings(Settings(s3_endpoint_url="http://127.0.0.1:9000"))
 
     assert store._client.meta.endpoint_url == "http://127.0.0.1:9000"
