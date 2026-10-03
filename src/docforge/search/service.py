@@ -141,7 +141,12 @@ class SearchService:
             for ranking in ranked:
                 for rank, chunk_id in enumerate(ranking, start=1):
                     scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (_RRF_K + rank)
-            top = sorted(scores, key=lambda chunk_id: -scores[chunk_id])[:k]
+            # Ties keep the order in which the rankings produced them, which is repeatable.
+            order = {
+                chunk_id: n
+                for n, chunk_id in enumerate(dict.fromkeys(i for r in ranked for i in r))
+            }
+            top = sorted(scores, key=lambda chunk_id: (-scores[chunk_id], order[chunk_id]))[:k]
             return self._hits(session, top, scores)
 
     def _filters(self, tenant_id: uuid.UUID, doc_type: str | None) -> list[Any]:
@@ -167,7 +172,7 @@ class SearchService:
             .where(
                 *self._filters(tenant_id, doc_type), literal_column("chunks.tsv").op("@@")(tsquery)
             )
-            .order_by(rank.desc(), ChunkRow.id)
+            .order_by(rank.desc(), ChunkRow.text, ChunkRow.chunk_no)
             .limit(_CANDIDATES)
         )
         return [row[0] for row in rows]
@@ -182,7 +187,7 @@ class SearchService:
                 *self._filters(tenant_id, doc_type),
                 ChunkRow.embedding_model == self._embedder.model,
             )
-            .order_by(ChunkRow.embedding.cosine_distance(vector), ChunkRow.id)
+            .order_by(ChunkRow.embedding.cosine_distance(vector), ChunkRow.text, ChunkRow.chunk_no)
             .limit(_CANDIDATES)
         )
         return [row[0] for row in rows]
