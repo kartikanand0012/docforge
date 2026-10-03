@@ -10,6 +10,7 @@ from docforge.extraction.pipeline import InvoicePipeline
 from docforge.wiring import (
     build_authenticator,
     build_review,
+    build_search,
     build_service,
     build_webhooks,
     load_pipelines,
@@ -39,4 +40,5 @@ def create_default_app() -> FastAPI:
         cors_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
         authenticator=build_authenticator(settings),
         webhooks=webhooks,
+        search=build_search(settings),
     )

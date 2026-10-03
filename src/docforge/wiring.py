@@ -20,6 +20,8 @@ from docforge.parsing.docling_parser import DoclingParser
 from docforge.parsing.isolation import IsolatedParser
 from docforge.queue import JobQueue
 from docforge.review.service import ReviewService
+from docforge.search.embeddings import Embedder, GeminiEmbedder, RecordingEmbedder
+from docforge.search.service import SearchService
 from docforge.storage import S3ObjectStore
 from docforge.webhooks import WebhookService
 
@@ -113,6 +115,20 @@ def build_authenticator(settings: Settings) -> Authenticator:
     )
 
 
+def build_search(settings: Settings) -> SearchService:
+    """Search with Gemini embeddings. With no key, recorded embeddings are replayed (tests
+    and demos on the recorded documents); nothing is ever recorded in a deployment."""
+    embedder: Embedder = (
+        GeminiEmbedder(settings.embedding_model, settings.gemini_api_key.get_secret_value())
+        if settings.gemini_api_key is not None
+        else RecordingEmbedder(
+            Path(settings.recordings_dir) / "embeddings", None, model=settings.embedding_model
+        )
+    )
+    sessions = make_session_factory(make_engine(settings.database_url.get_secret_value()))
+    return SearchService(sessions, embedder)
+
+
 def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
     database_url = settings.database_url.get_secret_value()
     queue = JobQueue(
@@ -131,7 +147,9 @@ def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
         max_pending=settings.max_pending_documents,
         events=webhooks,
         anchors=AnchorStore(S3ObjectStore.from_settings(settings)),
+        index=queue.defer_index,
     )
     queue.bind(service)
+    queue.bind_search(build_search(settings))
     queue.bind_webhooks(webhooks)
     return service, queue

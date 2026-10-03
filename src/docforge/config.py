@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     gemini_api_key: SecretStr | None = None
     # Pinned, never a "-latest" alias: a model change must be a deliberate, evaluated change.
     gemini_model: str = "gemini-3.5-flash-lite"
+    # Pinned for the same reason: vectors from two models cannot be compared.
+    embedding_model: str = "gemini-embedding-001"
 
     max_upload_bytes: int = 10 * 1024 * 1024
     max_pages: int = 20

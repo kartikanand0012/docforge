@@ -11,7 +11,7 @@ import logging
 import procrastinate
 
 from docforge.config import get_settings
-from docforge.queue import QUEUE_NAME, QUEUES, WEBHOOK_QUEUE, JobQueue
+from docforge.queue import INDEX_QUEUE, QUEUE_NAME, QUEUES, WEBHOOK_QUEUE, JobQueue
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ async def run_worker(
                 ),
                 asyncio.create_task(
                     queue.app.run_worker_async(
-                        queues=[WEBHOOK_QUEUE],
+                        queues=[WEBHOOK_QUEUE, INDEX_QUEUE],
                         concurrency=2,
                         wait=wait,
                         update_heartbeat_interval=heartbeat_seconds,

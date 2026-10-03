@@ -18,6 +18,7 @@ from docforge.documents import DocumentNotFound
 
 if TYPE_CHECKING:
     from docforge.documents import DocumentService
+    from docforge.search.service import SearchService
     from docforge.webhooks import WebhookService
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,9 @@ QUEUE_NAME = "extract"
 TASK_NAME = "process_document_version"
 WEBHOOK_QUEUE = "webhooks"
 WEBHOOK_TASK = "deliver_webhook"
-QUEUES = [QUEUE_NAME, WEBHOOK_QUEUE]
+INDEX_QUEUE = "index"
+INDEX_TASK = "index_document_version"
+QUEUES = [QUEUE_NAME, WEBHOOK_QUEUE, INDEX_QUEUE]
 
 
 class DeliveryNotDone(Exception):
@@ -97,11 +100,36 @@ class JobQueue:
                 raise DeliveryNotDone(delivery_id)
 
         self._deliver = deliver_webhook
+        self._search: SearchService | None = None
+
+        @self.app.task(
+            name=INDEX_TASK,
+            queue=INDEX_QUEUE,
+            retry=procrastinate.RetryStrategy(max_attempts=5, wait=30, linear_wait=60),
+        )
+        def index_document_version(version_id: str) -> None:
+            if self._search is None:
+                logger.warning("no search service: version %s is not indexed", version_id)
+                return
+            try:
+                self._search.index_version(uuid.UUID(version_id))
+            except DocumentNotFound:
+                logger.error("dropping index job for version %s: it does not exist", version_id)
+
+        self._index = index_document_version
 
     def bind(self, service: "DocumentService") -> None:
         """Give the task the service it runs. The service is built with `enqueue`, so the
         two are connected after both exist."""
         self._service = service
+
+    def bind_search(self, search: "SearchService") -> None:
+        self._search = search
+
+    def defer_index(self, session: Session, version: DocumentVersion) -> None:
+        """Queue the search indexing of `version` in the session's transaction."""
+        connection = session.connection().connection.driver_connection
+        self._index.configure(connection=connection).defer(version_id=str(version.id))
 
     def bind_webhooks(self, webhooks: "WebhookService") -> None:
         self._webhooks = webhooks

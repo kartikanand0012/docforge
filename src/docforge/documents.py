@@ -227,7 +227,9 @@ class DocumentService:
         max_pending: int = 1000,
         events: EventSink | None = None,
         anchors: "AnchorStore | None" = None,
+        index: Enqueue | None = None,
     ) -> None:
+        self._index = index  # queues the search indexing of a finished version
         self._sessions = sessions
         self._events = events
         self._anchors = anchors
@@ -507,6 +509,8 @@ class DocumentService:
                     for rule in assessment.rules
                 ),
             )
+            if self._index is not None:
+                self._index(session, version)
             if self._events is not None:
                 # In this transaction: the event exists if and only if the extraction does.
                 self._events.emit(
