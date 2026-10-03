@@ -5,8 +5,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from docforge.synth import DEFAULT_COUNT, DEFAULT_SEED
-from docforge.synth.dataset import generate_dataset, generate_multipage
 from docforge.synth.coa import generate_coas
+from docforge.synth.dataset import generate_dataset, generate_multipage
 from docforge.synth.scans import generate_scans
 from docforge.synth.seeded import generate_seeded
 
