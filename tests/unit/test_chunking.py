@@ -5,10 +5,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from docforge.search.chunking import chunk_document
-
 from docforge.extraction.normalize import normalize_invoice
 from docforge.extraction.schema import RawInvoice
+from docforge.search.chunking import chunk_document
 from fakes import cited
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"

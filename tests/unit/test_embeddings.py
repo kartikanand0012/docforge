@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+
 from docforge.search.embeddings import EmbeddingMissing, FakeEmbedder, RecordingEmbedder
 
 
