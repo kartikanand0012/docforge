@@ -178,7 +178,7 @@ def test_extractions_cannot_be_truncated(db: Engine) -> None:
 
     # Refused by the append-only trigger, or earlier, since C5, because reviews reference it.
     with (
-        pytest.raises(DBAPIError, match="append-only|referenced in a foreign key"),
+        pytest.raises(DBAPIError, match=r"append-only|referenced in a foreign key"),
         db.begin() as conn,
     ):
         conn.execute(text("TRUNCATE extractions"))
