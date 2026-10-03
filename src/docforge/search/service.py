@@ -6,6 +6,7 @@ page and boxes of the blocks it came from. Tenants are separated twice: every qu
 by tenant, and row-level security applies underneath.
 """
 
+import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -25,7 +26,7 @@ from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.parsing.base import ParsedDocument
 from docforge.search.chunking import chunk_document
-from docforge.search.embeddings import Embedder
+from docforge.search.embeddings import Embedder, EmbeddingMissing, EmbeddingUnavailable
 from docforge.telemetry import traced
 
 Mode = Literal["keyword", "vector", "hybrid"]
@@ -35,6 +36,8 @@ _SCHEMAS: dict[str, type[BaseModel]] = {
     "coa": CoaExtraction,
 }
 _CANDIDATES = 50
+logger = logging.getLogger(__name__)
+
 _RRF_K = 60
 _CACHE_SIZE = 256
 # Equal scores are common: the same file uploaded twice, or in two organisations, gives
@@ -230,7 +233,17 @@ class SearchService:
     ) -> list[SearchHit]:
         ranked: list[list[uuid.UUID]] = []
         # Embedded before a connection is taken, so a slow embedding holds no database session.
-        vector = self._query_vector(query) if mode in ("vector", "hybrid") else None
+        vector = None
+        if mode == "vector":
+            vector = self._query_vector(query)
+        elif mode == "hybrid":
+            try:
+                vector = self._query_vector(query)
+            except (EmbeddingMissing, EmbeddingUnavailable):
+                # No model key (the demo) or its quota used up: words alone still find what
+                # a question names. A search by meaning alone has nothing to fall back on.
+                logger.warning("query not embedded; hybrid search uses words only")
+
         with self._sessions() as session:
             if mode in ("keyword", "hybrid"):
                 ranked.append(self._keyword(session, tenant_id, query, doc_type))
