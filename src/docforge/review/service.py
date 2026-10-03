@@ -20,15 +20,16 @@ from sqlalchemy.orm import Session, aliased
 
 from docforge import audit
 from docforge.db.models import (
-    Correction as CorrectionRow,
-)
-from docforge.db.models import (
+    BATCH_NUMBER,
     Document,
     DocumentVersion,
     Extraction,
     ParseOutput,
     Review,
     Reviewer,
+)
+from docforge.db.models import (
+    Correction as CorrectionRow,
 )
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
@@ -56,6 +57,7 @@ from docforge.review.signing import (
 from docforge.storage import ObjectStore
 from docforge.trust.assess import Assessment
 from docforge.trust.match import Discrepancy, match_invoice_to_order
+from docforge.trust.rules import run_rules
 
 MAX_FAILED_PINS = 5
 LOCK_FOR = timedelta(minutes=15)
@@ -155,6 +157,8 @@ class ReviewDetail:
     record_sha256: str  # of `record`; a signature must name it, so it signs what was seen
     meanings: dict[str, str]  # outcome -> the sentence a signature with that outcome means
     superseded: bool  # a newer version of the document is being processed
+    # For an invoice: the certificate found for each billed batch, and whether it is in limits.
+    certificates: tuple[dict[str, str], ...] = ()
 
     @property
     def decision(self) -> str:
@@ -175,6 +179,7 @@ class _State:
     counterpart: uuid.UUID | None
     review: tuple[Review, str] | None
     superseded: bool
+    certificates: tuple[dict[str, str], ...]
 
     @property
     def blockers(self) -> tuple[str, ...]:
@@ -183,6 +188,12 @@ class _State:
             found.append("it does not match its purchase order")
         if self.document.doc_type == "invoice" and self.match_status == "no_counterpart":
             found.append("there is no purchase order on file to compare it with")
+        for certificate in self.certificates:
+            if certificate["status"] == "out_of_limit":
+                found.append(
+                    f"the certificate for batch {certificate['batch_no']} "
+                    "has results outside their limits"
+                )
         return tuple(found)
 
 
@@ -738,7 +749,53 @@ class ReviewService:
             counterpart=counterpart,
             review=(signed[0], signed[1]) if signed is not None else None,
             superseded=newest_version != version.version_no,
+            certificates=self._certificates(session, document, reassessed.extraction),
         )
+
+    def _certificates(
+        self, session: Session, document: Document, extraction: BaseModel
+    ) -> tuple[dict[str, str], ...]:
+        """For an invoice, the newest certificate of analysis on file for each billed batch."""
+        if not isinstance(extraction, InvoiceExtraction) or "coa" not in self._specs:
+            return ()
+        batches = sorted({line.batch_no.value for line in extraction.lines if line.batch_no.value})
+        if not batches:
+            return ()
+        newer = aliased(DocumentVersion)
+        newest = (
+            select(func.max(newer.version_no))
+            .where(newer.document_id == Document.id)
+            .correlate(Document)
+            .scalar_subquery()
+        )
+        rows = session.execute(
+            select(Document.id, DocumentVersion.id, BATCH_NUMBER)
+            .join(DocumentVersion, DocumentVersion.document_id == Document.id)
+            .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
+            .where(
+                Document.tenant_id == document.tenant_id,
+                Document.doc_type == "coa",
+                DocumentVersion.version_no == newest,
+                BATCH_NUMBER.in_(batches),
+            )
+            .order_by(DocumentVersion.created_at.desc())
+        ).all()
+        found: dict[str, dict[str, str]] = {}
+        for coa_document, coa_version, batch in rows:
+            if batch in found:
+                continue  # the newest certificate for a batch counts
+            coa = self._effective(session, coa_version, "coa")
+            failed = coa is not None and any(
+                result.outcome == "failed"
+                for result in run_rules(self._specs["coa"].rules, coa)
+                if result.rule_id == "coa.result_within_limit"
+            )
+            found[batch] = {
+                "batch_no": batch,
+                "document_id": str(coa_document),
+                "status": "out_of_limit" if failed else "within_limits",
+            }
+        return tuple(found[batch] for batch in batches if batch in found)
 
     @staticmethod
     def _detail(state: _State) -> ReviewDetail:
@@ -805,6 +862,7 @@ class ReviewService:
             record_sha256=record_digest(record),
             meanings=dict(MEANINGS[state.document.doc_type]),
             superseded=state.superseded,
+            certificates=state.certificates,
         )
 
 

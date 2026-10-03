@@ -115,6 +115,7 @@ class ReviewOut(BaseModel):
     record_sha256: str
     meanings: dict[str, str]
     superseded: bool
+    certificates: list[dict[str, str]]
 
 
 def _review_out(detail: ReviewDetail) -> ReviewOut:
@@ -139,6 +140,7 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
         record_sha256=detail.record_sha256,
         meanings=detail.meanings,
         superseded=detail.superseded,
+        certificates=list(detail.certificates),
     )
 
 

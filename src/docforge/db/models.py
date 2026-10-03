@@ -140,6 +140,12 @@ ORDER_NUMBER: ColumnElement[str] = literal_column(
 )
 
 
+# The batch number of a stored certificate of analysis, spelled as its index (migration 0011).
+BATCH_NUMBER: ColumnElement[str] = literal_column(
+    "((extractions.data -> 'batch_no') ->> 'value')", type_=Text
+)
+
+
 class AssessmentRecord(Base):
     """The checks run on one version and their outcome. Immutable, like the extraction."""
 

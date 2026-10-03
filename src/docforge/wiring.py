@@ -10,6 +10,7 @@ from docforge.auth import Authenticator
 from docforge.config import Settings
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService, EventSink, Pipeline
+from docforge.extraction.coa import COA_SPEC, CoaExtraction
 from docforge.extraction.pipeline import INVOICE_SPEC, ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
 from docforge.llm.gemini import GeminiProvider
@@ -46,7 +47,10 @@ def build_pipelines(settings: Settings) -> dict[str, Pipeline]:
     order = ExtractionPipeline(
         invoice.parser, invoice.provider, PURCHASE_ORDER_SPEC, max_pages=settings.max_pages
     )
-    return {"invoice": invoice, "purchase_order": order}
+    coa: ExtractionPipeline[CoaExtraction] = ExtractionPipeline(
+        invoice.parser, invoice.provider, COA_SPEC, max_pages=settings.max_pages
+    )
+    return {"invoice": invoice, "purchase_order": order, "coa": coa}
 
 
 def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
@@ -61,9 +65,13 @@ def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
     order: ExtractionPipeline[PurchaseOrderExtraction] = ExtractionPipeline(
         parser, provider, PURCHASE_ORDER_SPEC, max_pages=settings.max_pages
     )
+    coa: ExtractionPipeline[CoaExtraction] = ExtractionPipeline(
+        parser, provider, COA_SPEC, max_pages=settings.max_pages
+    )
     return {
         "invoice": InvoicePipeline(parser, provider, max_pages=settings.max_pages),
         "purchase_order": order,
+        "coa": coa,
     }
 
 
@@ -92,7 +100,7 @@ def build_review(settings: Settings, events: EventSink | None = None) -> ReviewS
     return ReviewService(
         make_session_factory(make_engine(database_url)),
         S3ObjectStore.from_settings(settings),
-        {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC},
+        {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC, "coa": COA_SPEC},
         events=events,
     )
 

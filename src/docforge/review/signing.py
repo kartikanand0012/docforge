@@ -44,6 +44,10 @@ MEANINGS: dict[str, dict[str, str]] = {
         "approved": "I approve this invoice for payment",
         "rejected": "I reject this invoice",
     },
+    "coa": {
+        "approved": "I accept this certificate of analysis",
+        "rejected": "I reject this certificate of analysis",
+    },
     "purchase_order": {
         "approved": "I approve this purchase order record",
         "rejected": "I reject this purchase order record",

@@ -9,7 +9,7 @@ import pytest
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
 from docforge.extraction.coa import COA_SPEC
-from docforge.extraction.pipeline import INVOICE_SPEC
+from docforge.extraction.pipeline import INVOICE_SPEC, DocumentSpec
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.review.service import ReviewService
 from worlds import World
@@ -17,7 +17,11 @@ from worlds import World
 pytestmark = pytest.mark.integration
 
 RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
-SPECS = {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC, "coa": COA_SPEC}
+SPECS: dict[str, DocumentSpec[Any]] = {
+    "invoice": INVOICE_SPEC,
+    "purchase_order": PURCHASE_ORDER_SPEC,
+    "coa": COA_SPEC,
+}
 
 
 def setup(
