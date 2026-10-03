@@ -5,11 +5,11 @@ import uuid
 from pathlib import Path
 
 import pytest
-from docforge.demo import demo_documents, seed_demo
 from sqlalchemy.engine import Engine
 
 from docforge.auth import Authenticator
 from docforge.db.session import SessionFactory
+from docforge.demo import demo_documents, seed_demo
 from docforge.documents import DocumentService
 from docforge.review.service import ReviewService
 from docforge.storage import MemoryObjectStore
