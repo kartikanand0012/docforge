@@ -103,6 +103,17 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C9 Ship (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+| --- | --- | --- |
+| How did you deploy it, and why not Kubernetes? | One arm64 host running the same Compose stack, Caddy for HTTPS, S3 and ECR, all in Terraform: about $40 a month for a demo, against about $100 for ECS and RDS. The application does not change for a bigger deployment; the runbook says what that needs. | `infra/`, `deploy/` |
+| A security review that changed the design | The API held the database owner's password, which defeats row-level security. Giving containers the host role (hop limit 2) would have handed the web container the right to read every secret. The fix: split the settings, one-shot tasks in their own service, and a key for one bucket. | `deploy/compose.yml`, `infra/secrets.tf` |
+| Public demos and abuse | A shared account with a public PIN plus lockout means one visitor can lock everyone out; so can a per-address limit when every request comes through one proxy. The shared account never locks; the client address is passed on only where the proxy is trusted; the demo account cannot upload or make webhooks. | `reviewers.shared`, `forwardedFor` |
+| Graceful degradation | With no model key, hybrid search would have failed every new question with a 503. It now answers from words alone, says so in the response, and stops asking a failing service for a minute. A rejected key is still an error, not "busy". | `search/service.py` |
+| Testing infrastructure you cannot apply | Validate and scan in containers (terraform, checkov, tflint, shellcheck), and run the production Compose stack locally with MinIO for S3. The trial found two bugs: a stale image, and a project-name clash that reused the dev database volume. | `.deploytest/` (gitignored) |
+| Writing for regulated buyers | "Designed to support" Part 11 and Annex 11, never "compliant": a control-by-control mapping that says what the organisation must still do, plus requirements traced to the tests that show them. | `docs/validation/` |
+
 ### C8 Operations (2026-10-03)
 
 | Question it answers | What happened in this project | Where to point |

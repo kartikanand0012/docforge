@@ -61,7 +61,9 @@ measured and left open: [docs/progress.md](docs/progress.md).
 ## Try it
 
 **Public demo:** the URL will be published here once it is deployed. The demo runs on synthetic
-documents only, and its sign-in page shows a shared account. It resets every night.
+documents only, and its sign-in page shows a shared reviewer account. Visitors can search,
+review, correct and sign; uploads, keys and webhooks are for real organisations. It resets
+every night.
 
 **On your machine** (needs Docker, [uv](https://docs.astral.sh/uv/) and `make`; no model key):
 

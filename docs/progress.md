@@ -2,6 +2,77 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C9 Ship (2026-10-03): built and tried locally; not deployed (needs an AWS account)
+
+Branch `c9-ship`, PR #10 (stacked on C8).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Demo URL works from a clean browser | **Not yet** | Everything to deploy it is built and was run end to end on a local copy of the production stack, over HTTPS behind Caddy: migrate, seed 60 synthetic documents, all processed, sign in as the demo reviewer, review queue (17), search, nightly reset, ops check. A public URL needs the owner's AWS account (`docs/runbook.md`, about 20 minutes once it exists) |
+| The three published metrics come from C8 measurements | Pass | README "Three numbers": 98.1% of values on poor scans, 15 of 15 seeded defects caught, $0.0135 and p95 26.6 s per invoice. Each is reproduced offline by `make eval` and held by the gate |
+
+### What was built
+
+- **Images.** Both images run as non-root users. They carry no secrets: no `.env`, and nothing shaped like an API key. Base images are pinned by digest.
+  - API/worker (2.9 GB, mostly CPU PyTorch for OCR). It includes the recorded documents, so the demo needs no model key and costs nothing in model calls.
+  - Web: a Next.js standalone server (404 MB).
+- **`deploy/`.**
+  - A Compose stack for one host: Postgres, API, worker, review app and Caddy for HTTPS (Let's Encrypt; `<ip>.sslip.io` if there is no domain).
+  - Settings are split three ways, so the API and worker never hold the database owner's password.
+  - Memory limits, dropped capabilities and log rotation.
+  - Host scripts: bootstrap from SSM and ECR (the Compose download checked against its published checksum), a nightly reset, and the ops check reported to CloudWatch every five minutes.
+- **`infra/` (Terraform, never applied).**
+  - **Network:** one arm64 host in its own VPC; only 80 and 443 open; no SSH (Session Manager instead).
+  - **Instance:** IMDSv2 with hop limit 1, so containers cannot reach the host role; encrypted disk.
+  - **Storage:** private, versioned S3. Originals expire after 7 days. Deploy files sit in a bucket the host can only read.
+  - **Images:** ECR with scanning and immutable tags.
+  - **Identity:** a least-privilege host role; a key for the app scoped to one bucket.
+  - **Secrets:** three SecureString settings.
+  - **Alerts and cost:** CloudWatch alarms on the ops status and the instance; a monthly budget alert.
+  - **CI:** GitHub OIDC for image pushes, with no long-lived keys.
+  - **Checks:** validated in the `hashicorp/terraform` image; checkov 127 passed, 0 failed, 19 skipped (each with its reason in the code); tflint clean.
+- **The demo.**
+  - `python -m docforge.demo seed` adds an organisation, a shared reviewer and the synthetic documents.
+  - The sign-in page shows the shared account only when `DOCFORGE_DEMO_PIN` is set.
+  - Hybrid search answers from words alone, and says so, when there is no model key.
+- **Documents.**
+  - The runbook: deploy, redeploy, rotate, turn off. Cost about $40 a month, from third-party price data.
+  - `docs/validation/`: intended use, requirements traced to tests, a risk assessment, and a Part 11 / Annex 11 mapping with gaps.
+  - The README, with a diagram and the three numbers.
+  - A portfolio card, and a release checklist for going public.
+
+### Departures from the plan
+
+- **Not deployed.** It needs the owner's AWS account, region, budget and, optionally, a domain.
+- **No Loom.** It needs the owner to record it.
+- **History rewrite not run.** It needs the owner's go-ahead.
+- **One host instead of ECS and RDS:** about $40 a month against about $100. A real deployment needs RDS with backups and two hosts; the runbook says so.
+
+### Honest limits
+
+- **Never run on AWS.** Things that only show up there are untested: the IAM policies, the Let's Encrypt challenge, and the S3 key working from inside the containers.
+- **Demo sign-in limit, partly verified.** The per-address limit now sees each visitor's address through Caddy and the review app. That forwarding is covered by unit tests, but locally every request comes from one address, so separate counting was not observed.
+- **Webhooks have no per-organisation cap.** Demo visitors cannot create them, but a real organisation could loop the test endpoint.
+- **No WAF and no global rate limit in front of the demo.** Uploads are not open to visitors, and search is limited per caller.
+
+### Review (ECC security-reviewer, python-reviewer, react-reviewer)
+
+Fixed, each with a failing test first where the change was code:
+
+- **Demo lockout.** One visitor could lock the shared demo account for everyone with five wrong PINs, or trip the sign-in limit for all visitors at once, since every request appeared to come from the review app. The shared account now never locks (migration 0013, `reviewers.shared`). The review app passes on Caddy's client address where `DOCFORGE_TRUST_PROXY=1`.
+- **Owner credentials.** The API and worker held the database owner's credentials, which defeats the restricted role and row-level security. The settings are now split, and one-shot tasks run in an `admin` service.
+- **S3 from the containers.** With metadata hop limit 1 they could not have reached the host role, so uploads to S3 would have failed on AWS. Raising the limit would have handed every container the host role. The app now has its own key for one bucket.
+- **The demo account was an admin**, able to upload without limit (filling S3) and to make webhooks (a spam relay). It is now a reviewer.
+- **Request sizes.** No cap at the front proxy, and the review app read whole bodies into memory. Caddy now refuses bodies over 12 MB and the review app over 11 MB.
+- **The host role could write the files the host runs as root.** They now live in a read-only bucket.
+- **Unpinned images and an unchecked Compose download.**
+- **Words-only answers.** A search that fell back to words alone said nothing about it. A rejected model key was reported as "over quota" and hidden by the fallback. A busy service was retried on every question.
+- **Seeding with no documents** reported success.
+- **The remembered email** on the sign-in page would differ between the server and the browser.
+- **An intermittent test since C6:** a token's secret can contain `_`.
+
 ## C8 Operations (2026-10-03): gate passed
 
 Branch `c8-operations`, PR #9 (stacked on C7).
