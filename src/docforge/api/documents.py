@@ -5,12 +5,13 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict
 
+from docforge.api.auth import require
 from docforge.api.uploads import read_pdf_upload, safe_filename
-from docforge.db import DEFAULT_TENANT_ID
+from docforge.auth import Principal
 from docforge.documents import (
     DocumentNotFound,
     DocumentService,
@@ -25,9 +26,8 @@ from docforge.storage import StorageUnavailable
 
 logger = logging.getLogger(__name__)
 
-# Until authentication arrives in C6 there is one tenant and one, unnamed, caller.
-TENANT = DEFAULT_TENANT_ID
-ACTOR = "api:anonymous"
+Reader = Annotated[Principal, Depends(require("documents:read"))]
+Writer = Annotated[Principal, Depends(require("documents:write"))]
 
 
 class _Out(BaseModel):
@@ -130,7 +130,10 @@ def documents_router(
 
     @router.post("/documents", status_code=202, response_model=UploadOut)
     async def upload_document(
-        response: Response, file: UploadFile, doc_type: Annotated[str, Form()] = "invoice"
+        response: Response,
+        file: UploadFile,
+        principal: Writer,
+        doc_type: Annotated[str, Form()] = "invoice",
     ) -> UploadOut:
         """Store a PDF and queue it for extraction. The same file twice is one document."""
         if doc_type not in service.document_types:
@@ -147,11 +150,11 @@ def documents_router(
         try:
             result = await run_in_threadpool(
                 service.ingest,
-                tenant_id=TENANT,
+                tenant_id=principal.tenant_id,
                 doc_type=doc_type,
                 filename=safe_filename(file.filename) or "upload.pdf",
                 data=data,
-                actor=ACTOR,
+                actor=principal.actor,
             )
         except UnknownDocumentType as error:
             raise HTTPException(422, "Unknown document type.") from error
@@ -173,9 +176,9 @@ def documents_router(
         )
 
     @router.get("/documents/{document_id}", response_model=DocumentDetailOut)
-    def get_document(document_id: uuid.UUID) -> DocumentDetailOut:
+    def get_document(document_id: uuid.UUID, principal: Reader) -> DocumentDetailOut:
         try:
-            detail = service.detail(TENANT, document_id)
+            detail = service.detail(principal.tenant_id, document_id)
         except DocumentNotFound:
             raise _NOT_FOUND from None
         return DocumentDetailOut(
@@ -184,12 +187,12 @@ def documents_router(
         )
 
     @router.get("/documents/{document_id}/extraction", response_model=ExtractionOut)
-    def get_extraction(document_id: uuid.UUID) -> ExtractionOut:
+    def get_extraction(document_id: uuid.UUID, principal: Reader) -> ExtractionOut:
         """The extraction of the newest version that succeeded."""
         try:
-            latest = service.latest_extraction(TENANT, document_id)
+            latest = service.latest_extraction(principal.tenant_id, document_id)
             if latest is None:
-                status = service.detail(TENANT, document_id).document.status
+                status = service.detail(principal.tenant_id, document_id).document.status
                 raise HTTPException(404, f"This document has no extraction yet (status: {status}).")
         except DocumentNotFound:
             raise _NOT_FOUND from None
@@ -202,10 +205,10 @@ def documents_router(
         )
 
     @router.get("/documents/{document_id}/assessment", response_model=AssessmentOut)
-    def get_assessment(document_id: uuid.UUID) -> AssessmentOut:
+    def get_assessment(document_id: uuid.UUID, principal: Reader) -> AssessmentOut:
         """What was checked on the newest extracted version, and whether a person must look."""
         try:
-            detail = service.assessment(TENANT, document_id)
+            detail = service.assessment(principal.tenant_id, document_id)
         except DocumentNotFound:
             raise _NOT_FOUND from None
         if detail is None:
@@ -227,10 +230,12 @@ def documents_router(
         )
 
     @router.post("/documents/{document_id}/reprocess", status_code=202, response_model=VersionOut)
-    def reprocess_document(document_id: uuid.UUID) -> VersionOut:
+    def reprocess_document(document_id: uuid.UUID, principal: Writer) -> VersionOut:
         """Queue a new version. Earlier versions and their extractions are kept."""
         try:
-            version = service.reprocess(tenant_id=TENANT, document_id=document_id, actor=ACTOR)
+            version = service.reprocess(
+                tenant_id=principal.tenant_id, document_id=document_id, actor=principal.actor
+            )
         except DocumentNotFound:
             raise _NOT_FOUND from None
         except ReprocessInProgress:
@@ -238,21 +243,21 @@ def documents_router(
         return VersionOut.model_validate(version)
 
     @router.get("/documents/{document_id}/audit", response_model=list[AuditEntryOut])
-    def get_audit_trail(document_id: uuid.UUID) -> list[AuditEntryOut]:
+    def get_audit_trail(document_id: uuid.UUID, principal: Reader) -> list[AuditEntryOut]:
         try:
-            entries = service.audit_trail(TENANT, document_id)
+            entries = service.audit_trail(principal.tenant_id, document_id)
         except DocumentNotFound:
             raise _NOT_FOUND from None
         return [AuditEntryOut.model_validate(entry) for entry in entries]
 
     @router.get("/audit/verification", response_model=ChainOut)
-    def verify_audit_chain() -> ChainOut:
+    def verify_audit_chain(principal: Reader) -> ChainOut:
         """Recompute the audit log's hash chain and report the first break, if any.
 
         `consistent` means the stored hashes agree with the stored entries. It shows that no
         entry was edited or removed from the middle without the later hashes being redone;
         it cannot show that the log was not rewritten by someone able to redo them.
         """
-        return ChainOut.model_validate(service.verify_audit_chain(TENANT))
+        return ChainOut.model_validate(service.verify_audit_chain(principal.tenant_id))
 
     return router

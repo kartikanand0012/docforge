@@ -5,6 +5,7 @@ from importlib import import_module
 from importlib.metadata import version
 from pathlib import Path
 
+from docforge.auth import Authenticator
 from docforge.config import Settings
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService, Pipeline
@@ -79,6 +80,14 @@ def build_review(settings: Settings) -> ReviewService:
         make_session_factory(make_engine(database_url)),
         S3ObjectStore.from_settings(settings),
         {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC},
+    )
+
+
+def build_authenticator(settings: Settings) -> Authenticator:
+    database_url = settings.database_url.get_secret_value()
+    return Authenticator(
+        make_session_factory(make_engine(database_url)),
+        failed_logins_per_window=settings.failed_logins_per_window,
     )
 
 

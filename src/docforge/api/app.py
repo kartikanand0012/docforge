@@ -8,8 +8,9 @@ import hashlib
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from pathlib import Path
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -17,6 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 
 from docforge import __version__
+from docforge.api.auth import require, sessions_router
 from docforge.api.documents import documents_router
 from docforge.api.review import review_router
 from docforge.api.uploads import (
@@ -26,6 +28,7 @@ from docforge.api.uploads import (
     safe_filename,
     too_large_message,
 )
+from docforge.auth import Authenticator, FailureLimiter, Principal
 from docforge.documents import DocumentService
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, InvoicePipeline
 from docforge.extraction.schema import InvoiceExtraction
@@ -89,16 +92,19 @@ def create_app(
     evals_dir: Path | None = None,
     prices: tuple[float, float] | None = None,
     cors_origins: Sequence[str] = (),
+    authenticator: Authenticator | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     app = FastAPI(title="DocForge", version=__version__)
+    # Without an authenticator every /v1 route answers 401: there is no anonymous mode.
+    app.state.authenticator = authenticator
     if cors_origins:
         # Only the review screen's own origin; credentials are not sent by cookie.
         app.add_middleware(
             CORSMiddleware,
             allow_origins=list(cors_origins),
-            allow_methods=["GET", "POST"],
-            allow_headers=["Content-Type"],
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Content-Type", "Authorization"],
         )
 
     @app.middleware("http")
@@ -132,8 +138,11 @@ def create_app(
         app.include_router(
             documents_router(service, max_upload_bytes=max_upload_bytes, max_pages=max_pages)
         )
+    limiter = authenticator.limiter if authenticator else FailureLimiter(20, 300)
+    if authenticator is not None:
+        app.include_router(sessions_router(authenticator))
     if review is not None:
-        app.include_router(review_router(review, evals_dir, prices))
+        app.include_router(review_router(review, evals_dir, prices, limiter))
     if pipeline is not None:
         _add_preview_endpoint(app, pipeline, max_upload_bytes)
     return app
@@ -142,7 +151,9 @@ def create_app(
 def _add_preview_endpoint(app: FastAPI, pipeline: InvoicePipeline, max_upload_bytes: int) -> None:
     @app.post("/v1/extractions", response_model=ExtractionResponse, responses=_ERRORS)
     async def create_extraction(
-        file: UploadFile, include_blocks: bool = False
+        file: UploadFile,
+        principal: Annotated[Principal, Depends(require("documents:write"))],
+        include_blocks: bool = False,
     ) -> ExtractionResponse:
         """Extract one born-digital invoice PDF in the request. Nothing is stored."""
         data = await read_pdf_upload(file, max_upload_bytes)

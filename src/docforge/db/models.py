@@ -215,6 +215,37 @@ class Review(Base):
     signed_at: Mapped[datetime] = _created_at()
 
 
+class ApiKey(Base):
+    """A credential for a system. Only a hash of its secret is kept."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    prefix: Mapped[str] = mapped_column(CHAR(12))
+    digest: Mapped[str] = mapped_column(CHAR(64))
+    name: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SessionToken(Base):
+    """A reviewer signed in to the review screen. Only a hash of the token is kept."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("reviewers.id"))
+    prefix: Mapped[str] = mapped_column(CHAR(12))
+    digest: Mapped[str] = mapped_column(CHAR(64))
+    created_at: Mapped[datetime] = _created_at()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AuditEntry(Base):
     """Append-only and hash-chained per tenant; see `docforge.audit`."""
 

@@ -16,7 +16,7 @@ from docforge.api.app import create_app
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.models import AssessmentRecord, AuditEntry, DocumentVersion, MatchRecord
 from docforge.db.session import SessionFactory
-from fakes import reprint
+from fakes import reprint, signed_in
 from worlds import World
 
 pytestmark = pytest.mark.integration
@@ -206,7 +206,7 @@ def test_the_api_serves_the_assessment_with_boxes_and_the_match(world: World) ->
     world.process("purchase_order")
     document_id = world.process("invoice")
     assert world.service is not None
-    client = TestClient(create_app(None, service=world.service))
+    client = TestClient(signed_in(create_app(None, service=world.service)))
 
     response = client.get(f"/v1/documents/{document_id}/assessment")
 
@@ -230,7 +230,7 @@ def test_the_api_reports_no_assessment_yet(world: World) -> None:
         data=world.invoice_pdf,
         actor="api:upload",
     )
-    client = TestClient(create_app(None, service=service))
+    client = TestClient(signed_in(create_app(None, service=service)))
 
     response = client.get(f"/v1/documents/{result.document.id}/assessment")
 

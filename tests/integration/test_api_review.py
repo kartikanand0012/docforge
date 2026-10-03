@@ -14,6 +14,7 @@ from docforge.db.session import SessionFactory
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.review.service import ReviewService
+from fakes import signed_in
 from worlds import World
 
 pytestmark = pytest.mark.integration
@@ -39,7 +40,7 @@ def api(world: World, sessions: SessionFactory) -> TestClient:
     review = ReviewService(
         sessions, world.store, {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC}
     )
-    review.add_reviewer(DEFAULT_TENANT_ID, name="Asha Rao", **CREDENTIALS)
+    reviewer_id = review.add_reviewer(DEFAULT_TENANT_ID, name="Asha Rao", **CREDENTIALS)
     app = create_app(
         None,
         service=world.service,
@@ -47,7 +48,7 @@ def api(world: World, sessions: SessionFactory) -> TestClient:
         evals_dir=REPO / "evals" / "baselines",
         cors_origins=("http://localhost:3000",),
     )
-    return TestClient(app)
+    return TestClient(signed_in(app, reviewer_id=reviewer_id))
 
 
 def test_the_queue_lists_documents_waiting_for_a_person(world: World, api: TestClient) -> None:

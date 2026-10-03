@@ -8,19 +8,21 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from docforge.db import DEFAULT_TENANT_ID
+from docforge.api.auth import client_address, require
+from docforge.auth import FailureLimiter, Principal, TooManyAttempts
 from docforge.documents import DocumentNotFound
 from docforge.parsing.base import ParseError
 from docforge.review.service import (
     AlreadySigned,
     ApprovalBlocked,
     NotAuthenticated,
+    NotPermitted,
     NotReviewable,
     PageNotFound,
     RecordChanged,
@@ -141,6 +143,14 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
 
 def _errors(error: Exception) -> HTTPException:
     """The HTTP answer for an expected failure; anything else is re-raised (500, logged)."""
+    if isinstance(error, TooManyAttempts):
+        return HTTPException(
+            429,
+            "Too many failed attempts from this address. Try again later.",
+            headers={"Retry-After": str(error.retry_after)},
+        )
+    if isinstance(error, NotPermitted):
+        return HTTPException(403, "You can only correct or sign as yourself.")
     if isinstance(error, NotAuthenticated | ReviewerLocked):
         # One answer for unknown email, wrong PIN and a locked account: none says which.
         return _NOT_AUTHENTICATED
@@ -165,47 +175,74 @@ def _errors(error: Exception) -> HTTPException:
     raise error
 
 
+Reader = Annotated[Principal, Depends(require("documents:read"))]
+Reviewing = Annotated[Principal, Depends(require("review"))]
+
+
+def _person(principal: Principal) -> uuid.UUID:
+    """Corrections and signatures are made by a signed-in person, as themselves."""
+    if principal.kind != "session":
+        raise HTTPException(403, "Only a signed-in reviewer can correct or sign.")
+    return principal.subject_id
+
+
 def review_router(
-    review: ReviewService, evals_dir: Path | None, prices: tuple[float, float] | None
+    review: ReviewService,
+    evals_dir: Path | None,
+    prices: tuple[float, float] | None,
+    limiter: FailureLimiter,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
-    tenant = DEFAULT_TENANT_ID
 
     @router.get("/review/queue", response_model=list[QueueItemOut])
-    def review_queue() -> list[QueueItemOut]:
+    def review_queue(principal: Reviewing) -> list[QueueItemOut]:
         """Documents waiting for a person, oldest first."""
         return [
-            QueueItemOut(**{**vars(i), "reasons": list(i.reasons)}) for i in review.queue(tenant)
+            QueueItemOut(**{**vars(i), "reasons": list(i.reasons)})
+            for i in review.queue(principal.tenant_id)
         ]
 
     @router.get("/documents/{document_id}/review", response_model=ReviewOut)
-    def review_detail(document_id: uuid.UUID) -> ReviewOut:
+    def review_detail(document_id: uuid.UUID, principal: Reviewing) -> ReviewOut:
         try:
-            return _review_out(review.detail(tenant, document_id))
+            return _review_out(review.detail(principal.tenant_id, document_id))
         except Exception as error:
             raise _errors(error) from error
 
     @router.post("/documents/{document_id}/corrections", response_model=ReviewOut)
-    def correct(document_id: uuid.UUID, body: CorrectionIn) -> ReviewOut:
+    def correct(
+        document_id: uuid.UUID, body: CorrectionIn, principal: Reviewing, request: Request
+    ) -> ReviewOut:
+        person = _person(principal)
+        client = client_address(request)
         try:
+            limiter.check(client)
             detail = review.correct(
-                tenant,
+                principal.tenant_id,
                 document_id,
                 path=body.path,
                 text=body.text,
                 reason=body.reason,
                 email=body.email,
                 pin=body.pin,
+                acting_reviewer_id=person,
             )
         except Exception as error:
+            if isinstance(error, NotAuthenticated | ReviewerLocked):
+                limiter.failed(client)
             raise _errors(error) from error
         return _review_out(detail)
 
     @router.post("/documents/{document_id}/review", status_code=201, response_model=SignedOut)
-    def sign(document_id: uuid.UUID, body: SignIn) -> SignedOut:
+    def sign(
+        document_id: uuid.UUID, body: SignIn, principal: Reviewing, request: Request
+    ) -> SignedOut:
+        person = _person(principal)
+        client = client_address(request)
         try:
+            limiter.check(client)
             signed = review.sign(
-                tenant,
+                principal.tenant_id,
                 document_id,
                 outcome=body.outcome,
                 meaning=body.meaning,
@@ -214,8 +251,11 @@ def review_router(
                 expected_record_sha256=body.expected_record_sha256,
                 email=body.email,
                 pin=body.pin,
+                acting_reviewer_id=person,
             )
         except Exception as error:
+            if isinstance(error, NotAuthenticated | ReviewerLocked):
+                limiter.failed(client)
             raise _errors(error) from error
         return SignedOut(**vars(signed))
 
@@ -224,9 +264,9 @@ def review_router(
         response_class=Response,
         responses={200: {"content": {"image/png": {}}}},
     )
-    async def page_image(document_id: uuid.UUID, page: int) -> Response:
+    async def page_image(document_id: uuid.UUID, page: int, principal: Reader) -> Response:
         try:
-            png = await run_in_threadpool(review.page_image, tenant, document_id, page)
+            png = await run_in_threadpool(review.page_image, principal.tenant_id, document_id, page)
         except ParseError as error:
             raise HTTPException(422, "The page could not be rendered.") from error
         except Exception as error:
@@ -236,7 +276,7 @@ def review_router(
         )
 
     @router.get("/evals")
-    def evals() -> dict[str, Any]:
+    def evals(principal: Reader) -> dict[str, Any]:
         """The committed eval reports, summarised for the eval and cost page."""
         if evals_dir is None:
             raise HTTPException(404, "No eval reports are configured.")

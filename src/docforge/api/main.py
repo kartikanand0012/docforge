@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from docforge.api.app import create_app
 from docforge.config import get_settings
 from docforge.extraction.pipeline import InvoicePipeline
-from docforge.wiring import build_review, build_service, load_pipelines
+from docforge.wiring import build_authenticator, build_review, build_service, load_pipelines
 
 
 def create_default_app() -> FastAPI:
@@ -30,4 +30,5 @@ def create_default_app() -> FastAPI:
         evals_dir=Path(settings.evals_dir),
         prices=prices,
         cors_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
+        authenticator=build_authenticator(settings),
     )

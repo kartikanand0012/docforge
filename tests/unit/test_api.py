@@ -17,7 +17,7 @@ from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import ParsedDocument
 from docforge.parsing.isolation import IsolatedParser
 from docforge.wiring import build_pipeline
-from fakes import PARSED, FakeParser, ScriptedProvider
+from fakes import PARSED, FakeParser, ScriptedProvider, signed_in
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
 PDF = (FIXTURES / "pair_001" / "invoice.pdf").read_bytes()
@@ -29,7 +29,9 @@ RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 def client(replies: list[str | Exception], **options: int) -> TestClient:
     max_pages = options.pop("max_pages", 20)
     pipeline = InvoicePipeline(FakeParser(), ScriptedProvider(replies), max_pages=max_pages)
-    return TestClient(create_app(pipeline, options.pop("max_upload_bytes", 10 * 1024 * 1024)))
+    return TestClient(
+        signed_in(create_app(pipeline, options.pop("max_upload_bytes", 10 * 1024 * 1024)))
+    )
 
 
 def upload(api: TestClient, data: bytes = PDF, query: str = "") -> Any:
@@ -181,7 +183,7 @@ def test_a_pdf_without_a_text_layer_is_rejected_with_a_clear_message() -> None:
         def parse(self, pdf: bytes) -> ParsedDocument:
             return PARSED.model_copy(update={"blocks": ()})
 
-    api = TestClient(create_app(InvoicePipeline(EmptyParser(), ScriptedProvider([]))))
+    api = TestClient(signed_in(create_app(InvoicePipeline(EmptyParser(), ScriptedProvider([])))))
 
     response = upload(api)
 
@@ -219,7 +221,7 @@ def test_an_unexpected_failure_is_a_plain_500_without_internals(perfect_reply: s
             raise RuntimeError("secret internal detail /Users/someone")
 
     pipeline = InvoicePipeline(BrokenParser(), ScriptedProvider([perfect_reply]))
-    api = TestClient(create_app(pipeline), raise_server_exceptions=False)
+    api = TestClient(signed_in(create_app(pipeline)), raise_server_exceptions=False)
 
     response = upload(api)
 

@@ -87,6 +87,10 @@ class NotReviewable(Exception):
     version is being processed)."""
 
 
+class NotPermitted(Exception):
+    """The PIN given is not the signed-in reviewer's: people sign only as themselves."""
+
+
 class RecordChanged(Exception):
     """The record changed after the reviewer saw it; they must look again before signing."""
 
@@ -355,13 +359,19 @@ class ReviewService:
         reason: str,
         email: str,
         pin: str,
+        acting_reviewer_id: uuid.UUID | None = None,
     ) -> ReviewDetail:
-        """Change (or confirm, by giving the same text) one field's printed value."""
+        """Change (or confirm, by giving the same text) one field's printed value.
+
+        `acting_reviewer_id`, when given, is the signed-in reviewer: the PIN must be theirs.
+        """
         if not reason.strip():
             raise ValueError("a correction needs a reason")
         with self._sessions() as session:
             self._find(session, tenant_id, document_id)  # unknown documents before PIN checks
         reviewer = self._authenticate(tenant_id, email, pin)
+        if acting_reviewer_id is not None and reviewer.id != acting_reviewer_id:
+            raise NotPermitted
         with self._sessions.begin() as session:
             document = self._find(session, tenant_id, document_id, lock=True)
             state = self._changeable(self._state(session, document))
@@ -406,6 +416,7 @@ class ReviewService:
         expected_record_sha256: str,
         email: str,
         pin: str,
+        acting_reviewer_id: uuid.UUID | None = None,
     ) -> SignedReview:
         """Approve or reject the record under the reviewer's signature.
 
@@ -420,6 +431,8 @@ class ReviewService:
         with self._sessions() as session:
             self._find(session, tenant_id, document_id)
         reviewer = self._authenticate(tenant_id, email, pin)
+        if acting_reviewer_id is not None and reviewer.id != acting_reviewer_id:
+            raise NotPermitted
         with self._sessions.begin() as session:
             document = self._find(session, tenant_id, document_id, lock=True)
             state = self._changeable(self._state(session, document))
@@ -730,6 +743,7 @@ __all__: Sequence[str] = (
     "AlreadySigned",
     "ApprovalBlocked",
     "NotAuthenticated",
+    "NotPermitted",
     "NotReviewable",
     "PageNotFound",
     "RecordChanged",

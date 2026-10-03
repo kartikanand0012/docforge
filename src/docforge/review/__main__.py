@@ -10,8 +10,8 @@ import getpass
 import sys
 from collections.abc import Sequence
 
+from docforge.admin import tenant_by_name
 from docforge.config import get_settings
-from docforge.db import DEFAULT_TENANT_ID
 from docforge.wiring import build_review
 
 
@@ -30,11 +30,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     add = commands.add_parser("add-reviewer", help="add a reviewer who can correct and sign")
     add.add_argument("--name", required=True)
     add.add_argument("--email", required=True)
+    add.add_argument("--tenant", default="default", help="the organisation's name")
     args = parser.parse_args(argv)
 
+    settings = get_settings()
     try:
-        reviewer_id = build_review(get_settings()).add_reviewer(
-            DEFAULT_TENANT_ID, name=args.name, email=args.email, pin=_read_pin()
+        tenant_id = tenant_by_name(settings, args.tenant)
+        reviewer_id = build_review(settings).add_reviewer(
+            tenant_id, name=args.name, email=args.email, pin=_read_pin()
         )
     except ValueError as error:
         print(f"Not added: {error}", file=sys.stderr)

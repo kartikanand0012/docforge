@@ -47,8 +47,12 @@ class Stack:
         token = self.auth.create_api_key(tenant, name=f"{role} key", role=role)
         return {"Authorization": f"Bearer {token}"}
 
-    def login(self, email: str = "asha@example.com", pin: str = "482913") -> dict[str, str]:
-        response = self.client.post("/v1/sessions", json={"email": email, "pin": pin})
+    def login(
+        self, email: str = "asha@example.com", pin: str = "482913", tenant: str = "default"
+    ) -> dict[str, str]:
+        response = self.client.post(
+            "/v1/sessions", json={"tenant": tenant, "email": email, "pin": pin}
+        )
         assert response.status_code == 201, response.text
         return {"Authorization": f"Bearer {response.json()['token']}"}
 
@@ -175,10 +179,13 @@ def test_only_a_signed_in_person_corrects_or_signs_and_only_as_themselves(stack:
 def test_a_session_from_a_wrong_pin_is_refused_and_logins_are_rate_limited(stack: Stack) -> None:
     for _ in range(10):
         response = stack.client.post(
-            "/v1/sessions", json={"email": "nobody@example.com", "pin": "000000"}
+            "/v1/sessions",
+            json={"tenant": "default", "email": "nobody@example.com", "pin": "000000"},
         )
         assert response.status_code == 401
-    limited = stack.client.post("/v1/sessions", json={"email": "asha@example.com", "pin": "482913"})
+    limited = stack.client.post(
+        "/v1/sessions", json={"tenant": "default", "email": "asha@example.com", "pin": "482913"}
+    )
 
     assert limited.status_code == 429
     assert "retry-after" in limited.headers
@@ -204,7 +211,12 @@ def test_a_revoked_key_and_an_ended_session_stop_working(stack: Stack, engine: E
 def test_an_expired_session_is_refused(stack: Stack, engine: Engine) -> None:
     session = stack.login()
     with engine.begin() as conn:
-        conn.execute(text("UPDATE sessions SET expires_at = now() - interval '1 second'"))
+        conn.execute(
+            text(
+                "UPDATE sessions SET created_at = now() - interval '9 hours', "
+                "expires_at = now() - interval '1 hour'"
+            )
+        )
 
     assert stack.client.get("/v1/review/queue", headers=session).status_code == 401
 
@@ -218,3 +230,25 @@ def test_tokens_are_stored_only_as_hashes(stack: Stack, engine: Engine) -> None:
         stored += " ".join(str(row) for row in conn.execute(text("SELECT * FROM sessions")))
     assert key.split("_")[2] not in stored
     assert session.split("_")[2] not in stored
+
+
+def test_the_admin_command_makes_organisations_and_keys(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from docforge.admin import main
+    from docforge.config import get_settings
+
+    monkeypatch.setenv("DATABASE_URL", engine.url.render_as_string(hide_password=False))
+    get_settings.cache_clear()
+    try:
+        assert main(["create-tenant", "acme"]) == 0
+        assert main(["create-tenant", "acme"]) == 1  # already there
+        assert (
+            main(["create-key", "--tenant", "acme", "--role", "integrator", "--name", "ERP"]) == 0
+        )
+        token = capsys.readouterr().out.strip().splitlines()[-1]
+        assert token.startswith("dfk_")
+        assert main(["revoke-key", "--tenant", "acme", "--prefix", token.split("_")[1]]) == 0
+        assert main(["create-key", "--tenant", "nowhere", "--role", "admin", "--name", "x"]) == 1
+    finally:
+        get_settings.cache_clear()

@@ -2,8 +2,9 @@
 
 import hashlib
 import re
+import uuid
 from collections.abc import Sequence
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from docforge.llm.base import LLMRequest, LLMResponse
 from docforge.parsing.base import BBox, Block, Page, ParsedDocument
@@ -17,6 +18,9 @@ PARSED = ParsedDocument(
         for n in range(1, 4)
     ),
 )
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 
 class FakeParser:
@@ -121,3 +125,27 @@ class MappedParser:
 
     def parse(self, pdf: bytes) -> ParsedDocument:
         return self._parses[hashlib.sha256(pdf).hexdigest()]
+
+
+def signed_in(
+    app: "FastAPI",
+    *,
+    tenant_id: uuid.UUID | None = None,
+    role: str = "admin",
+    reviewer_id: uuid.UUID | None = None,
+) -> "FastAPI":
+    """`app` with every request made as one caller, for tests about something other than
+    authentication. A `reviewer_id` makes the caller that reviewer, signed in."""
+    from docforge.api.auth import current_principal
+    from docforge.auth import Principal
+    from docforge.db import DEFAULT_TENANT_ID
+
+    principal = Principal(
+        tenant_id=tenant_id or DEFAULT_TENANT_ID,
+        kind="session" if reviewer_id else "api_key",
+        subject_id=reviewer_id or uuid.UUID(int=1),
+        role="reviewer" if reviewer_id and role == "admin" else role,
+        name="test caller",
+    )
+    app.dependency_overrides[current_principal] = lambda: principal
+    return app

@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     # the parser or model without changing this package.
     pipeline_factory: str = "docforge.wiring:build_pipelines"
 
+    # Failed sign-ins and PINs allowed per client address in five minutes, per API process.
+    failed_logins_per_window: int = 20
     # The review screen's origin(s), comma-separated, e.g. http://localhost:3000.
     cors_origins: str = ""
     evals_dir: str = "evals/baselines"
