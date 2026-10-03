@@ -31,7 +31,8 @@ from docforge.review.service import (
     ReviewService,
 )
 
-_NOT_AUTHENTICATED = HTTPException(401, "The email or PIN is not right.")
+# 403, not 401: the caller's session is fine, only the PIN re-entered for this action failed.
+_NOT_AUTHENTICATED = HTTPException(403, "The email or PIN is not right.")
 
 
 class _In(BaseModel):

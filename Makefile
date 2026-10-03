@@ -21,8 +21,8 @@ down: ## Stop services (keeps volumes)
 migrate: ## Apply database migrations
 	uv run alembic upgrade head
 
-api: ## Run the API on http://127.0.0.1:8000 (needs GEMINI_API_KEY; no auth yet, local only)
-	CORS_ORIGINS=$${CORS_ORIGINS:-http://localhost:3000} uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port 8000
+api: ## Run the API on http://127.0.0.1:8000 (needs GEMINI_API_KEY)
+	uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port 8000
 
 worker: ## Run a worker that processes uploaded documents (needs GEMINI_API_KEY)
 	uv run python -m docforge.worker
@@ -54,7 +54,7 @@ models: ## Download the parser's layout, table and OCR models once (then PARSER_
 	uv run python -c "from docforge.parsing.docling_parser import DoclingParser; from pathlib import Path; [DoclingParser().parse(Path(p).read_bytes()) for p in ('tests/fixtures/synthetic/pair_001/invoice.pdf', 'tests/fixtures/scanned/scan_good/pair_001/invoice.pdf')]"
 
 web: ## Run the review screen on http://localhost:3000 against the API on port 8000
-	cd web && NEXT_PUBLIC_API_URL=$${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000} npm run dev
+	cd web && DOCFORGE_API_URL=$${DOCFORGE_API_URL:-http://127.0.0.1:8000} npm run dev
 
 web-check: ## Type-check, lint, unit-test and build the review app in web/
 	cd web && npm ci && npm run typecheck && npm run lint && npm test && npm run build

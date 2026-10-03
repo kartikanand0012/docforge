@@ -15,8 +15,32 @@ async function upload(page: Page, file: string, type: "invoice" | "purchase_orde
   return page.url().split("/").at(-1)!;
 }
 
+async function signIn(page: Page, pin = PIN): Promise<void> {
+  await page.goto("/login");
+  await page.getByLabel("Organisation").fill("default");
+  await page.getByLabel("Email").fill(EMAIL);
+  await page.getByLabel("PIN").fill(pin);
+  await page.getByRole("button", { name: "Sign in" }).click();
+}
+
+test("without a session every page sends you to sign in, and a wrong PIN is refused", async ({ page, request }) => {
+  await page.goto("/evals");
+  await expect(page).toHaveURL(/\/login\?next=%2Fevals$/);
+  await signIn(page, "000000");
+  await expect(page.getByRole("form", { name: "Sign in" }).getByRole("alert")).toHaveText(
+    "The organisation, email or PIN is not right.",
+  );
+  expect((await request.get("/api/v1/review/queue")).status()).toBe(401);
+  expect((await request.get(`${API}/v1/review/queue`)).status()).toBe(401);
+});
+
 test.describe.serial("a flagged invoice is resolved end to end", () => {
   let invoiceId = "";
+
+  test.beforeEach(async ({ page }) => {
+    await signIn(page);
+    await expect(page.getByRole("heading", { name: "Review queue" })).toBeVisible();
+  });
 
   test("the order and the invoice are uploaded and processed", async ({ page }) => {
     await upload(page, "purchase_order.pdf", "purchase_order");
@@ -87,14 +111,14 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     await expect(page.getByRole("form", { name: "Sign the review" })).toHaveCount(0);
   });
 
-  test("every action is in the audit log and the chain verifies", async ({ request }) => {
-    const entries = (await (await request.get(`${API}/v1/documents/${invoiceId}/audit`)).json()) as { action: string; actor: string }[];
+  test("every action is in the audit log and the chain verifies", async ({ page }) => {
+    const entries = (await (await page.request.get(`/api/v1/documents/${invoiceId}/audit`)).json()) as { action: string; actor: string }[];
     const actions = entries.map((entry) => entry.action);
 
     expect(actions).toEqual(expect.arrayContaining(["document.received", "extraction.created", "assessment.created", "match.created", "review.corrected", "review.signed"]));
     expect(actions.indexOf("review.corrected")).toBeLessThan(actions.indexOf("review.signed"));
     expect(entries.find((e) => e.action === "review.signed")?.actor).toMatch(/^reviewer:/);
-    const chain = (await (await request.get(`${API}/v1/audit/verification`)).json()) as { consistent: boolean };
+    const chain = (await (await page.request.get("/api/v1/audit/verification")).json()) as { consistent: boolean };
     expect(chain.consistent).toBe(true);
   });
 

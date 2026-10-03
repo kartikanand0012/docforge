@@ -2,7 +2,8 @@
 
 import type { Box } from "./geometry";
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+/** Every call goes to this site's own `/api/v1/...`, which adds the session token server-side. */
+export const API_URL = "/api";
 
 export type FieldStatus = "verified" | "confirmed" | "not_in_cited_blocks" | "no_citation";
 
@@ -102,6 +103,11 @@ export class ApiError extends Error {
 
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { cache: "no-store", ...init });
+  if (response.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    // A full load on purpose: the session is gone, so nothing of the old page should stay.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+    window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
+  }
   if (!response.ok) {
     let message = `Request failed (${response.status}).`;
     try {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import SignOut from "@/components/SignOut";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/upload">Upload</Link>
             <Link href="/evals">Evals and cost</Link>
           </nav>
+          <SignOut />
         </header>
         <main>{children}</main>
       </body>

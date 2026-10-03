@@ -47,19 +47,18 @@ PY
 )"
 export DATABASE_URL="$E2E_URL"
 export PIPELINE_FACTORY="docforge.wiring:build_replay_pipelines"
-export CORS_ORIGINS="http://127.0.0.1:${WEB_PORT}"
 export GEMINI_API_KEY=""
 
 uv run alembic upgrade head >/dev/null
-echo "246810" | uv run python -m docforge.review add-reviewer --name "E2E Reviewer" --email e2e@example.com
+echo "246810" | uv run python -m docforge.review add-reviewer --admin --name "E2E Reviewer" --email e2e@example.com
 
 uv run uvicorn docforge.api.main:create_default_app --factory --host 127.0.0.1 --port "$API_PORT" >"$LOGS/api.log" 2>&1 &
 PIDS+=($!)
 uv run python -m docforge.worker >"$LOGS/worker.log" 2>&1 &
 PIDS+=($!)
 
-(cd web && NEXT_PUBLIC_API_URL="http://127.0.0.1:${API_PORT}" npm run build >"$LOGS/web-build.log" 2>&1)
-(cd web && npx next start -p "$WEB_PORT" -H 127.0.0.1 >"$LOGS/web.log" 2>&1) &
+(cd web && npm run build >"$LOGS/web-build.log" 2>&1)
+(cd web && DOCFORGE_API_URL="http://127.0.0.1:${API_PORT}" exec npx next start -p "$WEB_PORT" -H 127.0.0.1 >"$LOGS/web.log" 2>&1) &
 PIDS+=($!)
 
 for _ in $(seq 1 60); do
@@ -74,5 +73,6 @@ status=0
 if [ "$status" -ne 0 ]; then
   echo "--- api log ---"; tail -40 "$LOGS/api.log"
   echo "--- worker log ---"; tail -40 "$LOGS/worker.log"
+  echo "--- web log ---"; tail -40 "$LOGS/web.log"
 fi
 exit "$status"

@@ -95,13 +95,13 @@ def test_a_correction_with_a_wrong_pin_is_refused_without_saying_why(
         json={**payload, "email": "x@example.com", "pin": "482913"},
     )
 
-    assert wrong.status_code == unknown.status_code == 401
+    assert wrong.status_code == unknown.status_code == 403
     assert wrong.json() == unknown.json()
     for _ in range(4):
         api.post(f"/v1/documents/{invoice_id}/corrections", json={**payload, "pin": "000000"})
     locked = api.post(f"/v1/documents/{invoice_id}/corrections", json={**payload, "pin": "482913"})
     # A locked account answers like a wrong PIN, so the reply does not say the email exists.
-    assert locked.status_code == 401
+    assert locked.status_code == 403
     assert locked.json() == wrong.json()
 
 
