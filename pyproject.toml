@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.142.2",
     "google-genai>=2.27.0",
     "numpy>=2",
+    "pgvector>=0.4",
     "pillow>=12",
     "procrastinate>=3.10.0",
     "psutil>=7",
