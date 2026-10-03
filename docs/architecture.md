@@ -110,6 +110,12 @@ holding its discrepancies. Both are immutable. The per-field `fields`, `validati
 history. The decision has two levels with reasons; there is no numeric confidence until there are
 reviewer outcomes to calibrate one against.
 
+As built in C6: every request carries an API key or a reviewer session (both stored as hashes);
+the tenant comes from it. Postgres row-level security on every tenant table, keyed on a
+transaction-local setting, under a role with no DELETE, TRUNCATE, ownership or bypass; migrations
+run as the owner. Webhooks from an outbox written with each change, signed and retried with a
+fixed event id. The audit chain's head is anchored in object storage.
+
 As built in C5: reviewers (with a scrypt-hashed PIN), corrections and signed reviews are their own
 tables, append-only; the record a reviewer sees is the model's reply with the corrections applied,
 read again by the normaliser and checks. A signature stores the SHA-256 of the record and of who,

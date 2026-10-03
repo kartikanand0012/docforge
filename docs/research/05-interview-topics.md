@@ -103,6 +103,21 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C6 Multi-tenant product surface (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| Multi-tenancy: app checks or database? | Both. Every query filters by tenant, and Postgres row-level security enforces it under a role that cannot lift it. The whole integration suite runs as that role, so every test also exercises isolation. | `migrations/versions/0008_row_level_security.py`, `db/tenancy.py` |
+| How do you pass the tenant to Postgres safely? | A context variable set by each service method; a listener runs `set_config(..., true)` at the start of every transaction, so it is local to the transaction and never stays on a pooled connection. | `db/tenancy.py` |
+| Finding the tenant before you know it | Three small owner functions return only a tenant id, from a key prefix, a session prefix or a version id. Nothing else crosses tenants. | `docforge_*_tenant` functions |
+| Least privilege, found by review | The app role could truncate the job queue, rename organisations and held UPDATE on append-only tables (refused by triggers, but held). Revoked, with a test per right. | `0010_tighter_rights.py`, `tests/integration/test_privileges.py` |
+| Keeping tokens out of the browser | Sign-in sets an HttpOnly, SameSite=Strict cookie; a same-origin route adds the bearer token server-side. A prefetch cache bug and a Secure cookie on plain HTTP both had to be found with a browser test. | `web/src/app/api/` |
+| Rate limiting that can be dodged | The per-address limit trusted X-Forwarded-For, which the web server passed straight from the browser. Fixed by counting per reviewer and ignoring client forwarding headers; the real client address must come from the front proxy. | `auth.py::login` |
+| Webhooks done properly | Outbox in the same transaction; a deterministic event id so a redelivered job emits nothing new; HMAC over timestamp and body; retries with the same id; secrets derived from a server key, never stored. | `webhooks.py` |
+| SSRF | HTTPS and public addresses only; review found DNS rebinding (resolve to check, resolve again to connect), NAT64, and an environment proxy bypass. Now the checked address is the one connected to. | `check_destination`, `_send` |
+| A misread library setting | `exponential_wait=10` meant 10, 100, 1000 seconds..., not doubling: the eighth webhook retry would have come months later. | `queue.py` |
+| Tamper evidence beyond the database | The chain's head is copied to object storage; a log rewritten with recomputed hashes still chains but no longer ends where the anchor saw it. Honest limit: same storage credentials as the app. | `anchors.py` |
+
 ### C5 Review (2026-10-03)
 
 | Question it answers | What happened in this project | Where to point |

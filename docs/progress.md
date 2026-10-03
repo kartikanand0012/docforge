@@ -2,6 +2,103 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C6 Multi-tenant product surface (2026-10-03): gate passed
+
+Branch `c6-tenancy`, PR #7 (stacked on C5).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Cross-tenant access tests all fail closed | Pass | Every /v1 route refuses a missing or bad credential (401); another tenant's credential gets 404 on each document route and an empty queue and audit log (`tests/integration/test_auth.py`, run with no ambient tenant). In Postgres, the application's role sees no rows without a tenant and only that tenant's with one, cannot write another tenant's rows, and cannot lift the protections (`test_rls.py`, `test_privileges.py`). The whole integration suite runs its services as that role |
+| Webhook retries are idempotent | Pass | A delivery that fails is retried with the same `DocForge-Event-Id`; once delivered it is not sent again; the same event emitted twice is one delivery; events are derived from what they describe, so a redelivered job emits nothing new (`test_webhooks.py`, including a run through the real queue and worker) |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 1,348 Python (1,044 unit, 262 integration, 42 real-parser), 29 web unit, 6 browser steps |
+| Coverage | 93% |
+
+No load test of row-level security yet (C8).
+
+### What was built
+
+- API keys for systems and sessions for reviewers (sign-in with organisation, email and PIN), both
+  stored only as hashes; roles (integrator, reviewer, admin); the tenant taken from the
+  credential on every route; corrections and signatures only by a signed-in person, as
+  themselves. Wrong PINs lock a reviewer after five, whether at sign-in or when signing, and are
+  also limited per client address.
+- Row-level security on every table with a tenant (migrations 0008, 0010). The API and worker
+  connect as `docforge_app`, which reads and writes only the current tenant's rows, cannot delete,
+  truncate or alter, holds no UPDATE on append-only tables, cannot create or rename organisations,
+  and owns nothing. Migrations run as the owner. Three narrow owner functions find a tenant from a
+  key prefix, a session prefix or a document version.
+- The review screen signs in with an HttpOnly, SameSite=Strict cookie; the browser never holds a
+  token. A same-origin route on the web server adds it to API calls. Pages without a session go
+  to sign-in. Security headers and a content security policy.
+- Webhooks (`document.processed`, `review.signed`, `webhook.test`): written in the same
+  transaction as the change, signed (HMAC-SHA256 over timestamp and body, with a per-webhook
+  secret derived from a server key and never stored), retried with backoff and the same event
+  id, delivered to the address that was checked (HTTPS, public addresses only), with no database
+  lock held while the receiver answers. A worker per queue, so webhooks never wait behind a long
+  document.
+- Export of signed records as CSV (formula-safe) and JSON.
+- The audit chain's head anchored to object storage per tenant (`python -m docforge.anchors`)
+  and checked on verification: a log rewritten with recomputed hashes is caught.
+- `python -m docforge.admin` for organisations and keys; `python -m docforge.db.roles` for the
+  application's login.
+
+### Departures from the plan
+
+- Users and roles are reviewers with a role and API keys with a role, not a separate user
+  directory or single sign-on.
+- CSV and JSON export only signed records.
+
+### Review (ECC security-reviewer, database-reviewer, python-reviewer)
+
+No path across tenants was found. Fixed, each with a failing test first:
+
+- Sign-in had no per-reviewer lockout, and the per-address limit could be dodged with a forged
+  X-Forwarded-For, which the web server passed on and the API trusted from localhost. Sign-in now
+  counts wrong PINs per reviewer; client forwarding headers are ignored.
+- A webhook host could be resolved once to pass the check and again, differently, to connect
+  (DNS rebinding); NAT64 addresses reached internal hosts; a proxy in the environment would have
+  bypassed the checks. Connections now go to the checked address.
+- Retry waits grew tenfold each time (a misread of the queue library's setting): the eighth try
+  would have come months later.
+- A delivery held a row lock and a transaction open while the receiver answered.
+- The application's role could truncate the queue, create or rename organisations, call trigger
+  functions, and held UPDATE on append-only tables (the triggers refused it, but the right existed).
+- A reviewer could test, and lock, another reviewer's PIN through the signing endpoints.
+- The test endpoint ignored which webhook it named; emitting outside a tenant scope recorded
+  nothing silently; a stop signal ended only one of the two workers; one storage failure stopped
+  anchoring for every later tenant; CSV export altered negative numbers; a backslash in the
+  sign-in `next` path was an open redirect.
+- Tests: the automatic default-tenant scope could hide a missing scope in an API route; the
+  authentication and webhook API tests now run without it.
+
+Recorded, not fixed (C9 deployment):
+
+- The per-address limit is per process and needs the front proxy to pass the real client
+  address; a shared limit is needed with several API processes.
+- Anchors are written with the same storage credentials as the originals. They catch a rewrite by
+  someone with database owner rights but not storage rights. For more, a separate bucket with
+  object lock and its own write-only credential.
+- The webhook signing key cannot be rotated per webhook through the API yet; receivers must check
+  the signature timestamp themselves.
+- `review.signed` carries the payment approval draft (payee, amounts) to the receiver by design.
+- The content security policy allows inline scripts (a nonce policy is the next step). The
+  session cookie's Secure flag trusts the proxy's X-Forwarded-Proto.
+- Queue jobs are not tenant-scoped: the application's role can see job arguments (ids) of every
+  tenant. Expired sessions and old deliveries are not pruned.
+- One integration run out of six failed once, in a test not recorded; the next three runs and the
+  full suite passed. Not explained.
+
+### Not verified
+
+- Row-level security under concurrent load; behaviour behind a real reverse proxy.
+
 ## C5 Review (2026-10-03): gate passed
 
 Branch `c5-review`, PR #6 (stacked on C4).

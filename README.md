@@ -6,15 +6,14 @@ DocForge turns PDFs and scans into validated, structured records. Every extracte
 its place on the page, and nothing extracted by a model becomes a record until a rule or a person
 accepts it.
 
-**Status:** checkpoint C5 complete. An invoice or purchase order is uploaded as a born-digital
-PDF or a scan, parsed in an isolated process (OCR with deskewing for scans), and extracted into a
-typed record with the source block of every field. Each value is checked against the text it
-cites, the invoice is checked by rules and against its purchase order, and the document is marked
-`accept` or `review`. A reviewer works the queue in a web screen: each value shown on the page it
-came from, corrections with reasons, and approval or rejection under a PIN signature bound to
-exactly what was signed. An approved invoice becomes a payment approval draft. Every step is in
-an append-only, hash-chained audit log. Accounts and roles are not built yet (C6), so the API
-must stay on a private network. See [docs/architecture.md](docs/architecture.md) for
+**Status:** checkpoint C6 complete. Organisations upload invoices and purchase orders (born-digital
+or scanned) with API keys; each is parsed in an isolated process, extracted with the source of
+every value, checked against its source, the rules and its purchase order, and marked `accept` or
+`review`. Reviewers sign in to a web screen, correct values with reasons, and approve or reject
+under a PIN signature; an approved invoice becomes a payment approval draft, sent to the
+organisation's systems by signed webhook. Postgres row-level security keeps each organisation's
+data apart under a database role that cannot lift it. Every step is in an append-only,
+hash-chained audit log, anchored outside the database. See [docs/architecture.md](docs/architecture.md) for
 the design and [docs/progress.md](docs/progress.md) for what has been built and measured.
 
 ## Measured so far
@@ -47,7 +46,8 @@ CPU; a 31-page scan in 7 minutes (4.0 GB).
 
 ```bash
 make up && make api          # API on :8000 (and `make worker` in another terminal)
-echo 123456 | uv run python -m docforge.review add-reviewer --name "Your Name" --email you@example.com
+echo 123456 | uv run python -m docforge.review add-reviewer --admin --name "Your Name" --email you@example.com
+uv run python -m docforge.admin create-key --role integrator --name "my system"   # printed once
 make web                     # review screen on http://localhost:3000
 make e2e                     # the whole review in a browser, offline, on recorded documents
 ```
