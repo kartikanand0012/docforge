@@ -84,3 +84,45 @@ def test_a_certificate_with_a_result_out_of_limit_holds_the_invoice_back(
     assert f"the certificate for batch {batch} has results outside their limits" in invoice.blockers
     assert coa.decision == "review"
     assert any("coa.result_within_limit" in reason for reason in coa.blockers)
+
+
+def test_a_certificate_that_cannot_be_checked_holds_the_invoice_back_as_unverified(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+    raw_coa_from_label: RawFromLabel,
+) -> None:
+    def unreadable(label: dict[str, Any]) -> dict[str, Any]:
+        raw = raw_coa_from_label(label)
+        raw["tests"][3]["result"] = {"text": "see attached", "block_ids": []}
+        return raw
+
+    world, review, invoice_id, _ = setup(
+        sessions, "pair_001", "coa_001", (raw_invoice_from_label, raw_order_from_label, unreadable)
+    )
+
+    detail = review.detail(DEFAULT_TENANT_ID, invoice_id)
+
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+    assert [c["status"] for c in detail.certificates] == ["unverified"]
+    assert f"the certificate for batch {batch} could not be fully checked" in detail.blockers
+
+
+def test_a_batch_is_matched_whatever_its_case_or_spacing(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+    raw_coa_from_label: RawFromLabel,
+) -> None:
+    def lower(label: dict[str, Any]) -> dict[str, Any]:
+        raw = raw_coa_from_label(label)
+        raw["batch_no"]["text"] = f" {raw['batch_no']['text'].lower()} "
+        return raw
+
+    _, review, invoice_id, _ = setup(
+        sessions, "pair_002", "coa_002", (raw_invoice_from_label, raw_order_from_label, lower)
+    )
+
+    assert [c["status"] for c in review.detail(DEFAULT_TENANT_ID, invoice_id).certificates] == [
+        "out_of_limit"
+    ]

@@ -69,3 +69,21 @@ def test_chunks_stay_small_enough_to_cite_precisely(raw_invoice_from_label: RawF
 
 def test_chunking_is_repeatable(raw_invoice_from_label: RawFromLabel) -> None:
     assert chunks(raw_invoice_from_label) == chunks(raw_invoice_from_label)
+
+
+def test_the_summary_leaves_out_what_was_not_read_and_cites_only_the_header(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = raw_invoice_from_label(LABEL)
+    raw["po_no"] = {"text": None, "block_ids": []}
+    parsed = cited(LABEL, "invoice", raw)
+    extraction = normalize_invoice(RawInvoice.model_validate(raw), parsed)
+    line_blocks = {
+        b for line in extraction.lines for _, f in [("x", line.batch_no)] for b in f.block_ids
+    }
+
+    summary = chunk_document("invoice", "invoice.pdf", parsed, extraction)[0]
+
+    assert "None" not in summary.text
+    assert not set(summary.block_ids) & line_blocks
+    assert len(summary.block_ids) <= 12

@@ -88,3 +88,29 @@ def test_expiry_before_manufacture_is_flagged(raw_coa_from_label: RawFromLabel) 
     raw["expiry"] = {"text": "01/20", "block_ids": []}
 
     assert ("coa.dates", ("mfg", "expiry")) in failed(extract(raw))
+
+
+@pytest.mark.parametrize(
+    ("conclusion", "outcome"),
+    [
+        ("The batch complies with the specification.", "failed"),
+        ("Complies (note: no impurities detected)", "failed"),
+        ("Complies with USP; not for injection", "failed"),
+        ("Product complies. Do not use after expiry.", "failed"),
+        ("Conforms", "failed"),
+        ("Meets specification", "failed"),
+        ("The batch does not comply with the specification.", "passed"),
+        ("Does not conform", "passed"),
+        ("See attached", "not_evaluated"),
+    ],
+)
+def test_a_claim_of_compliance_over_a_failed_result_is_read_in_any_usual_wording(
+    conclusion: str, outcome: str, raw_coa_from_label: RawFromLabel
+) -> None:
+    raw = raw_coa_from_label(label("coa_002"))  # its assay is out of limit
+    raw["conclusion"] = {"text": conclusion, "block_ids": []}
+
+    results = run_rules(COA_SPEC.rules, extract(raw))
+
+    (check,) = [r for r in results if r.rule_id == "coa.conclusion_consistent"]
+    assert check.outcome == outcome

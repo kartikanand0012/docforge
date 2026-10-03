@@ -16,7 +16,7 @@ from docforge.db.session import SessionFactory
 from docforge.parsing.cache import CachingParser
 from docforge.search.embeddings import FakeEmbedder
 from docforge.search.service import Mode, SearchService
-from fakes import signed_in
+from fakes import reprint, signed_in
 from worlds import World
 
 pytestmark = pytest.mark.integration
@@ -235,3 +235,65 @@ def test_in_hybrid_search_a_named_code_outweighs_a_merely_similar_document(
         if hit.document_id not in found:
             found.append(hit.document_id)
     assert {documents["pair_001/po"], documents["pair_001/invoice"]} <= set(found[:5])
+
+
+def test_only_the_newest_indexed_version_of_a_document_is_searched(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    search = SearchService(sessions, FakeEmbedder())
+    invoice_id = world.process("invoice")
+    search.index_document(DEFAULT_TENANT_ID, invoice_id)
+    old = world.invoice_raw["invoice_no"]["text"]
+
+    world.invoice_parsed = reprint(
+        world.invoice_parsed, world.invoice_raw, "invoice_no", "ZZQ-777777"
+    )
+    service = world.build()
+    version = service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=invoice_id, actor="api:x")
+    assert service.process(version.id) == "succeeded"
+    search.index_document(DEFAULT_TENANT_ID, invoice_id)
+
+    assert [h.document_id for h in search.search(DEFAULT_TENANT_ID, "ZZQ-777777", mode="keyword")][
+        :1
+    ] == [invoice_id]
+    assert search.search(DEFAULT_TENANT_ID, old, mode="keyword") == []
+
+
+@pytest.mark.parametrize(
+    ("query", "codes"),
+    [
+        ("invoices in 2026", []),
+        ("10x10 tablets", []),
+        ("500mg strips batch 32001", ["32001"]),
+        ("invoice NVM/26-27/32001", ["32001"]),
+        ("batch XGX944068", ["xgx944068"]),
+        ("GSTIN 24AABFN7754K1Z0", ["24aabfn7754k1z0"]),
+    ],
+)
+def test_only_distinctive_codes_count_as_codes(query: str, codes: list[str]) -> None:
+    from docforge.search.service import _codes, _words
+
+    assert _codes(_words(query)) == codes
+
+
+def test_searches_are_limited_per_caller_and_a_missing_embedding_is_unavailable_not_an_error(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], sessions: SessionFactory
+) -> None:
+    from docforge.search.embeddings import RecordingEmbedder
+
+    _, search, _, _ = indexed
+    limited = TestClient(
+        signed_in(create_app(None, search=search, searches_per_minute=3), role="integrator")
+    )
+    statuses = [limited.get("/v1/search", params={"q": "invoice"}).status_code for _ in range(4)]
+    replay_only = SearchService(sessions, RecordingEmbedder(Path("/nonexistent"), None, model="m"))
+    unavailable = TestClient(
+        signed_in(create_app(None, search=replay_only), role="integrator"),
+        raise_server_exceptions=False,
+    ).get("/v1/search", params={"q": "never recorded", "mode": "vector"})
+
+    assert statuses == [200, 200, 200, 429]
+    assert unavailable.status_code == 503

@@ -73,3 +73,22 @@ def test_a_result_is_checked_against_its_specification(
     spec: str, result: str, outcome: str
 ) -> None:
     assert check_result(spec, result) == outcome
+
+
+@pytest.mark.parametrize(
+    ("spec", "result"),
+    [
+        ("NLT 95.0 % NMT 105.0 %", "110 %"),  # two limits: never read as the first alone
+        ("NMT 2.0 % NLT 1 %", "0.1 %"),
+        ("NLT 98,5 %", "98.2 %"),  # a decimal comma
+        ("NLT 1 000 ppm", "5 ppm"),
+        ("NMT 1.0 %±1", "0.5 %"),
+        ("NMT 0.5 % of label", "0.4 %"),
+        ("NMT 0.1 % each, NMT 0.3 % total", "0.25 %"),
+    ],
+)
+def test_a_specification_with_more_than_one_reading_is_not_checked_on_a_guess(
+    spec: str, result: str
+) -> None:
+    """Anything not read in full is for a person, never a pass on part of it."""
+    assert check_result(spec, result) == "not_evaluated"
