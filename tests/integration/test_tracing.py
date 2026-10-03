@@ -18,7 +18,7 @@ from docforge.parsing.cache import CachingParser
 from docforge.search.embeddings import FakeEmbedder
 from docforge.search.service import SearchService
 from docforge.telemetry import set_prices
-from fakes import ScriptedProvider
+from fakes import ScriptedProvider, signed_in
 from tracing import EXPORTER
 from worlds import World
 
@@ -176,3 +176,40 @@ def test_a_malformed_model_reply_does_not_reach_a_span(
     assert (by_name(spans())["pipeline.extract"].attributes or {})["docforge.error"] == (
         "ExtractionError"
     )
+
+
+def test_a_request_that_fails_inside_still_has_its_status_on_the_span(
+    sessions: SessionFactory, spans: Callable[[], list[ReadableSpan]]
+) -> None:
+    app = signed_in(create_app(None, search=SearchService(sessions, _FailingEmbedder())))
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.get("/v1/search", params={"q": "secret-question"})
+
+    assert response.status_code == 500
+    request = by_name(spans())["GET /v1/search"]
+    assert (request.attributes or {})["http.response.status_code"] == 500
+    assert (request.attributes or {})["docforge.error"] == "RuntimeError"
+    assert "secret-question" not in everything_on(spans())
+
+
+def test_a_document_that_fails_has_its_outcome_on_the_span(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+    spans: Callable[[], list[ReadableSpan]],
+) -> None:
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    world.invoice_raw = {"lines": "not a list"}  # a reply that does not fit the schema
+    service = world.build()
+    ingested = service.ingest(
+        tenant_id=DEFAULT_TENANT_ID, doc_type="invoice", filename="i.pdf",
+        data=world.invoice_pdf, actor="t",
+    )  # fmt: skip
+    assert ingested.version is not None
+
+    outcome = service.process(ingested.version.id)
+
+    root = by_name(spans())["document.process"]
+    assert (root.attributes or {})["docforge.outcome"] == outcome == "failed"
+    assert root.status.status_code.name == "ERROR"

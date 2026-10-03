@@ -151,3 +151,15 @@ def test_the_command_exits_by_the_worst_alert(
     assert main(["check", "--database-url", url]) == 2
     out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
     assert out["status"] == "critical"
+
+
+def test_an_unreachable_database_is_critical_not_a_warning(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    url = "postgresql+psycopg://nobody:wrong@127.0.0.1:1/none"
+
+    assert main(["check", "--database-url", url]) == 2
+    out = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert out["status"] == "critical"
+    assert out["alerts"][0]["name"] == "ops_unreachable"
+    assert "wrong" not in json.dumps(out)  # no credentials in the report

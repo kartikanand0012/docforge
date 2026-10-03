@@ -343,3 +343,36 @@ def test_identical_chunks_in_two_documents_come_back_in_the_same_order_every_tim
     pairs = [h.document_id for h in hits if h.text == hits[0].text]
 
     assert pairs[:2] == [copy, invoice_id]
+
+
+def test_indexing_an_already_indexed_version_repairs_a_missing_pointer(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], owner_engine: Engine
+) -> None:
+    """Old code running just after the migration indexes without setting the pointer; the
+    next indexing of that document must put it right."""
+    world, search, invoice_id, _ = indexed
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE documents SET indexed_version_id = NULL WHERE id = :d"), {"d": invoice_id}
+        )
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+    assert search.search(DEFAULT_TENANT_ID, batch, mode="keyword") == []
+
+    assert search.index_document(DEFAULT_TENANT_ID, invoice_id) == 0
+    assert search.search(DEFAULT_TENANT_ID, batch, mode="keyword")
+
+
+def test_a_pointer_to_another_documents_version_is_refused(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], owner_engine: Engine
+) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    _, _, invoice_id, order_id = indexed
+    with pytest.raises(IntegrityError), owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE documents SET indexed_version_id = "
+                "(SELECT indexed_version_id FROM documents WHERE id = :other) WHERE id = :d"
+            ),
+            {"other": order_id, "d": invoice_id},
+        )

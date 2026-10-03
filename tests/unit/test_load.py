@@ -72,3 +72,64 @@ def test_a_run_reports_every_phase_and_counts_failed_uploads() -> None:
     for kind in ("upload", "processed", "search.keyword", "search.hybrid", "review.queue"):
         assert summary["requests"][kind]["count"] > 0, kind
     assert summary["concurrency"] == 3
+
+
+def test_a_kind_of_request_with_no_successes_has_no_percentiles() -> None:
+    summary = summarise([Sample("upload", 500, 5.0), Sample("upload", 0, 7.0)])["upload"]
+
+    assert summary.errors == 2
+    assert summary.p50_ms is None and summary.p95_ms is None and summary.max_ms is None
+
+
+def test_few_samples_report_counts_but_no_tail_percentiles() -> None:
+    summary = summarise([Sample("review.queue", 200, float(ms)) for ms in range(5)])["review.queue"]
+
+    assert summary.count == 5 and summary.p50_ms is not None
+    assert summary.p95_ms is None and summary.p99_ms is None  # fewer than 20: not meaningful
+
+
+def test_a_network_error_while_waiting_does_not_end_the_run() -> None:
+    failures = {"left": 2}
+    inner = fake_api()
+
+    def flaky(request: httpx.Request) -> httpx.Response:
+        polling = request.method == "GET" and request.url.path.startswith("/v1/documents/")
+        if polling and failures["left"]:
+            failures["left"] -= 1
+            raise httpx.ConnectError("refused", request=request)
+        return inner.handle_request(request)
+
+    async def go() -> object:
+        transport = httpx.MockTransport(flaky)
+        async with httpx.AsyncClient(transport=transport, base_url="http://api") as client:
+            return await run_load(
+                client, [Tenant("dfk_a", [("invoice", b"%PDF-a")])], concurrency=1,
+                questions=[], poll_seconds=0.0,
+            )  # fmt: skip
+
+    report = asyncio.run(go())
+    assert report.documents.processed == 1  # type: ignore[attr-defined]
+    assert report.replay_documents_per_minute >= 0  # type: ignore[attr-defined]
+
+
+def test_the_run_fails_when_anything_failed() -> None:
+    from docforge.load import Documents, LoadReport, run_failed
+
+    def report(**errors: int) -> LoadReport:
+        return LoadReport(
+            concurrency=1, tenants=1, wall_seconds=1.0, environment={},
+            documents=Documents(uploaded=2, processed=2, failed=0, not_finished=0),
+            replay_documents_per_minute=1.0,
+            requests=summarise([Sample("upload", 500 if errors else 202, 1.0)]),
+        )  # fmt: skip
+
+    assert not run_failed(report(), expected_uploads=2)
+    assert run_failed(report(), expected_uploads=3)  # an upload never got through
+    assert run_failed(report(upload=1), expected_uploads=2)
+
+
+def test_the_environment_is_recorded() -> None:
+    from docforge.load import environment
+
+    found = environment()
+    assert {"git_sha", "python", "platform", "cpus"} <= set(found)

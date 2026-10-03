@@ -94,3 +94,59 @@ def test_the_command_exits_non_zero_on_a_failure(
 
     assert main(["--reports", str(reports), "--gate", str(GATE)]) == 1
     assert "FAIL" in capsys.readouterr().out
+
+
+def test_a_boolean_is_not_a_number_to_the_gate(reports: Path) -> None:
+    worsen(reports, "coa", ["summary", "clean_flagged"], False)
+
+    failed = [r for r in check_gate(reports, load_gate(GATE)) if not r.passed]
+
+    assert any("clean_flagged" in r.label for r in failed)
+
+
+def test_the_dataset_model_and_prompt_are_pinned(reports: Path) -> None:
+    worsen(reports, "invoice", ["summary", "documents"], 10)
+    worsen(reports, "invoice", ["prompt_version"], "invoice-v2")
+
+    failed = {r.label.split(" ")[1] for r in check_gate(reports, load_gate(GATE)) if not r.passed}
+
+    assert {"summary.documents", "prompt_version"} <= failed
+
+
+def test_a_metric_worse_than_the_base_branch_fails_even_above_its_floor(reports: Path) -> None:
+    from docforge.evals.gate import compare_with_base
+
+    base = reports.parent / "base"
+    shutil.copytree(reports, base)
+    worsen(base, "invoice", ["summary", "citations", "accuracy"], 0.999)
+
+    worse = compare_with_base(reports, base, load_gate(GATE))
+
+    assert [r.label for r in worse if not r.passed] == [
+        "invoice summary.citations.accuracy no worse than base 0.999"
+    ]
+    assert all(r.passed for r in compare_with_base(reports, reports, load_gate(GATE)))
+
+
+def test_a_loosened_floor_is_named(tmp_path: Path) -> None:
+    from docforge.evals.gate import loosened
+
+    base = json.loads(GATE.read_text())
+    changed = json.loads(GATE.read_text())
+    for check in changed:
+        if check["path"] == "summary.fields.accuracy" and check["report"] == "invoice":
+            check["value"] = 0.9
+    (tmp_path / "base.json").write_text(json.dumps(base))
+    (tmp_path / "new.json").write_text(json.dumps(changed))
+
+    found = loosened(load_gate(tmp_path / "new.json"), load_gate(tmp_path / "base.json"))
+
+    assert found == ["invoice summary.fields.accuracy: >= 0.99 -> >= 0.9"]
+
+
+def test_the_held_out_hard_slice_and_field_classes_are_gated() -> None:
+    paths = {(c.report, c.path) for c in load_gate(GATE)}
+
+    assert ("search_heldout", "modes.hybrid.by_kind.ocr_code.recall_at_5") in paths
+    assert ("invoice", "summary.by_class.date.accuracy") in paths
+    assert ("invoice", "summary.fields.wrong") in paths

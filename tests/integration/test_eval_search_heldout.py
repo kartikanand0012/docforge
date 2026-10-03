@@ -75,7 +75,7 @@ def test_a_small_run_scores_by_rank_and_finds_nothing_across_tenants(
     )
 
     for mode in report.modes.values():
-        assert 0.0 <= mode.recall_at_1 <= mode.recall_at_5 <= 1.0
+        assert 0.0 <= mode.hit_at_1 <= 1.0 and 0.0 <= mode.recall_at_5 <= 1.0
         assert 0.0 <= mode.mrr <= 1.0
         assert 0.0 <= mode.abstained_when_no_answer <= 1.0
         assert mode.cross_tenant_hits == 0
