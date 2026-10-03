@@ -1,0 +1,39 @@
+name: Images
+
+# Builds the API/worker and web images for arm64 and pushes them to ECR, tagged with the commit.
+# Manual: the demo is redeployed deliberately (docs/runbook.md). Needs the AWS_DEPLOY_ROLE_ARN
+# secret and the AWS_REGION variable (from `terraform output`).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # to assume the deploy role through GitHub's OIDC provider
+
+jobs:
+  push:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+
+      - name: Build and push
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          TAG: ${{ github.sha }}
+        run: |
+          docker build -t "$REGISTRY/docforge-app:$TAG" .
+          docker build -t "$REGISTRY/docforge-web:$TAG" web
+          docker push "$REGISTRY/docforge-app:$TAG"
+          docker push "$REGISTRY/docforge-web:$TAG"
+          echo "Pushed $TAG. Next: terraform apply -var image_tag=$TAG, then the runbook's redeploy." >> "$GITHUB_STEP_SUMMARY"
