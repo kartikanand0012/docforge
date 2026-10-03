@@ -9,13 +9,16 @@ import json
 import math
 import os
 import re
+import time
 from pathlib import Path
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
 Task = Literal["document", "query"]
 DIMENSIONS = 768
 _GEMINI_TASKS = {"document": "RETRIEVAL_DOCUMENT", "query": "RETRIEVAL_QUERY"}
-_BATCH = 100
+_BATCH = 50
+_RETRIES = 20
+_MAX_WAIT = 70.0
 
 
 class EmbeddingMissing(LookupError):
@@ -66,16 +69,40 @@ class GeminiEmbedder:
 
         out: list[list[float]] = []
         for start in range(0, len(texts), _BATCH):
-            response = self._client.models.embed_content(
-                model=self.model,
-                contents=texts[start : start + _BATCH],  # type: ignore[arg-type]
-                config=types.EmbedContentConfig(
+            response = self._call(
+                texts[start : start + _BATCH],
+                types.EmbedContentConfig(
                     output_dimensionality=self.dimensions, task_type=_GEMINI_TASKS[task]
                 ),
             )
             # Shortened Gemini embeddings are not unit length; cosine distance wants them so.
             out += [_unit(list(e.values or [])) for e in response.embeddings or []]
         return out
+
+    def _call(self, texts: list[str], config: object) -> Any:
+        """One request; a per-minute quota is waited out as long as the server asks."""
+        from google.genai import errors
+
+        for _ in range(_RETRIES):
+            try:
+                return self._client.models.embed_content(
+                    model=self.model,
+                    contents=texts,  # type: ignore[arg-type]
+                    config=config,  # type: ignore[arg-type]
+                )
+            except errors.ClientError as error:
+                if error.code != 429:
+                    raise
+                time.sleep(_retry_delay(error))
+        raise RuntimeError("the embedding quota did not recover")
+
+
+def _retry_delay(error: Any) -> float:
+    for detail in (getattr(error, "details", None) or {}).get("error", {}).get("details", []):
+        delay = str(detail.get("retryDelay", ""))
+        if delay.endswith("s"):
+            return min(float(delay[:-1]) + 1.0, _MAX_WAIT)
+    return _MAX_WAIT
 
 
 class RecordingEmbedder:

@@ -53,3 +53,51 @@ def test_a_query_and_a_document_are_different_recordings(tmp_path: Path) -> None
 
     with pytest.raises(EmbeddingMissing):
         RecordingEmbedder(tmp_path, None, model="fake").embed(["alpha"], "query")
+
+
+def test_a_per_minute_quota_is_waited_out_as_the_server_says(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from google.genai import errors
+
+    from docforge.search import embeddings
+
+    waits: list[float] = []
+    monkeypatch.setattr("docforge.search.embeddings.time.sleep", waits.append)
+
+    class Response:
+        def __init__(self, n: int) -> None:
+            self.embeddings = [type("E", (), {"values": [1.0, 0.0]})() for _ in range(n)]
+
+    class Models:
+        calls = 0
+
+        def embed_content(self, **kwargs: object) -> Response:
+            Models.calls += 1
+            if Models.calls == 1:
+                raise errors.ClientError(
+                    429,
+                    {
+                        "error": {
+                            "code": 429,
+                            "message": "quota",
+                            "status": "RESOURCE_EXHAUSTED",
+                            "details": [
+                                {
+                                    "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                                    "retryDelay": "32s",
+                                }
+                            ],
+                        }
+                    },
+                    None,
+                )
+            return Response(len(kwargs["contents"]))  # type: ignore[arg-type]
+
+    embedder = embeddings.GeminiEmbedder.__new__(embeddings.GeminiEmbedder)
+    embedder.model, embedder.dimensions = "gemini-embedding-001", 2
+    embedder._client = type("C", (), {"models": Models()})()
+
+    vectors = embedder.embed(["a", "b"], "document")
+
+    assert len(vectors) == 2 and waits == [33.0]
