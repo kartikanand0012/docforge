@@ -167,3 +167,21 @@ def test_production_refuses_webhooks_to_local_addresses(monkeypatch: pytest.Monk
 
     with pytest.raises(ValueError, match="WEBHOOK_ALLOW_LOCAL"):
         make_settings()
+
+
+def test_production_on_aws_uses_the_instance_role_for_s3(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No S3 endpoint means AWS itself: the credentials come from the instance's role, so
+    there is no secret to set and the local default is not in use."""
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("S3_ENDPOINT_URL", "")
+    monkeypatch.setenv("S3_REGION", "ap-south-1")
+
+    settings = make_settings()
+
+    assert settings.s3_endpoint_url is None
+    assert settings.s3_region == "ap-south-1"
