@@ -16,6 +16,7 @@ from docforge.evals.run import format_report, record_pipeline, replay_pipeline, 
 from docforge.evals.scans import format_scan_report, run_scan_eval
 from docforge.evals.scoring import DocumentScore
 from docforge.evals.search import format_search_report, run_search_eval
+from docforge.evals.search_heldout import format_heldout_report, run_heldout_eval
 from docforge.evals.trust import format_trust_report, run_trust_eval, trust_pipelines
 from docforge.extraction.coa import COA_SPEC
 from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
@@ -38,7 +39,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     parser = argparse.ArgumentParser(prog="python -m docforge.evals", description=__doc__)
     parser.add_argument(
-        "--suite", choices=("extraction", "trust", "scans", "coa", "search"), default="extraction"
+        "--suite",
+        choices=("extraction", "trust", "scans", "coa", "search", "search-heldout"),
+        default="extraction",
     )
     parser.add_argument("--mode", choices=("replay", "record"), default="replay")
     parser.add_argument("--fixtures", type=Path, default=Path("tests/fixtures/synthetic"))
@@ -56,11 +59,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "scans": "scans",
         "coa": "coa",
         "search": "search",
+        "search-heldout": "search_heldout",
     }
     out = args.out or Path(f"evals/baselines/{names[args.suite]}.json")
     if args.mode == "record" and settings.gemini_api_key is None:
         parser.error("record mode needs GEMINI_API_KEY")
-    if args.suite == "search":
+    if args.suite in ("search", "search-heldout"):
         secret = settings.gemini_api_key if args.mode == "record" else None
         return _search(args, out, settings.embedding_model, secret)
     if args.suite == "coa":
@@ -133,13 +137,18 @@ def _search(args: argparse.Namespace, out: Path, model: str, secret: Any) -> int
     live = GeminiEmbedder(model, secret.get_secret_value()) if secret is not None else None
     embedder = RecordingEmbedder(args.recordings / "embeddings", live, model=model)
     try:
-        report = run_search_eval(args.fixtures, args.coa, args.recordings, embedder)
+        if args.suite == "search-heldout":
+            heldout = run_heldout_eval(args.fixtures, args.coa, args.recordings, embedder)
+            body, summary = heldout.model_dump_json(indent=2), format_heldout_report(heldout)
+        else:
+            report = run_search_eval(args.fixtures, args.coa, args.recordings, embedder)
+            body, summary = report.model_dump_json(indent=2), format_search_report(report)
     except (EmbeddingMissing, ParseError, LLMError) as error:
         print(f"Eval failed: {error}", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    print(format_search_report(report))
+    out.write_text(body + "\n", encoding="utf-8")
+    print(summary)
     print(f"Report written to {out}")
     return 0
 

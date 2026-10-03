@@ -15,6 +15,9 @@ import json
 import math
 import re
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -145,7 +148,16 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 20) -> list[Questio
     return questions
 
 
-def run_search_eval(
+@dataclass(frozen=True)
+class Corpus:
+    search: SearchService
+    tenants: dict[str, uuid.UUID]  # a, b, and "all" (every document, for the unfiltered run)
+    keys: dict[uuid.UUID, tuple[str, str]]  # document id -> (key, tenant name)
+    documents: int
+
+
+@contextmanager
+def indexed_corpus(
     synthetic: Path,
     coa: Path,
     recordings: Path,
@@ -153,8 +165,9 @@ def run_search_eval(
     *,
     pairs: int = 20,
     database_url: Any = None,
-) -> SearchReport:
-    questions = build_questions(synthetic, coa, pairs)
+) -> Iterator[Corpus]:
+    """The recorded invoices, orders and certificates, processed and indexed through the real
+    services in two organisations (and all of them in a third), in a database of their own."""
     model = get_settings().gemini_model
     with temporary_database("docforge_search_eval", database_url) as (owner_url, app_url):
         owner = create_engine(owner_url)
@@ -212,6 +225,31 @@ def run_search_eval(
                     service.process(ingested.version.id)
                     search.index_document(tenants[name], ingested.document.id)
                     keys[ingested.document.id] = (key, name)
+        try:
+            yield Corpus(search, tenants, keys, documents)
+        finally:
+            engine.dispose()
+
+
+def run_search_eval(
+    synthetic: Path,
+    coa: Path,
+    recordings: Path,
+    embedder: Embedder,
+    *,
+    pairs: int = 20,
+    database_url: Any = None,
+) -> SearchReport:
+    questions = build_questions(synthetic, coa, pairs)
+    with indexed_corpus(
+        synthetic, coa, recordings, embedder, pairs=pairs, database_url=database_url
+    ) as corpus:
+        search, tenants, keys, documents = (
+            corpus.search,
+            corpus.tenants,
+            corpus.keys,
+            corpus.documents,
+        )
 
         def ranked(tenant: str, question: Question, mode: Mode) -> list[tuple[str, str]]:
             found: list[tuple[str, str]] = []
@@ -255,7 +293,6 @@ def run_search_eval(
                 missed=tuple(q for q, value in filtered.items() if value < 1),
                 found_instead={q: tops[q] for q, value in filtered.items() if value < 1},
             )
-        engine.dispose()
     return SearchReport(
         embedding_model=embedder.model, documents=documents, questions=len(questions), modes=modes
     )

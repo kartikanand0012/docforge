@@ -39,7 +39,7 @@ def test_the_gate_covers_every_report_and_the_tenant_leak_count() -> None:
     gate = load_gate(GATE)
     covered = {check.report for check in gate}
 
-    assert covered >= {"invoice", "multipage", "trust", "scans", "coa", "search"}
+    assert covered >= {"invoice", "multipage", "trust", "scans", "coa", "search", "search_heldout"}
     assert any("cross_tenant_hits" in check.path for check in gate)
     assert any("input_tokens" in check.path for check in gate), "cost must be gated too"
 

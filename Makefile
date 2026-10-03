@@ -71,6 +71,7 @@ eval: ## Re-run the invoice eval offline from recordings and rewrite the baselin
 	uv run python -m docforge.evals --suite scans --mode replay
 	uv run python -m docforge.evals --suite coa --mode replay
 	uv run python -m docforge.evals --suite search --mode replay
+	uv run python -m docforge.evals --suite search-heldout --mode replay
 
 gate: ## Check the eval reports against the floors in evals/gate.json (CI blocks on a failure)
 	uv run python -m docforge.evals.gate
@@ -85,3 +86,4 @@ eval-record: ## Run the eval live for anything not yet recorded (needs GEMINI_AP
 	uv run python -m docforge.evals --suite scans --mode record
 	uv run python -m docforge.evals --suite coa --mode record
 	uv run python -m docforge.evals --suite search --mode record
+	uv run python -m docforge.evals --suite search-heldout --mode record

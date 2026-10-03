@@ -9,13 +9,13 @@ import json
 from pathlib import Path
 
 import pytest
+
+from docforge.config import get_settings
 from docforge.evals.search_heldout import (
     HeldoutReport,
     build_heldout_questions,
     run_heldout_eval,
 )
-
-from docforge.config import get_settings
 from docforge.search.embeddings import FakeEmbedder, RecordingEmbedder
 
 pytestmark = pytest.mark.integration
