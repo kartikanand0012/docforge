@@ -225,12 +225,12 @@ class SearchService:
         if not chunk_ids:
             return []
         rows = {
-            chunk.id: (chunk, document)
-            for chunk, document in session.execute(
+            row.ChunkRow.id: (row.ChunkRow, row.Document)
+            for row in session.execute(
                 select(ChunkRow, Document)
                 .join(Document, Document.id == ChunkRow.document_id)
                 .where(ChunkRow.id.in_(chunk_ids))
-            ).tuples()
+            ).all()
         }
         versions = {chunk.document_version_id for chunk, _ in rows.values()}
         blocks: dict[uuid.UUID, dict[str, Any]] = {}
