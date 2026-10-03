@@ -14,8 +14,12 @@ from docforge.evals.scoring import (
     score_invoice,
     summarize,
 )
-from docforge.extraction.pipeline import ExtractionError, InvoicePipeline, PipelineResult
-from docforge.extraction.prompt import PROMPT_VERSION
+from docforge.extraction.pipeline import (
+    ExtractionError,
+    ExtractionPipeline,
+    InvoicePipeline,
+    PipelineResult,
+)
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMResponse
 from docforge.llm.gemini import GeminiProvider
@@ -78,7 +82,7 @@ def _percentile(values: list[float], fraction: float) -> float:
 
 def run_eval(
     fixtures: Path,
-    pipeline: InvoicePipeline,
+    pipeline: ExtractionPipeline[InvoiceExtraction],
     on_document: Callable[[DocumentScore], None] | None = None,
     on_result: Callable[[DocumentScore, PipelineResult[InvoiceExtraction] | None], None]
     | None = None,
@@ -127,7 +131,7 @@ def run_eval(
         # From the replies themselves, so a replayed run names the provider that produced them.
         provider=responses[0].provider if responses else pipeline.provider.name,
         model=pipeline.provider.model,
-        prompt_version=PROMPT_VERSION,
+        prompt_version=pipeline.spec.prompt_version,
         schema_version=SCHEMA_VERSION,
         summary=summarize(scores),
         usage=Usage(
