@@ -229,8 +229,10 @@ def test_tokens_are_stored_only_as_hashes(stack: Stack, owner_engine: Engine) ->
     with owner_engine.connect() as conn:
         stored = " ".join(str(row) for row in conn.execute(text("SELECT * FROM api_keys")))
         stored += " ".join(str(row) for row in conn.execute(text("SELECT * FROM sessions")))
-    assert key.split("_")[2] not in stored
-    assert session.split("_")[2] not in stored
+    # The secret part may itself contain "_": split twice at most, or a short fragment of it
+    # could turn up in the stored rows by chance.
+    assert key.split("_", 2)[2] not in stored
+    assert session.split("_", 2)[2] not in stored
 
 
 def test_the_admin_command_makes_organisations_and_keys(
