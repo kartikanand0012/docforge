@@ -1,0 +1,271 @@
+{
+  "embedding_model": "gemini-embedding-001",
+  "documents": 60,
+  "questions": 124,
+  "modes": {
+    "keyword": {
+      "recall_at_5_filtered": 0.9879,
+      "recall_at_5_unfiltered": 0.9839,
+      "cross_tenant_hits": 0,
+      "by_kind": {
+        "certificate": 0.9375,
+        "exact": 1.0,
+        "paraphrase": 1.0
+      },
+      "missed": [
+        "failed-related-substances-a",
+        "failed-related-substances-b"
+      ],
+      "found_instead": {
+        "failed-related-substances-a": [
+          "coa_004",
+          "coa_006",
+          "coa_002",
+          "coa_009",
+          "coa_001"
+        ],
+        "failed-related-substances-b": [
+          "coa_017",
+          "coa_016",
+          "coa_020",
+          "coa_015",
+          "coa_019"
+        ]
+      }
+    },
+    "vector": {
+      "recall_at_5_filtered": 0.871,
+      "recall_at_5_unfiltered": 0.8387,
+      "cross_tenant_hits": 0,
+      "by_kind": {
+        "certificate": 1.0,
+        "exact": 0.7333,
+        "paraphrase": 1.0
+      },
+      "missed": [
+        "pair_001-po-no",
+        "pair_002-po-no",
+        "pair_003-po-no",
+        "pair_004-po-no",
+        "pair_005-po-no",
+        "pair_006-po-no",
+        "pair_007-batch",
+        "pair_007-po-no",
+        "pair_008-batch",
+        "pair_008-po-no",
+        "pair_009-batch",
+        "pair_009-po-no",
+        "pair_010-batch",
+        "pair_010-po-no",
+        "pair_011-po-no",
+        "pair_012-po-no",
+        "pair_013-po-no",
+        "pair_014-batch",
+        "pair_014-po-no",
+        "pair_015-batch",
+        "pair_015-po-no",
+        "pair_016-po-no",
+        "pair_017-po-no",
+        "pair_018-po-no",
+        "pair_019-po-no",
+        "pair_020-po-no"
+      ],
+      "found_instead": {
+        "pair_001-po-no": [
+          "pair_001/purchase_order",
+          "pair_003/purchase_order",
+          "pair_007/purchase_order",
+          "pair_002/purchase_order",
+          "pair_006/purchase_order"
+        ],
+        "pair_002-po-no": [
+          "pair_005/purchase_order",
+          "pair_002/purchase_order",
+          "pair_006/purchase_order",
+          "pair_001/purchase_order",
+          "pair_007/purchase_order"
+        ],
+        "pair_003-po-no": [
+          "pair_003/purchase_order",
+          "pair_001/purchase_order",
+          "pair_009/purchase_order",
+          "pair_007/purchase_order",
+          "pair_008/purchase_order"
+        ],
+        "pair_004-po-no": [
+          "pair_009/purchase_order",
+          "pair_004/purchase_order",
+          "pair_010/purchase_order",
+          "pair_003/purchase_order",
+          "pair_008/purchase_order"
+        ],
+        "pair_005-po-no": [
+          "pair_005/purchase_order",
+          "pair_006/purchase_order",
+          "pair_002/purchase_order",
+          "pair_001/purchase_order",
+          "pair_009/purchase_order"
+        ],
+        "pair_006-po-no": [
+          "pair_005/purchase_order",
+          "pair_006/purchase_order",
+          "pair_002/purchase_order",
+          "pair_001/purchase_order",
+          "pair_009/purchase_order"
+        ],
+        "pair_007-batch": [
+          "pair_003/invoice",
+          "pair_004/invoice",
+          "pair_006/invoice",
+          "pair_002/invoice",
+          "pair_010/invoice"
+        ],
+        "pair_007-po-no": [
+          "pair_007/purchase_order",
+          "pair_001/purchase_order",
+          "pair_002/purchase_order",
+          "pair_006/purchase_order",
+          "pair_008/purchase_order"
+        ],
+        "pair_008-batch": [
+          "pair_002/invoice",
+          "pair_006/invoice",
+          "pair_004/invoice",
+          "pair_001/invoice",
+          "pair_010/invoice"
+        ],
+        "pair_008-po-no": [
+          "pair_008/purchase_order",
+          "pair_009/purchase_order",
+          "pair_003/purchase_order",
+          "pair_007/purchase_order",
+          "pair_001/purchase_order"
+        ],
+        "pair_009-batch": [
+          "pair_006/invoice",
+          "pair_002/invoice",
+          "pair_005/invoice",
+          "pair_007/invoice",
+          "pair_003/invoice"
+        ],
+        "pair_009-po-no": [
+          "pair_009/purchase_order",
+          "pair_010/purchase_order",
+          "pair_004/purchase_order",
+          "pair_003/purchase_order",
+          "pair_001/purchase_order"
+        ],
+        "pair_010-batch": [
+          "pair_009/invoice",
+          "pair_001/invoice",
+          "pair_006/invoice",
+          "pair_002/invoice",
+          "pair_003/invoice"
+        ],
+        "pair_010-po-no": [
+          "pair_009/purchase_order",
+          "pair_010/purchase_order",
+          "pair_004/purchase_order",
+          "pair_008/purchase_order",
+          "pair_003/purchase_order"
+        ],
+        "pair_011-po-no": [
+          "pair_011/purchase_order",
+          "pair_019/purchase_order",
+          "pair_013/purchase_order",
+          "pair_016/purchase_order",
+          "pair_014/purchase_order"
+        ],
+        "pair_012-po-no": [
+          "pair_012/purchase_order",
+          "pair_014/purchase_order",
+          "pair_019/purchase_order",
+          "pair_015/purchase_order",
+          "pair_018/purchase_order"
+        ],
+        "pair_013-po-no": [
+          "pair_013/purchase_order",
+          "pair_011/purchase_order",
+          "pair_015/purchase_order",
+          "pair_017/purchase_order",
+          "pair_019/purchase_order"
+        ],
+        "pair_014-batch": [
+          "pair_020/invoice",
+          "pair_013/invoice",
+          "pair_018/invoice",
+          "pair_012/invoice",
+          "pair_016/invoice"
+        ],
+        "pair_014-po-no": [
+          "pair_014/purchase_order",
+          "pair_012/purchase_order",
+          "pair_015/purchase_order",
+          "pair_019/purchase_order",
+          "pair_011/purchase_order"
+        ],
+        "pair_015-batch": [
+          "pair_013/invoice",
+          "pair_020/invoice",
+          "pair_014/invoice",
+          "pair_018/invoice",
+          "pair_011/invoice"
+        ],
+        "pair_015-po-no": [
+          "pair_015/purchase_order",
+          "pair_018/purchase_order",
+          "pair_017/purchase_order",
+          "pair_019/purchase_order",
+          "pair_013/purchase_order"
+        ],
+        "pair_016-po-no": [
+          "pair_017/purchase_order",
+          "pair_016/purchase_order",
+          "pair_011/purchase_order",
+          "pair_013/purchase_order",
+          "pair_015/purchase_order"
+        ],
+        "pair_017-po-no": [
+          "pair_017/purchase_order",
+          "pair_016/purchase_order",
+          "pair_015/purchase_order",
+          "pair_019/purchase_order",
+          "pair_013/purchase_order"
+        ],
+        "pair_018-po-no": [
+          "pair_015/purchase_order",
+          "pair_018/purchase_order",
+          "pair_016/purchase_order",
+          "pair_019/purchase_order",
+          "pair_014/purchase_order"
+        ],
+        "pair_019-po-no": [
+          "pair_019/purchase_order",
+          "pair_011/purchase_order",
+          "pair_015/purchase_order",
+          "pair_017/purchase_order",
+          "pair_012/purchase_order"
+        ],
+        "pair_020-po-no": [
+          "pair_020/purchase_order",
+          "pair_017/purchase_order",
+          "pair_019/purchase_order",
+          "pair_011/purchase_order",
+          "pair_015/purchase_order"
+        ]
+      }
+    },
+    "hybrid": {
+      "recall_at_5_filtered": 1.0,
+      "recall_at_5_unfiltered": 0.996,
+      "cross_tenant_hits": 0,
+      "by_kind": {
+        "certificate": 1.0,
+        "exact": 1.0,
+        "paraphrase": 1.0
+      },
+      "missed": [],
+      "found_instead": {}
+    }
+  }
+}

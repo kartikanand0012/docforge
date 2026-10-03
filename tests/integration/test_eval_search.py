@@ -41,3 +41,22 @@ def test_the_eval_reports_recall_per_mode_and_no_leak_across_tenants(
     assert report.modes["keyword"].by_kind["exact"] == 1.0  # numbers are found by their words
     assert report.documents == 6 and report.questions > 0
     assert "recall@5" in format_search_report(report)
+
+
+def test_the_committed_search_report_is_reproduced_offline_and_holds_its_floors(
+    empty_database_url: object,
+) -> None:
+    from docforge.evals.search import SearchReport
+    from docforge.search.embeddings import RecordingEmbedder
+
+    report = SearchReport.model_validate_json(
+        (REPO / "evals" / "baselines" / "search.json").read_text(encoding="utf-8")
+    )
+    embedder = RecordingEmbedder(RECORDED / "embeddings", None, model=report.embedding_model)
+
+    replayed = run_search_eval(SYNTHETIC, COA, RECORDED, embedder, database_url=empty_database_url)
+
+    assert replayed == report
+    assert all(mode.cross_tenant_hits == 0 for mode in report.modes.values())
+    assert report.modes["hybrid"].recall_at_5_filtered >= 0.95
+    assert report.modes["hybrid"].recall_at_5_unfiltered >= 0.95

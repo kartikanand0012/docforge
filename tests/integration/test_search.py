@@ -150,3 +150,88 @@ def test_the_index_job_runs_through_the_real_queue(
 
     with owner_engine.connect() as conn:
         assert conn.execute(text("SELECT count(*) FROM chunks")).scalar_one() > 0
+
+
+def test_a_question_naming_a_code_finds_every_document_that_prints_it_first(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    """Generic words ("purchase order") must not outrank the code the question names."""
+    search = SearchService(sessions, FakeEmbedder())
+    documents: dict[str, uuid.UUID] = {}
+    for pair in [f"pair_{n:03d}" for n in range(1, 11)]:  # as many as one organisation in the eval
+        world = World(sessions, raw_invoice_from_label, raw_order_from_label, pair)
+        documents[f"{pair}/po"] = world.process("purchase_order")
+        documents[f"{pair}/invoice"] = world.process("invoice")
+        if pair == "pair_001":
+            po_no = world.order_raw["po_no"]["text"]
+    for document_id in documents.values():
+        search.index_document(DEFAULT_TENANT_ID, document_id)
+
+    hits = search.search(DEFAULT_TENANT_ID, f"purchase order {po_no}", mode="keyword")
+
+    first_two = {hit.document_id for hit in hits[:2]}
+    assert first_two == {documents["pair_001/po"], documents["pair_001/invoice"]}
+
+
+def test_a_number_written_with_slashes_is_found_by_its_parts(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    """Full-text parsing reads NVM/26-27/32001 as one path-like word; questions split it."""
+    search = SearchService(sessions, FakeEmbedder())
+    invoices: dict[str, uuid.UUID] = {}
+    numbers: dict[str, str] = {}
+    for pair in [f"pair_{n:03d}" for n in range(1, 6)]:
+        world = World(sessions, raw_invoice_from_label, raw_order_from_label, pair)
+        invoices[pair] = world.process("invoice")
+        numbers[pair] = world.invoice_raw["invoice_no"]["text"]
+        search.index_document(DEFAULT_TENANT_ID, invoices[pair])
+    assert "/" in numbers["pair_003"]
+
+    hits = search.search(DEFAULT_TENANT_ID, f"invoice number {numbers['pair_003']}", mode="keyword")
+
+    assert hits and hits[0].document_id == invoices["pair_003"]
+
+
+def test_in_hybrid_search_a_named_code_outweighs_a_merely_similar_document(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    from docforge.search.embeddings import FakeEmbedder as Base
+
+    class OrdersLookAlike(Base):
+        """Embeds every purchase order as the best match for any question about one."""
+
+        def embed(self, texts: list[str], task: str) -> list[list[float]]:
+            return super().embed(
+                [
+                    "purchase order"
+                    if "Purchase order" in t or "purchase order" in t.lower()[:40]
+                    else t
+                    for t in texts
+                ],
+                task,
+            )
+
+    search = SearchService(sessions, OrdersLookAlike())
+    documents: dict[str, uuid.UUID] = {}
+    for pair in [f"pair_{n:03d}" for n in range(1, 6)]:
+        world = World(sessions, raw_invoice_from_label, raw_order_from_label, pair)
+        documents[f"{pair}/po"] = world.process("purchase_order")
+        documents[f"{pair}/invoice"] = world.process("invoice")
+        if pair == "pair_001":
+            po_no = world.order_raw["po_no"]["text"]
+    for document_id in documents.values():
+        search.index_document(DEFAULT_TENANT_ID, document_id)
+
+    hits = search.search(DEFAULT_TENANT_ID, f"purchase order {po_no}", mode="hybrid")
+
+    found: list[uuid.UUID] = []
+    for hit in hits:
+        if hit.document_id not in found:
+            found.append(hit.document_id)
+    assert {documents["pair_001/po"], documents["pair_001/invoice"]} <= set(found[:5])

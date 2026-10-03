@@ -63,6 +63,8 @@ class ModeResult(_Model):
     cross_tenant_hits: int
     by_kind: dict[str, float]
     missed: tuple[str, ...]  # question ids with recall below 1, filtered
+    # For each missed question: the first five documents found instead.
+    found_instead: dict[str, tuple[str, ...]] = {}
 
 
 class SearchReport(_Model):
@@ -254,12 +256,14 @@ def run_search_eval(
         modes: dict[str, ModeResult] = {}
         for mode in MODES:
             filtered: dict[str, float] = {}
+            tops: dict[str, tuple[str, ...]] = {}
             unfiltered: list[float] = []
             leaks = 0
             for question in questions:
                 own = ranked(question.tenant, question, mode)
                 leaks += sum(name != question.tenant for _, name in own)
                 top = [key for key, _ in own][:_TOP]
+                tops[question.id] = tuple(top)
                 filtered[question.id] = sum(e in top for e in question.expected) / len(
                     question.expected
                 )
@@ -281,6 +285,7 @@ def run_search_eval(
                     for kind in kinds
                 },
                 missed=tuple(q for q, value in filtered.items() if value < 1),
+                found_instead={q: tops[q] for q, value in filtered.items() if value < 1},
             )
         engine.dispose()
     return SearchReport(

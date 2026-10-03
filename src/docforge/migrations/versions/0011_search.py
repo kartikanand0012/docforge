@@ -38,11 +38,17 @@ def upgrade() -> None:
         sa.Column("text", sa.Text, nullable=False),
         sa.Column("embedding_model", sa.Text, nullable=False),
         sa.Column("embedding", Vector(DIMENSIONS), nullable=False),
-        # 'simple': codes such as batch numbers and GSTINs are kept whole, not stemmed.
+        # 'simple': codes such as batch numbers and GSTINs are kept whole, not stemmed. The
+        # text is indexed twice, as written and with punctuation as spaces, because the parser
+        # keeps NVM/26-27/32001 as one path-like word and a question may name its parts.
         sa.Column(
             "tsv",
             postgresql.TSVECTOR,
-            sa.Computed("to_tsvector('simple', text)", persisted=True),
+            sa.Computed(
+                "to_tsvector('simple', text || ' ' || "
+                "regexp_replace(text, '[^0-9A-Za-z]+', ' ', 'g'))",
+                persisted=True,
+            ),
         ),
         sa.Column(
             "created_at",

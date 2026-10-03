@@ -37,6 +37,18 @@ _RRF_K = 60
 _WORD = re.compile(r"[0-9A-Za-z]+")
 
 
+def _words(query: str) -> list[str]:
+    return [word.lower() for word in _WORD.findall(query)]
+
+
+def _codes(words: list[str]) -> list[str]:
+    """Distinctive codes: a digit and at least four characters (32001, XGX944068). Shorter
+    numbers such as 26 are in every date and would match almost anything."""
+    return [
+        word for word in dict.fromkeys(words) if len(word) >= 4 and any(c.isdigit() for c in word)
+    ]
+
+
 @dataclass(frozen=True)
 class SearchHit:
     document_id: uuid.UUID
@@ -137,10 +149,13 @@ class SearchService:
             if mode in ("vector", "hybrid"):
                 vector = self._embedder.embed([query], "query")[0]
                 ranked.append(self._vector(session, tenant_id, vector, doc_type))
+            # A question naming a code is answered by the documents that print it: their
+            # words count double against documents that are only similar in meaning.
+            weights = [2.0 if mode == "hybrid" and _codes(_words(query)) else 1.0, 1.0]
             scores: dict[uuid.UUID, float] = {}
-            for ranking in ranked:
+            for weight, ranking in zip(weights, ranked, strict=False):
                 for rank, chunk_id in enumerate(ranking, start=1):
-                    scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (_RRF_K + rank)
+                    scores[chunk_id] = scores.get(chunk_id, 0.0) + weight / (_RRF_K + rank)
             # Ties keep the order in which the rankings produced them, which is repeatable.
             order = {
                 chunk_id: n
@@ -158,7 +173,7 @@ class SearchService:
     def _keyword(
         self, session: Session, tenant_id: uuid.UUID, query: str, doc_type: str | None
     ) -> list[uuid.UUID]:
-        words = [w.lower() for w in _WORD.findall(query)]
+        words = _words(query)
         if not words:
             return []
         # Any word may match; chunks matching more of them, more densely, rank higher.
@@ -166,11 +181,22 @@ class SearchService:
         # Normalised by length (flag 1), so the row that prints a value outranks a long
         # summary that only lists it.
         rank = func.ts_rank_cd(literal_column("chunks.tsv"), tsquery, 1)
+        # A word with a digit in it is a code (a batch, an invoice or order number): when the
+        # question names one, only chunks printing one of its codes are candidates, so generic
+        # words cannot outrank it. Full-text ranking has no notion of a rare word.
+        codes = _codes(words)
+        required = (
+            [literal_column("chunks.tsv").op("@@")(func.to_tsquery("simple", " | ".join(codes)))]
+            if codes
+            else []
+        )
         rows = session.execute(
             select(ChunkRow.id)
             .join(Document, Document.id == ChunkRow.document_id)
             .where(
-                *self._filters(tenant_id, doc_type), literal_column("chunks.tsv").op("@@")(tsquery)
+                *self._filters(tenant_id, doc_type),
+                literal_column("chunks.tsv").op("@@")(tsquery),
+                *required,
             )
             .order_by(rank.desc(), ChunkRow.text, ChunkRow.chunk_no)
             .limit(_CANDIDATES)
