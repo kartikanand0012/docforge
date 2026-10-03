@@ -13,7 +13,7 @@ from docforge.trust.limits import Limit, check_result, parse_limit, parse_result
         ("95.0 - 105.0 %", Limit(low=Decimal("95.0"), high=Decimal("105.0"), unit="%")),
         ("95.0% to 105.0%", Limit(low=Decimal("95.0"), high=Decimal("105.0"), unit="%")),
         ("Between 3.5 and 5.5", Limit(low=Decimal("3.5"), high=Decimal("5.5"), unit="")),
-        ("3.5 – 5.5", Limit(low=Decimal("3.5"), high=Decimal("5.5"), unit="")),
+        ("3.5 \u2013 5.5", Limit(low=Decimal("3.5"), high=Decimal("5.5"), unit="")),
         ("NMT 1.0 %", Limit(high=Decimal("1.0"), unit="%")),
         ("Not more than 0.5 EU/mL", Limit(high=Decimal("0.5"), unit="EU/mL")),
         ("≤ 5.0 % w/w", Limit(high=Decimal("5.0"), unit="% w/w")),
