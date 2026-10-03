@@ -216,3 +216,36 @@ def other_tenant(owner_engine: Engine) -> uuid.UUID:
             text("INSERT INTO tenants (name) VALUES ('other') RETURNING id")
         ).scalar_one()
     return tenant_id
+
+
+@pytest.fixture(scope="session")
+def raw_coa_from_label() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """What a perfect model would reply for a fixture certificate of analysis."""
+
+    def build(label: dict[str, Any]) -> dict[str, Any]:
+        printed = {box["path"]: box["text"] for box in label["document"]["boxes"]}
+
+        def field(path: str) -> dict[str, Any]:
+            return {"text": printed.get(path), "block_ids": []}
+
+        return {
+            **{
+                name: field(name)
+                for name in (
+                    "coa_no",
+                    "manufacturer",
+                    "product_name",
+                    "batch_no",
+                    "mfg",
+                    "expiry",
+                    "analysis_date",
+                    "conclusion",
+                )
+            },
+            "tests": [
+                {name: field(f"tests[{i}].{name}") for name in ("name", "specification", "result")}
+                for i in range(len(label["coa"]["tests"]))
+            ],
+        }
+
+    return build
