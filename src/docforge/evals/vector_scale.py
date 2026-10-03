@@ -99,6 +99,10 @@ def populate(
                     ),
                     {"t": tenant_id, "d": document_id},
                 ).scalar_one()
+                conn.execute(
+                    text("UPDATE documents SET indexed_version_id = :v WHERE id = :d"),
+                    {"v": version_id, "d": document_id},
+                )
                 for number, index in enumerate(mine[start : start + _PER_DOCUMENT]):
                     rows.append(
                         {

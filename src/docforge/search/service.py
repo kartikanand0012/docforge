@@ -12,9 +12,9 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import Select, func, literal_column, select, text
+from sqlalchemy import Select, func, literal_column, select, text, update
 from sqlalchemy.dialects import postgresql
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from docforge.db.models import ChunkRow, Document, DocumentVersion, Extraction, ParseOutput
 from docforge.db.session import SessionFactory
@@ -142,12 +142,13 @@ class SearchService:
                 ParsedDocument.model_validate(parse_output.data),
                 schema.model_validate(extraction.data),
             )
-            version_id = version.id
+            version_id, version_no = version.id, version.version_no
         vectors = self._embedder.embed([c.text for c in chunks], "document")
         with self._sessions.begin() as session:
-            # Two jobs for one version: the second waits here, then finds the chunks there.
+            # Two jobs for one document: the second waits here, then finds the chunks there
+            # (or indexes a newer version after the first has finished).
             session.execute(
-                select(func.pg_advisory_xact_lock(func.hashtext(f"index:{version_id}")))
+                select(func.pg_advisory_xact_lock(func.hashtext(f"index:{document_id}")))
             )
             if session.scalar(
                 select(func.count()).where(ChunkRow.document_version_id == version_id)
@@ -168,6 +169,20 @@ class SearchService:
                         embedding=vector,
                     )
                 )
+            # Search shows this version from now on, unless a newer one is indexed already.
+            newer = (
+                select(DocumentVersion.version_no)
+                .where(DocumentVersion.id == Document.indexed_version_id)
+                .scalar_subquery()
+            )
+            session.execute(
+                update(Document)
+                .where(
+                    Document.id == document_id,
+                    (Document.indexed_version_id.is_(None)) | (newer < version_no),
+                )
+                .values(indexed_version_id=version_id)
+            )
         return len(chunks)
 
     # Searching
@@ -229,22 +244,11 @@ class SearchService:
 
     def _filters(self, tenant_id: uuid.UUID, doc_type: str | None) -> list[Any]:
         # Only each document's newest indexed version: a reprocessed document's old text is
-        # not current, though its chunks are kept (the record is append-only).
-        indexed = aliased(ChunkRow)
-        newest = (
-            select(func.max(DocumentVersion.version_no))
-            .join(indexed, indexed.document_version_id == DocumentVersion.id)
-            .where(DocumentVersion.document_id == ChunkRow.document_id)
-            .correlate(ChunkRow)
-            .scalar_subquery()
-        )
-        current = select(DocumentVersion.id).where(
-            DocumentVersion.document_id == ChunkRow.document_id,
-            DocumentVersion.version_no == newest,
-        )
+        # not current, though its chunks are kept (the record is append-only). The document
+        # names that version, so this is part of the join every query makes.
         filters: list[Any] = [
             ChunkRow.tenant_id == tenant_id,
-            ChunkRow.document_version_id.in_(current.scalar_subquery()),
+            ChunkRow.document_version_id == Document.indexed_version_id,
         ]
         if doc_type is not None:
             filters.append(Document.doc_type == doc_type)

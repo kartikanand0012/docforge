@@ -68,6 +68,8 @@ class Document(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     page_count: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(Text, server_default="received")
+    # The version whose chunks search shows: the newest one indexed.
+    indexed_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = _created_at()
 
 

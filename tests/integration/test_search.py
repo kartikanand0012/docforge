@@ -333,6 +333,10 @@ def test_identical_chunks_in_two_documents_come_back_in_the_same_order_every_tim
             ),
             {"copy": copy, "version": version, "id": invoice_id},
         )
+        conn.execute(
+            text("UPDATE documents SET indexed_version_id = :version WHERE id = :copy"),
+            {"version": version, "copy": copy},
+        )
     batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
 
     hits = search.search(DEFAULT_TENANT_ID, batch, mode=mode, k=20)

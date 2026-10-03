@@ -24,6 +24,7 @@ def test_a_small_run_reports_latency_recall_and_no_cross_tenant_results(
     assert report.chunks == 600 and report.tenants == 3 and report.queries == 12
     assert 0 < report.latency_ms_p50 <= report.latency_ms_p95
     assert 0.0 <= report.recall_at_k_min <= report.recall_at_k_mean <= 1.0
+    assert report.recall_at_k_mean > 0.9  # every question finds its organisation's chunks
     assert report.cross_tenant_hits == 0
     assert isinstance(report.index_used, bool)
     assert report.plan  # the plan the query actually got, for the record
