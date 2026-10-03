@@ -12,8 +12,8 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import func, literal_column, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, literal_column, select, text
+from sqlalchemy.orm import Session, aliased
 
 from docforge.db.models import ChunkRow, Document, DocumentVersion, Extraction, ParseOutput
 from docforge.db.session import SessionFactory
@@ -34,6 +34,7 @@ _SCHEMAS: dict[str, type[BaseModel]] = {
 }
 _CANDIDATES = 50
 _RRF_K = 60
+_CACHE_SIZE = 256
 _WORD = re.compile(r"[0-9A-Za-z]+")
 
 
@@ -41,12 +42,21 @@ def _words(query: str) -> list[str]:
     return [word.lower() for word in _WORD.findall(query)]
 
 
+_STRENGTH_OR_PACK = re.compile(r"\d+(?:mg|mcg|ml|g|kg|iu|l|x\d+)")
+
+
 def _codes(words: list[str]) -> list[str]:
-    """Distinctive codes: a digit and at least four characters (32001, XGX944068). Shorter
-    numbers such as 26 are in every date and would match almost anything."""
-    return [
-        word for word in dict.fromkeys(words) if len(word) >= 4 and any(c.isdigit() for c in word)
-    ]
+    """Distinctive codes: letters with digits (XGX944068, a GSTIN), or five digits or more
+    (32001). Not years (2026), strengths (500mg) or pack sizes (10x10), which are everywhere."""
+    codes = []
+    for word in dict.fromkeys(words):
+        has_digit = any(c.isdigit() for c in word)
+        has_letter = any(c.isalpha() for c in word)
+        if _STRENGTH_OR_PACK.fullmatch(word):
+            continue
+        if (has_digit and has_letter and len(word) >= 4) or (word.isdigit() and len(word) >= 5):
+            codes.append(word)
+    return codes
 
 
 @dataclass(frozen=True)
@@ -65,6 +75,7 @@ class SearchService:
     def __init__(self, sessions: SessionFactory, embedder: Embedder) -> None:
         self._sessions = sessions
         self._embedder = embedder
+        self._cache: dict[str, list[float]] = {}
 
     # Indexing
 
@@ -113,6 +124,14 @@ class SearchService:
             version_id = version.id
         vectors = self._embedder.embed([c.text for c in chunks], "document")
         with self._sessions.begin() as session:
+            # Two jobs for one version: the second waits here, then finds the chunks there.
+            session.execute(
+                select(func.pg_advisory_xact_lock(func.hashtext(f"index:{version_id}")))
+            )
+            if session.scalar(
+                select(func.count()).where(ChunkRow.document_version_id == version_id)
+            ):
+                return 0
             for number, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True)):
                 session.add(
                     ChunkRow(
@@ -143,11 +162,12 @@ class SearchService:
         doc_type: str | None = None,
     ) -> list[SearchHit]:
         ranked: list[list[uuid.UUID]] = []
+        # Embedded before a connection is taken, so a slow embedding holds no database session.
+        vector = self._query_vector(query) if mode in ("vector", "hybrid") else None
         with self._sessions() as session:
             if mode in ("keyword", "hybrid"):
                 ranked.append(self._keyword(session, tenant_id, query, doc_type))
-            if mode in ("vector", "hybrid"):
-                vector = self._embedder.embed([query], "query")[0]
+            if vector is not None:
                 ranked.append(self._vector(session, tenant_id, vector, doc_type))
             # A question naming a code is answered by the documents that print it: their
             # words count double against documents that are only similar in meaning.
@@ -164,8 +184,35 @@ class SearchService:
             top = sorted(scores, key=lambda chunk_id: (-scores[chunk_id], order[chunk_id]))[:k]
             return self._hits(session, top, scores)
 
+    def _query_vector(self, query: str) -> list[float]:
+        """A question's vector; the most recent ones are kept, so a repeat costs no call."""
+        cached = self._cache.pop(query, None)
+        if cached is None:
+            cached = self._embedder.embed([query], "query")[0]
+        self._cache[query] = cached
+        while len(self._cache) > _CACHE_SIZE:
+            self._cache.pop(next(iter(self._cache)))
+        return cached
+
     def _filters(self, tenant_id: uuid.UUID, doc_type: str | None) -> list[Any]:
-        filters: list[Any] = [ChunkRow.tenant_id == tenant_id]
+        # Only each document's newest indexed version: a reprocessed document's old text is
+        # not current, though its chunks are kept (the record is append-only).
+        indexed = aliased(ChunkRow)
+        newest = (
+            select(func.max(DocumentVersion.version_no))
+            .join(indexed, indexed.document_version_id == DocumentVersion.id)
+            .where(DocumentVersion.document_id == ChunkRow.document_id)
+            .correlate(ChunkRow)
+            .scalar_subquery()
+        )
+        current = select(DocumentVersion.id).where(
+            DocumentVersion.document_id == ChunkRow.document_id,
+            DocumentVersion.version_no == newest,
+        )
+        filters: list[Any] = [
+            ChunkRow.tenant_id == tenant_id,
+            ChunkRow.document_version_id.in_(current.scalar_subquery()),
+        ]
         if doc_type is not None:
             filters.append(Document.doc_type == doc_type)
         return filters
@@ -206,6 +253,10 @@ class SearchService:
     def _vector(
         self, session: Session, tenant_id: uuid.UUID, vector: list[float], doc_type: str | None
     ) -> list[uuid.UUID]:
+        # When the approximate index is used, keep scanning until enough rows pass the tenant
+        # filter (pgvector 0.8), rather than filtering a fixed handful of nearest rows.
+        session.execute(text("SET LOCAL hnsw.iterative_scan = strict_order"))
+        session.execute(text("SET LOCAL hnsw.ef_search = 100"))
         rows = session.execute(
             select(ChunkRow.id)
             .join(Document, Document.id == ChunkRow.document_id)

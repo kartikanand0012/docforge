@@ -20,6 +20,7 @@ from docforge.parsing.base import Block, ParsedDocument
 from docforge.trust.verify import extracted_fields
 
 _TEXT_LIMIT = 800
+_SUMMARY_CITATIONS = 12
 
 
 @dataclass(frozen=True)
@@ -46,32 +47,48 @@ def _v(field: Any) -> Any:
     return getattr(field, "value", None)
 
 
+def _say(template: str, value: Any) -> str:
+    """`template` with the value filled in, or nothing when the value was not read."""
+    return "" if value in (None, "") else template.format(value)
+
+
+def _list(label: str, values: list[Any]) -> str:
+    read = [str(value) for value in values if value not in (None, "")]
+    return f" {label}: {', '.join(read)}." if read else ""
+
+
 def _summary(doc_type: str, filename: str, extraction: BaseModel) -> str:
+    """The document in words; a value that was not read is left out, not written as None."""
     e: Any = extraction
     if doc_type == "invoice":
         lines = list(e.lines)
         return (
-            f"Invoice {_v(e.invoice_no)} dated {_day(_v(e.invoice_date))} from "
-            f"{_v(e.seller.name)} (GSTIN {_v(e.seller.gstin)}) to {_v(e.buyer.name)} "
-            f"(GSTIN {_v(e.buyer.gstin)}), against purchase order {_v(e.po_no)}. "
-            f"Products: {', '.join(str(_v(line.product_name)) for line in lines)}. "
-            f"Batches: {', '.join(str(_v(line.batch_no)) for line in lines)}. "
-            f"Grand total {_v(e.totals.grand_total)}."
+            f"Invoice{_say(' {}', _v(e.invoice_no))}{_say(' dated {}', _day(_v(e.invoice_date)))}"
+            f"{_say(' from {}', _v(e.seller.name))}{_say(' (GSTIN {})', _v(e.seller.gstin))}"
+            f"{_say(' to {}', _v(e.buyer.name))}{_say(' (GSTIN {})', _v(e.buyer.gstin))}"
+            f"{_say(', against purchase order {}', _v(e.po_no))}."
+            f"{_list('Products', [_v(line.product_name) for line in lines])}"
+            f"{_list('Batches', [_v(line.batch_no) for line in lines])}"
+            f"{_say(' Grand total {}.', _v(e.totals.grand_total))}"
         )
     if doc_type == "purchase_order":
         return (
-            f"Purchase order {_v(e.po_no)} dated {_day(_v(e.po_date))} placed by "
-            f"{_v(e.buyer.name)} with {_v(e.supplier_name)}. "
-            f"Products: {', '.join(str(_v(line.product_name)) for line in e.lines)}."
+            f"Purchase order{_say(' {}', _v(e.po_no))}{_say(' dated {}', _day(_v(e.po_date)))}"
+            f"{_say(' placed by {}', _v(e.buyer.name))}{_say(' with {}', _v(e.supplier_name))}."
+            f"{_list('Products', [_v(line.product_name) for line in e.lines])}"
         )
     if doc_type == "coa":
         tests = "; ".join(
-            f"{_v(t.name)} {_v(t.result)} (limit {_v(t.specification)})" for t in e.tests
+            f"{_v(t.name)} {_v(t.result)}{_say(' (limit {})', _v(t.specification))}"
+            for t in e.tests
+            if _v(t.name) is not None and _v(t.result) is not None
         )
         return (
-            f"Certificate of analysis {_v(e.coa_no)} from {_v(e.manufacturer)} for "
-            f"{_v(e.product_name)} batch {_v(e.batch_no)}, manufactured {_month(_v(e.mfg))}, "
-            f"expiring {_month(_v(e.expiry))}. Tests: {tests}. Conclusion: {_v(e.conclusion)}"
+            f"Certificate of analysis{_say(' {}', _v(e.coa_no))}"
+            f"{_say(' from {}', _v(e.manufacturer))}{_say(' for {}', _v(e.product_name))}"
+            f"{_say(' batch {}', _v(e.batch_no))}{_say(', manufactured {}', _month(_v(e.mfg)))}"
+            f"{_say(', expiring {}', _month(_v(e.expiry)))}.{_say(' Tests: {}.', tests)}"
+            f"{_say(' Conclusion: {}', _v(e.conclusion))}"
         )
     return f"{doc_type.replace('_', ' ').capitalize()} {filename}."
 
@@ -79,13 +96,18 @@ def _summary(doc_type: str, filename: str, extraction: BaseModel) -> str:
 def chunk_document(
     doc_type: str, filename: str, parsed: ParsedDocument, extraction: BaseModel
 ) -> list[Chunk]:
+    # The summary cites the document's own header fields (numbers, parties, dates, totals),
+    # not every line: a hit on it should outline where the document says who and what.
     cited = tuple(
         dict.fromkeys(
-            block_id for _, field in extracted_fields(extraction) for block_id in field.block_ids
+            block_id
+            for path, field in extracted_fields(extraction)
+            if not path.startswith(("lines[", "tests[")) and "drug_licence" not in path
+            for block_id in field.block_ids
         )
     )
     known = {block.id: block for block in parsed.blocks}
-    summary_blocks = tuple(b for b in cited if b in known)[:50]
+    summary_blocks = tuple(b for b in cited if b in known)[:_SUMMARY_CITATIONS]
     first_page = known[summary_blocks[0]].page if summary_blocks else 1
     out = [Chunk("summary", first_page, summary_blocks, _summary(doc_type, filename, extraction))]
 

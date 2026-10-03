@@ -25,6 +25,10 @@ class EmbeddingMissing(LookupError):
     """Replay only, and this text was never recorded."""
 
 
+class EmbeddingUnavailable(RuntimeError):
+    """The embedding service is over its quota or not reachable."""
+
+
 class Embedder(Protocol):
     model: str
     dimensions: int
@@ -70,6 +74,7 @@ class GeminiEmbedder:
         out: list[list[float]] = []
         for start in range(0, len(texts), _BATCH):
             response = self._call(
+                task,
                 texts[start : start + _BATCH],
                 types.EmbedContentConfig(
                     output_dimensionality=self.dimensions, task_type=_GEMINI_TASKS[task]
@@ -79,11 +84,12 @@ class GeminiEmbedder:
             out += [_unit(list(e.values or [])) for e in response.embeddings or []]
         return out
 
-    def _call(self, texts: list[str], config: object) -> Any:
-        """One request; a per-minute quota is waited out as long as the server asks."""
+    def _call(self, task: str, texts: list[str], config: object) -> Any:
+        """One request; a per-minute quota is waited out as long as the server asks, for
+        indexing. A question someone is waiting on gets one short retry, then fails."""
         from google.genai import errors
 
-        for _ in range(_RETRIES):
+        for attempt in range(_RETRIES if task == "document" else 2):
             try:
                 return self._client.models.embed_content(
                     model=self.model,
@@ -91,9 +97,9 @@ class GeminiEmbedder:
                     config=config,  # type: ignore[arg-type]
                 )
             except errors.ClientError as error:
-                if error.code != 429:
-                    raise
-                time.sleep(_retry_delay(error))
+                if error.code != 429 or (task == "query" and attempt > 0):
+                    raise EmbeddingUnavailable("the embedding service is over its quota") from error
+                time.sleep(_retry_delay(error) if task == "document" else 2.0)
         raise RuntimeError("the embedding quota did not recover")
 
 

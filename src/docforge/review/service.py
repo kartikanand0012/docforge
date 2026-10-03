@@ -34,6 +34,7 @@ from docforge.db.models import (
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.documents import DocumentNotFound, EventSink, current_match, event_id
+from docforge.extraction.coa import CoaExtraction
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
@@ -193,6 +194,11 @@ class _State:
                 found.append(
                     f"the certificate for batch {certificate['batch_no']} "
                     "has results outside their limits"
+                )
+            elif certificate["status"] == "unverified":
+                found.append(
+                    f"the certificate for batch {certificate['batch_no']} "
+                    "could not be fully checked"
                 )
         return tuple(found)
 
@@ -659,7 +665,12 @@ class ReviewService:
             return None
         extraction, parse_output = row
         if extraction.raw is None:
-            schema = InvoiceExtraction if doc_type == "invoice" else PurchaseOrderExtraction
+            schemas: dict[str, type[BaseModel]] = {
+                "invoice": InvoiceExtraction,
+                "purchase_order": PurchaseOrderExtraction,
+                "coa": CoaExtraction,
+            }
+            schema = schemas[doc_type]
             return schema.model_validate(extraction.data)
         corrections = session.scalars(
             select(CorrectionRow)
@@ -758,8 +769,14 @@ class ReviewService:
         """For an invoice, the newest certificate of analysis on file for each billed batch."""
         if not isinstance(extraction, InvoiceExtraction) or "coa" not in self._specs:
             return ()
-        batches = sorted({line.batch_no.value for line in extraction.lines if line.batch_no.value})
-        if not batches:
+        # Batch numbers are compared without regard to case or surrounding spaces; the
+        # product must be the same too, since two makers can use the same batch number.
+        lines = {
+            _batch_key(line.batch_no.value): (line.batch_no.value, line.product_name.value)
+            for line in extraction.lines
+            if line.batch_no.value
+        }
+        if not lines:
             return ()
         newer = aliased(DocumentVersion)
         newest = (
@@ -774,28 +791,43 @@ class ReviewService:
             .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
             .where(
                 Document.tenant_id == document.tenant_id,
+                Extraction.tenant_id == document.tenant_id,
                 Document.doc_type == "coa",
                 DocumentVersion.version_no == newest,
-                BATCH_NUMBER.in_(batches),
+                func.upper(func.btrim(BATCH_NUMBER)).in_(list(lines)),
             )
             .order_by(DocumentVersion.created_at.desc())
         ).all()
         found: dict[str, dict[str, str]] = {}
         for coa_document, coa_version, batch in rows:
-            if batch in found:
+            key = _batch_key(batch)
+            if key in found:
                 continue  # the newest certificate for a batch counts
-            coa = self._effective(session, coa_version, "coa")
-            failed = coa is not None and any(
-                result.outcome == "failed"
-                for result in run_rules(self._specs["coa"].rules, coa)
-                if result.rule_id == "coa.result_within_limit"
+            effective = self._effective(session, coa_version, "coa")
+            coa = effective if isinstance(effective, CoaExtraction) else None
+            printed, product = lines[key]
+            if coa is not None and _product_key(coa.product_name.value) != _product_key(product):
+                continue  # the same batch number for another product
+            checks = (
+                []
+                if coa is None
+                else [
+                    result.outcome
+                    for result in run_rules(self._specs["coa"].rules, coa)
+                    if result.rule_id == "coa.result_within_limit"
+                ]
             )
-            found[batch] = {
-                "batch_no": batch,
+            status = (
+                "out_of_limit"
+                if "failed" in checks
+                else ("within_limits" if checks and set(checks) == {"passed"} else "unverified")
+            )
+            found[key] = {
+                "batch_no": printed or batch,
                 "document_id": str(coa_document),
-                "status": "out_of_limit" if failed else "within_limits",
+                "status": status,
             }
-        return tuple(found[batch] for batch in batches if batch in found)
+        return tuple(found[key] for key in sorted(lines) if key in found)
 
     @staticmethod
     def _detail(state: _State) -> ReviewDetail:
@@ -864,6 +896,14 @@ class ReviewService:
             superseded=state.superseded,
             certificates=state.certificates,
         )
+
+
+def _batch_key(batch: str | None) -> str:
+    return (batch or "").strip().upper()
+
+
+def _product_key(name: str | None) -> str:
+    return " ".join((name or "").lower().split())
 
 
 def _signed(

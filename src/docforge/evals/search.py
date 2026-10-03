@@ -157,15 +157,16 @@ def _database(database_url: URL | None) -> Iterator[tuple[URL, URL]]:
     settings = get_settings()
     owner = make_url(settings.migration_database_url.get_secret_value())
     temporary = database_url is None
-    url = owner.set(database=_EVAL_DATABASE) if database_url is None else make_url(database_url)
-    if temporary:
-        if owner.host not in {"127.0.0.1", "localhost", "::1"}:
-            raise RuntimeError("the search eval only runs against a local Postgres")
-        admin = create_engine(owner, isolation_level="AUTOCOMMIT")
-        with admin.connect() as conn:
-            conn.execute(text(f'DROP DATABASE IF EXISTS "{_EVAL_DATABASE}" WITH (FORCE)'))
-            conn.execute(text(f'CREATE DATABASE "{_EVAL_DATABASE}"'))
+    # A name of its own, so two runs at once (CI workers, a developer) never drop each other's.
+    name = f"{_EVAL_DATABASE}_{uuid.uuid4().hex[:12]}"
+    url = owner.set(database=name) if database_url is None else make_url(database_url)
+    if url.host not in {"127.0.0.1", "localhost", "::1"}:
+        raise RuntimeError("the search eval only runs against a local Postgres")
+    admin = create_engine(owner, isolation_level="AUTOCOMMIT")
     try:
+        if temporary:
+            with admin.connect() as conn:
+                conn.execute(text(f'CREATE DATABASE "{name}"'))
         command.upgrade(alembic_config(url), "head")
         app = make_url(settings.database_url.get_secret_value())
         ensure_app_login(owner, app)
@@ -173,8 +174,8 @@ def _database(database_url: URL | None) -> Iterator[tuple[URL, URL]]:
     finally:
         if temporary:
             with admin.connect() as conn:
-                conn.execute(text(f'DROP DATABASE IF EXISTS "{_EVAL_DATABASE}" WITH (FORCE)'))
-            admin.dispose()
+                conn.execute(text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        admin.dispose()
 
 
 def run_search_eval(

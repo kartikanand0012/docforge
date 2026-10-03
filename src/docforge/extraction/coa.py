@@ -6,6 +6,7 @@ result outside its limit, a conclusion that says the batch complies when a resul
 or a result that cannot be read against its specification, sends the certificate to review.
 """
 
+import re
 from collections.abc import Iterable
 from datetime import date
 from typing import Literal
@@ -120,6 +121,25 @@ def _result(rule_id: str, paths: tuple[str, ...], outcome: str, message: str) ->
     )
 
 
+_COMPLIES = re.compile(r"\b(complies|comply|conforms?|meets|passes)\b", re.IGNORECASE)
+_DOES_NOT = re.compile(
+    r"\b(?:does\s*not|do\s*not|doesn'?t|not|fails?\s+to|non-?)\s*"
+    r"(?:comply|complies|conform|conforms|meet|meets|pass|passes)\b|\bnon-?complian",
+    re.IGNORECASE,
+)
+
+
+def _claim(conclusion: str) -> bool | None:
+    """True if the conclusion says the batch complies, False if it says it does not, None if
+    it says neither. Negation counts only when it governs the verb: "Do not use after expiry"
+    beside "complies" is still a claim of compliance."""
+    if _DOES_NOT.search(conclusion):
+        return False
+    if _COMPLIES.search(conclusion):
+        return True
+    return None
+
+
 def coa_rules(coa: CoaExtraction) -> Iterable[RuleResult]:
     for path, value in (
         ("product_name", coa.product_name.value),
@@ -143,13 +163,14 @@ def coa_rules(coa: CoaExtraction) -> Iterable[RuleResult]:
             if outcome == "failed"
             else f"{name}: the result could not be checked against its specification.",
         )
-    conclusion = (coa.conclusion.value or "").lower()
-    claims = "complies" in conclusion and "not" not in conclusion
+    claim = _claim(coa.conclusion.value or "")
     yield _result(
         "coa.conclusion_consistent",
         ("conclusion",),
-        "failed" if claims and any_failed else "passed",
-        "The certificate says the batch complies, but a result is outside its limit.",
+        "not_evaluated" if claim is None else ("failed" if claim and any_failed else "passed"),
+        "The certificate says the batch complies, but a result is outside its limit."
+        if claim
+        else "The conclusion does not say whether the batch complies.",
     )
     made, expires = coa.mfg.value, coa.expiry.value
     yield _result(

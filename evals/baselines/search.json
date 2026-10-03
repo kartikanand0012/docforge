@@ -257,7 +257,7 @@
     },
     "hybrid": {
       "recall_at_5_filtered": 1.0,
-      "recall_at_5_unfiltered": 0.996,
+      "recall_at_5_unfiltered": 0.9919,
       "cross_tenant_hits": 0,
       "by_kind": {
         "certificate": 1.0,

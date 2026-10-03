@@ -20,8 +20,12 @@ _RANGE = re.compile(
     rf"^(?:between\s+)?{_NUMBER}\s*%?\s*(?:-|\u2013|\u2014|to|and)\s*{_NUMBER}{_UNIT}\s*$",
     re.IGNORECASE,
 )
-_MAX = re.compile(rf"^(?:nmt|not more than|≤|<=)\s*{_NUMBER}{_UNIT}", re.IGNORECASE)
-_MIN = re.compile(rf"^(?:nlt|not less than|≥|>=)\s*{_NUMBER}{_UNIT}", re.IGNORECASE)
+# Read in full or not at all: a second limit, a qualifier or a decimal comma after the first
+# number must not be dropped (a result would then be checked against half the specification).
+# The one qualifier allowed is the dissolution one, "(Q) in 45 min", which does not change it.
+_TAIL = r"(?:\s*\(Q\)(?:\s+in\s+\d+\s*min(?:utes)?)?)?\s*$"
+_MAX = re.compile(rf"^(?:nmt|not more than|≤|<=)\s*{_NUMBER}{_UNIT}{_TAIL}", re.IGNORECASE)
+_MIN = re.compile(rf"^(?:nlt|not less than|≥|>=)\s*{_NUMBER}{_UNIT}{_TAIL}", re.IGNORECASE)
 _RESULT = re.compile(rf"^{_NUMBER}{_UNIT}\s*$")
 # Texts a specification may require, and the results that satisfy each.
 _TEXTS = {

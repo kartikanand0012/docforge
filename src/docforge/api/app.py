@@ -100,6 +100,7 @@ def create_app(
     authenticator: Authenticator | None = None,
     webhooks: WebhookService | None = None,
     search: SearchService | None = None,
+    searches_per_minute: int = 60,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     app = FastAPI(title="DocForge", version=__version__)
@@ -155,7 +156,7 @@ def create_app(
     if review is not None:
         app.include_router(exports_router(review))
     if search is not None:
-        app.include_router(search_router(search))
+        app.include_router(search_router(search, searches_per_minute))
     if pipeline is not None:
         _add_preview_endpoint(app, pipeline, max_upload_bytes)
     return app
