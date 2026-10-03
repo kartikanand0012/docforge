@@ -1,0 +1,54 @@
+{
+  "concurrency": 16,
+  "tenants": 5,
+  "wall_seconds": 15.9,
+  "documents": {
+    "uploaded": 300,
+    "processed": 300,
+    "failed": 0,
+    "not_finished": 0
+  },
+  "documents_per_minute": 1257.7,
+  "requests": {
+    "processed": {
+      "count": 300,
+      "errors": 0,
+      "p50_ms": 7963.4,
+      "p95_ms": 12622.2,
+      "p99_ms": 12707.1,
+      "max_ms": 12750.1
+    },
+    "review.queue": {
+      "count": 5,
+      "errors": 0,
+      "p50_ms": 942.5,
+      "p95_ms": 1164.9,
+      "p99_ms": 1164.9,
+      "max_ms": 1164.9
+    },
+    "search.hybrid": {
+      "count": 100,
+      "errors": 0,
+      "p50_ms": 75.0,
+      "p95_ms": 131.7,
+      "p99_ms": 137.4,
+      "max_ms": 138.8
+    },
+    "search.keyword": {
+      "count": 100,
+      "errors": 0,
+      "p50_ms": 63.9,
+      "p95_ms": 117.4,
+      "p99_ms": 127.5,
+      "max_ms": 132.0
+    },
+    "upload": {
+      "count": 300,
+      "errors": 0,
+      "p50_ms": 89.3,
+      "p95_ms": 124.2,
+      "p99_ms": 175.3,
+      "max_ms": 186.8
+    }
+  }
+}

@@ -66,20 +66,41 @@ _NUMBER = re.compile(r"-?[\d,]*\d(?:\.\d+)?%?", re.ASCII)
 _SHORT = 3  # a number this short proves nothing unless it is all the cited block says
 
 
+_ASCII_ALNUM = frozenset("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+_ASCII_DIGIT = frozenset("0123456789")
+_JOINERS = frozenset(".,/-")
+
+
 def _contains(haystack: str, needle: str) -> bool:
     """True if `needle` occurs in `haystack` as a whole token, not inside a longer one.
 
     "20" is not found in "200", "166.40" not in "1,166.40", "86.24" not in "86.245", "05/29"
     not in "05/29/2028", and a
     number is not found in its negative ("-5") or bracketed ("(5.00)") form.
+
+    Plain string search: a regular expression per value overflowed Python's pattern cache
+    when the review queue checked thousands of values.
     """
     if not needle:
         return False
-    before = r"(?<![0-9A-Za-z])(?<![0-9][.,/-])"
-    if needle[0].isdigit():
-        before += r"(?<![-+(])"
-    pattern = before + re.escape(needle) + r"(?![0-9A-Za-z])(?![.,/-][0-9])"
-    return re.search(pattern, haystack) is not None
+    signed = needle[0].isdigit()
+    start = haystack.find(needle)
+    while start != -1:
+        end = start + len(needle)
+        before = haystack[start - 1] if start >= 1 else ""
+        before2 = haystack[start - 2] if start >= 2 else ""
+        after = haystack[end] if end < len(haystack) else ""
+        after2 = haystack[end + 1] if end + 1 < len(haystack) else ""
+        if not (
+            before in _ASCII_ALNUM
+            or (before in _JOINERS and before2 in _ASCII_DIGIT and before2)
+            or (signed and before and before in "-+(")
+            or after in _ASCII_ALNUM
+            or (after in _JOINERS and after2 in _ASCII_DIGIT and after2)
+        ):
+            return True
+        start = haystack.find(needle, start + 1)
+    return False
 
 
 def _supported(needle: str, cited: list[str]) -> bool:

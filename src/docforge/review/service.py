@@ -343,6 +343,7 @@ class ReviewService:
             .correlate(Document)
         )
         items: list[QueueItem] = []
+        memo: dict[uuid.UUID, BaseModel | None] = {}
         with self._sessions() as session:
             documents = session.scalars(
                 select(Document)
@@ -356,7 +357,7 @@ class ReviewService:
             ).all()
             for document in documents:
                 try:
-                    state = self._state(session, document)
+                    state = self._state(session, document, memo)
                 except NotReviewable:
                     continue
                 if state.review is None and state.blockers:
@@ -652,9 +653,25 @@ class ReviewService:
         return state
 
     def _effective(
-        self, session: Session, version_id: uuid.UUID, doc_type: str
+        self,
+        session: Session,
+        version_id: uuid.UUID,
+        doc_type: str,
+        memo: dict[uuid.UUID, BaseModel | None] | None = None,
     ) -> BaseModel | None:
-        """A version's record with its corrections applied; as extracted if it has no reply."""
+        """A version's record with its corrections applied; as extracted if it has no reply.
+
+        `memo` keeps records already worked out in one read, such as one pass of the queue,
+        where each invoice and its order would otherwise be checked twice.
+        """
+        if memo is not None and version_id in memo:
+            return memo[version_id]
+        found = self._work_out(session, version_id, doc_type)
+        if memo is not None:
+            memo[version_id] = found
+        return found
+
+    def _work_out(self, session: Session, version_id: uuid.UUID, doc_type: str) -> BaseModel | None:
         row = session.execute(
             select(Extraction, ParseOutput)
             .join(ParseOutput, ParseOutput.document_version_id == Extraction.document_version_id)
@@ -684,7 +701,12 @@ class ReviewService:
             [Correction(path=c.path, text=c.new_text) for c in corrections],
         ).extraction
 
-    def _state(self, session: Session, document: Document) -> _State:
+    def _state(
+        self,
+        session: Session,
+        document: Document,
+        memo: dict[uuid.UUID, BaseModel | None] | None = None,
+    ) -> _State:
         newest_version = session.scalar(
             select(func.max(DocumentVersion.version_no)).where(
                 DocumentVersion.document_id == document.id
@@ -719,6 +741,8 @@ class ReviewService:
         reassessed = reassess(
             spec, raw, parsed, [Correction(path=c.path, text=c.new_text) for c, _ in corrections]
         )
+        if memo is not None:
+            memo[version.id] = reassessed.extraction
         match, counterpart = current_match(session, document.tenant_id, version.id)
         discrepancies: tuple[Discrepancy, ...] = ()
         status = "no_counterpart"
@@ -730,7 +754,7 @@ class ReviewService:
             )
             other_type = "purchase_order" if document.doc_type == "invoice" else "invoice"
             # The counterpart as corrected, not as first extracted.
-            other = self._effective(session, other_id, other_type)
+            other = self._effective(session, other_id, other_type, memo)
             if other is not None:
                 mine = reassessed.extraction
                 if isinstance(mine, InvoiceExtraction):
@@ -760,11 +784,15 @@ class ReviewService:
             counterpart=counterpart,
             review=(signed[0], signed[1]) if signed is not None else None,
             superseded=newest_version != version.version_no,
-            certificates=self._certificates(session, document, reassessed.extraction),
+            certificates=self._certificates(session, document, reassessed.extraction, memo),
         )
 
     def _certificates(
-        self, session: Session, document: Document, extraction: BaseModel
+        self,
+        session: Session,
+        document: Document,
+        extraction: BaseModel,
+        memo: dict[uuid.UUID, BaseModel | None] | None = None,
     ) -> tuple[dict[str, str], ...]:
         """For an invoice, the newest certificate of analysis on file for each billed batch."""
         if not isinstance(extraction, InvoiceExtraction) or "coa" not in self._specs:
@@ -803,7 +831,7 @@ class ReviewService:
             key = _batch_key(batch)
             if key in found:
                 continue  # the newest certificate for a batch counts
-            effective = self._effective(session, coa_version, "coa")
+            effective = self._effective(session, coa_version, "coa", memo)
             coa = effective if isinstance(effective, CoaExtraction) else None
             printed, product = lines[key]
             if coa is not None and _product_key(coa.product_name.value) != _product_key(product):
