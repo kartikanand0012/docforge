@@ -44,7 +44,7 @@ def test_a_correct_invoice_is_stored_as_accepted(world: World) -> None:
     assert detail.match is None
     # Correct on its own, but nothing independent corroborates it yet.
     assert (detail.decision, detail.match_status) == ("review", "no_counterpart")
-    assert world.actions(document_id)[-2:] == ["extraction.created", "assessment.created"]
+    assert world.actions(document_id)[-3:-1] == ["extraction.created", "assessment.created"]
 
 
 def test_a_wrong_batch_number_is_stored_as_needing_review(world: World) -> None:

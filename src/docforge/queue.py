@@ -131,6 +131,9 @@ class JobQueue:
                 return
             try:
                 self._search.index_version(uuid.UUID(version_id))
+                if self._service is not None:
+                    # Search has it: the document is ready to chat with.
+                    self._service.mark_indexed(uuid.UUID(version_id))
             except DocumentNotFound:
                 logger.error("dropping index job for version %s: it does not exist", version_id)
 

@@ -135,7 +135,8 @@ def test_the_api_gives_the_stage_the_timeline_and_a_live_stream(world: World) ->
     assert detail["document"]["ready_for_chat"] is False
     assert [step["stage"] for step in timeline][-1] == "indexing"
     assert "event: stage" in body and '"stage": "ready"' in body
-    assert body.rstrip().endswith('"stage": "ready"}')  # the stream ends once ready
+    last = body.strip().split("\n\n")[-1]
+    assert '"stage": "ready"' in last  # the stream ends once ready
 
 
 def test_another_tenant_sees_no_timeline(world: World, other_tenant: uuid.UUID) -> None:

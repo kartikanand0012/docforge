@@ -1,12 +1,17 @@
 """Document endpoints: upload returns at once, a worker does the extraction."""
 
+import asyncio
+import json
 import logging
+import time
 import uuid
+from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from docforge.api.auth import require
@@ -28,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 Reader = Annotated[Principal, Depends(require("documents:read"))]
 Writer = Annotated[Principal, Depends(require("documents:write"))]
+_FINAL_STAGES = ("ready", "processed", "failed")
 
 
 class _Out(BaseModel):
@@ -42,6 +48,8 @@ class DocumentOut(_Out):
     size_bytes: int
     page_count: int | None
     status: str
+    stage: str  # stored, parsing, extracting, checking, indexing, processed, ready, ...
+    ready_for_chat: bool
     created_at: datetime
 
 
@@ -62,6 +70,12 @@ class UploadOut(BaseModel):
     created: bool  # false when this file was already known
     document: DocumentOut
     version: VersionOut | None
+
+
+class StepOut(BaseModel):
+    stage: str
+    at: datetime
+    detail: str | None
 
 
 class DocumentDetailOut(BaseModel):
@@ -242,6 +256,45 @@ def documents_router(
         except ReprocessInProgress:
             raise HTTPException(409, "This document is still being processed.") from None
         return VersionOut.model_validate(version)
+
+    @router.get("/documents/{document_id}/timeline", response_model=list[StepOut])
+    def get_timeline(document_id: uuid.UUID, principal: Reader) -> list[StepOut]:
+        """Every stage the document has reached, with when, and the reason if it failed."""
+        try:
+            steps = service.timeline(principal.tenant_id, document_id)
+        except DocumentNotFound:
+            raise _NOT_FOUND from None
+        return [StepOut(stage=s.stage, at=s.at, detail=s.detail) for s in steps]
+
+    @router.get("/documents/{document_id}/events")
+    async def stream_events(document_id: uuid.UUID, principal: Reader) -> StreamingResponse:
+        """Server-sent events: each new stage as it is reached, ending once the document is
+        ready, processed or failed (or after ten minutes; reconnect to continue)."""
+        try:
+            await run_in_threadpool(service.timeline, principal.tenant_id, document_id)
+        except DocumentNotFound:
+            raise _NOT_FOUND from None
+
+        async def events() -> AsyncIterator[str]:
+            sent = 0
+            deadline = time.monotonic() + 600
+            while time.monotonic() < deadline:
+                steps = await run_in_threadpool(service.timeline, principal.tenant_id, document_id)
+                for step in steps[sent:]:
+                    payload = {"stage": step.stage, "at": step.at.isoformat()}
+                    if step.detail:
+                        payload["detail"] = step.detail
+                    yield f"event: stage\ndata: {json.dumps(payload)}\n\n"
+                sent = len(steps)
+                if steps and steps[-1].stage in _FINAL_STAGES:
+                    return
+                await asyncio.sleep(1)
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @router.get("/documents/{document_id}/audit", response_model=list[AuditEntryOut])
     def get_audit_trail(document_id: uuid.UUID, principal: Reader) -> list[AuditEntryOut]:

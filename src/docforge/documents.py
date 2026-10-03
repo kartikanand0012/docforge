@@ -52,6 +52,7 @@ from docforge.parsing.base import (
     ParseError,
     ParserLimitExceeded,
 )
+from docforge.stages import stage_listener
 from docforge.storage import ObjectNotFound, ObjectStore, StorageUnavailable, original_key
 from docforge.telemetry import current_prices, document_cost, traced
 from docforge.trust.match import match_invoice_to_order
@@ -134,6 +135,26 @@ class IngestResult:
 class DocumentDetail:
     document: Document
     versions: list[DocumentVersion]
+
+
+@dataclass(frozen=True)
+class Step:
+    """One step on a document's timeline: the stage reached, when, and why if it failed."""
+
+    stage: str
+    at: datetime
+    detail: str | None = None
+
+
+# Audit actions that move a document to a stage; `processing.stage` names its own.
+_STAGE_OF = {
+    "document.received": "stored",
+    "document.reprocess_requested": "stored",
+    "processing.started": "parsing",
+    "processing.retry_scheduled": "retrying",
+    "processing.failed": "failed",
+    "indexing.completed": "ready",
+}
 
 
 @dataclass(frozen=True)
@@ -379,6 +400,7 @@ class DocumentService:
             version.started_at = version.started_at or _now()
             version.error = None
             document.status = "processing"
+            document.stage = "parsing"
             self._audit(
                 session,
                 document,
@@ -405,7 +427,8 @@ class DocumentService:
                 return self._fail(
                     version_id, turn, "The stored original does not match its recorded hash."
                 )
-            result = pipeline.run(data)
+            with stage_listener(lambda stage: self._reach(version_id, turn, stage)):
+                result = pipeline.run(data)
         except ObjectNotFound:
             return self._fail(version_id, turn, "The stored original is missing.")
         except NoTextLayer:
@@ -508,6 +531,8 @@ class DocumentService:
             version.prompt_version = result.prompt_version
             version.model_id = model
             document.status = "extracted"
+            # Indexed for search and chat next, if this service queues that; else done here.
+            document.stage = "indexing" if self._index is not None else "processed"
             document.page_count = len(result.parsed.pages)
             self._audit(
                 session,
@@ -532,6 +557,7 @@ class DocumentService:
                     for rule in assessment.rules
                 ),
             )
+            self._audit(session, document, WORKER, "processing.stage", stage=document.stage)
             if self._index is not None:
                 self._index(session, version)
             if self._events is not None:
@@ -679,6 +705,7 @@ class DocumentService:
         # The document's status is that of its newest version; an earlier extraction, if
         # any, is still served by `latest_extraction`.
         document.status = "failed"
+        document.stage = "failed"
         self._audit(
             session,
             document,
@@ -700,6 +727,58 @@ class DocumentService:
                 .order_by(DocumentVersion.version_no)
             )
             return DocumentDetail(document, list(versions))
+
+    @scoped
+    def timeline(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> list[Step]:
+        """Every stage the document has reached, in order, from its audit trail."""
+        steps = []
+        for entry in self.audit_trail(tenant_id, document_id):
+            stage = (
+                entry.details.get("stage")
+                if entry.action == "processing.stage"
+                else _STAGE_OF.get(entry.action)
+            )
+            if stage is not None:
+                detail = entry.details.get("error") if stage in ("failed", "retrying") else None
+                steps.append(Step(stage=stage, at=entry.occurred_at, detail=detail))
+        return steps
+
+    def mark_indexed(self, version_id: uuid.UUID) -> None:
+        """Search has the version: the document is ready to chat with. Said once."""
+        with self._sessions() as session:
+            tenant_id = session.scalar(select(func.docforge_version_tenant(version_id)))
+        if tenant_id is None:
+            raise DocumentNotFound(version_id)
+        with tenant_scope(tenant_id), self._sessions.begin() as session:
+            document, version = self._locked(session, version_id)
+            if document.stage == "ready" or document.stage == "failed":
+                return
+            document.stage = "ready"
+            self._audit(
+                session, document, WORKER, "indexing.completed", version_no=version.version_no
+            )
+            if self._events is not None:
+                self._events.emit(
+                    session,
+                    document.tenant_id,
+                    "document.ready_for_chat",
+                    {"document_id": str(document.id), "version_no": version.version_no},
+                    event_id=event_id("document.ready_for_chat", version.id),
+                )
+
+    def _reach(self, version_id: uuid.UUID, turn: int, stage: str) -> None:
+        """A stage the pipeline reported while working: recorded in its own short
+        transaction, so the person waiting sees it at once. Only by the current delivery: a
+        stalled one, overtaken by another, must not move a finished document back."""
+        if stage == "parsing":
+            return  # recorded when processing started
+        with self._sessions.begin() as session:
+            owned = self._owned(session, version_id, turn)
+            if owned is None:
+                return
+            document, _ = owned
+            document.stage = stage
+            self._audit(session, document, WORKER, "processing.stage", stage=stage)
 
     @scoped
     def latest_extraction(

@@ -174,15 +174,18 @@ def test_audit_trail_lists_every_step_and_the_chain_verifies(api: Api) -> None:
     assert [entry["action"] for entry in trail] == [
         "document.received",
         "processing.started",
+        "processing.stage",  # extracting
+        "processing.stage",  # checking
         "extraction.created",
         "assessment.created",
+        "processing.stage",  # processed (or indexing, where search is wired in)
     ]
     assert trail[0]["actor"] == "key:00000000-0000-0000-0000-000000000001"
     assert trail[0]["prev_hash"] is None
     assert trail[1]["prev_hash"] == trail[0]["hash"]
     assert verification == {
         "consistent": True,
-        "entries": 4,
+        "entries": 7,
         "first_bad_id": None,
         "reason": None,
         "anchors_checked": 0,  # this service keeps no anchors

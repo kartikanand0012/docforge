@@ -23,6 +23,7 @@ from docforge.extraction.schema import InvoiceExtraction, Issue, RawInvoice
 from docforge.llm.base import LLMProvider, LLMRequest, LLMResponse
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, Parser
 from docforge.parsing.pdf import pdf_page_count
+from docforge.stages import report_stage
 from docforge.telemetry import traced
 from docforge.trust.assess import Assessment, assess
 from docforge.trust.invoice_rules import INVOICE_RULES
@@ -104,6 +105,7 @@ class ExtractionPipeline[E: BaseModel]:
 
         Raises `NoTextLayer`, `DocumentTooLarge`, `LLMError` or `ExtractionError`.
         """
+        report_stage("extracting")
         with traced("pipeline.extract") as span:
             span.set_attribute("docforge.doc_type", self.spec.doc_type)
             return self._extract(parsed)
@@ -142,6 +144,7 @@ class ExtractionPipeline[E: BaseModel]:
             )
             issues = (*getattr(extraction, "issues", ()), *disagreements)
             extraction = extraction.model_copy(update={"issues": issues})
+        report_stage("checking")
         with traced("pipeline.assess") as span:
             assessment = assess(extraction, parsed, spec.rules)
             span.set_attribute("docforge.decision", assessment.decision)
