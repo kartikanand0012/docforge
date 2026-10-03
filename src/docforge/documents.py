@@ -52,7 +52,7 @@ from docforge.parsing.base import (
     ParserLimitExceeded,
 )
 from docforge.storage import ObjectNotFound, ObjectStore, StorageUnavailable, original_key
-from docforge.telemetry import current_prices, document_cost, tracer
+from docforge.telemetry import current_prices, document_cost, traced
 from docforge.trust.match import match_invoice_to_order
 
 if TYPE_CHECKING:
@@ -352,7 +352,7 @@ class DocumentService:
             tenant_id = session.scalar(select(func.docforge_version_tenant(version_id)))
         if tenant_id is None:
             raise DocumentNotFound(version_id)
-        with tracer.start_as_current_span("document.process") as span, tenant_scope(tenant_id):
+        with traced("document.process") as span, tenant_scope(tenant_id):
             span.set_attribute("docforge.version_id", str(version_id))
             span.set_attribute("docforge.tenant_id", str(tenant_id))
             outcome = self._process(version_id)
@@ -439,7 +439,7 @@ class DocumentService:
         outcome = self._complete(version_id, turn, result)
         if outcome == "succeeded":
             try:
-                with tracer.start_as_current_span("document.match"):
+                with traced("document.match"):
                     self._match(version_id)
             except Exception:
                 # The extraction is stored; a failed comparison must not fail the job.

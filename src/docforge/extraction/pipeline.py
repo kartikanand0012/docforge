@@ -23,7 +23,7 @@ from docforge.extraction.schema import InvoiceExtraction, Issue, RawInvoice
 from docforge.llm.base import LLMProvider, LLMRequest, LLMResponse
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, Parser
 from docforge.parsing.pdf import pdf_page_count
-from docforge.telemetry import tracer
+from docforge.telemetry import traced
 from docforge.trust.assess import Assessment, assess
 from docforge.trust.invoice_rules import INVOICE_RULES
 from docforge.trust.rules import RuleResult
@@ -93,7 +93,7 @@ class ExtractionPipeline[E: BaseModel]:
         pages = pdf_page_count(pdf)
         if pages > self.max_pages:
             raise DocumentTooLarge(f"document has {pages} pages; the limit is {self.max_pages}")
-        with tracer.start_as_current_span("pipeline.parse") as span:
+        with traced("pipeline.parse") as span:
             parsed = self.parser.parse(pdf)
             span.set_attribute("docforge.pages", len(parsed.pages))
             span.set_attribute("docforge.blocks", len(parsed.blocks))
@@ -104,7 +104,7 @@ class ExtractionPipeline[E: BaseModel]:
 
         Raises `NoTextLayer`, `DocumentTooLarge`, `LLMError` or `ExtractionError`.
         """
-        with tracer.start_as_current_span("pipeline.extract") as span:
+        with traced("pipeline.extract") as span:
             span.set_attribute("docforge.doc_type", self.spec.doc_type)
             return self._extract(parsed)
 
@@ -142,7 +142,7 @@ class ExtractionPipeline[E: BaseModel]:
             )
             issues = (*getattr(extraction, "issues", ()), *disagreements)
             extraction = extraction.model_copy(update={"issues": issues})
-        with tracer.start_as_current_span("pipeline.assess") as span:
+        with traced("pipeline.assess") as span:
             assessment = assess(extraction, parsed, spec.rules)
             span.set_attribute("docforge.decision", assessment.decision)
         return PipelineResult(
@@ -156,7 +156,7 @@ class ExtractionPipeline[E: BaseModel]:
         )
 
     def _generate(self, request: LLMRequest) -> LLMResponse:
-        with tracer.start_as_current_span("llm.generate") as span:
+        with traced("llm.generate") as span:
             span.set_attribute("docforge.prompt_version", request.prompt_version)
             response = self.provider.generate(request)
             span.set_attribute("gen_ai.system", response.provider)

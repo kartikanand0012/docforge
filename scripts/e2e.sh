@@ -10,18 +10,25 @@ API_PORT="${E2E_API_PORT:-8011}"
 WEB_PORT="${E2E_WEB_PORT:-3011}"
 LOGS="$(mktemp -d)"
 PIDS=()
+CREATED=0
 
 cleanup() {
   for pid in "${PIDS[@]}"; do kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true; done
   wait 2>/dev/null || true
-  uv run python - <<'PY' >/dev/null 2>&1 || true
+  # Only what this run created, only on a local server, and from the maintenance database:
+  # Postgres will not drop the database a connection is using.
+  if [ "$CREATED" = 1 ]; then
+    uv run python - <<'PY' >/dev/null 2>&1 || true
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from docforge.config import get_settings
 url = make_url(get_settings().migration_database_url.get_secret_value())
-with create_engine(url, isolation_level="AUTOCOMMIT").connect() as conn:
-    conn.execute(text('DROP DATABASE IF EXISTS "docforge_e2e" WITH (FORCE)'))
+if url.host in {"127.0.0.1", "localhost", "::1"}:
+    with create_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT").connect() as conn:
+        conn.execute(text('DROP DATABASE IF EXISTS "docforge_e2e" WITH (FORCE)'))
 PY
+  fi
+  rm -rf "${WORK:-}" "${LOGS:-}"
 }
 trap cleanup EXIT
 
@@ -49,6 +56,7 @@ print(owner.set(database="docforge_e2e").render_as_string(hide_password=False))
 print(app.set(database="docforge_e2e").render_as_string(hide_password=False))
 PY
 )"
+CREATED=1
 export MIGRATION_DATABASE_URL="$(echo "$URLS" | sed -n 1p)"
 export DATABASE_URL="$(echo "$URLS" | sed -n 2p)"
 export PIPELINE_FACTORY="docforge.wiring:build_replay_pipelines"

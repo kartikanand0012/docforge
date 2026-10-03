@@ -26,7 +26,7 @@ from docforge.extraction.schema import InvoiceExtraction
 from docforge.parsing.base import ParsedDocument
 from docforge.search.chunking import chunk_document
 from docforge.search.embeddings import Embedder
-from docforge.telemetry import tracer
+from docforge.telemetry import traced
 
 Mode = Literal["keyword", "vector", "hybrid"]
 _SCHEMAS: dict[str, type[BaseModel]] = {
@@ -109,7 +109,7 @@ class SearchService:
     @scoped
     def index_document(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> int:
         """Index the newest extracted version. Returns the chunks added (0 if already done)."""
-        with tracer.start_as_current_span("search.index") as span:
+        with traced("search.index") as span:
             span.set_attribute("docforge.document_id", str(document_id))
             added = self._index_document(tenant_id, document_id)
             span.set_attribute("docforge.chunks_added", added)
@@ -198,7 +198,7 @@ class SearchService:
         doc_type: str | None = None,
     ) -> list[SearchHit]:
         # The question itself is not recorded: it may name a patient, a price or a supplier.
-        with tracer.start_as_current_span("search.query") as span:
+        with traced("search.query") as span:
             span.set_attribute("docforge.search.mode", mode)
             span.set_attribute("docforge.search.k", k)
             span.set_attribute("docforge.search.doc_type", doc_type or "")

@@ -26,7 +26,8 @@ def temporary_database(prefix: str, database_url: Any = None) -> Iterator[tuple[
     # A name of its own, so two runs at once (CI workers, a developer) never drop each other's.
     name = f"{prefix}_{uuid.uuid4().hex[:12]}"
     url = owner.set(database=name) if database_url is None else make_url(database_url)
-    if url.host not in _LOCAL:
+    # Both: the owner creates and drops databases and resets the application's password.
+    if url.host not in _LOCAL or owner.host not in _LOCAL:
         raise RuntimeError("this only runs against a local Postgres")
     admin = create_engine(owner, isolation_level="AUTOCOMMIT")
     try:

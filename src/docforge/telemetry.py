@@ -5,16 +5,34 @@ credentials: traces leave for a third-party backend. Exporting is off unless an 
 is configured; without it every span is a no-op.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import Span, Status, StatusCode
 
 from docforge.config import Settings
 
 tracer = trace.get_tracer("docforge")
+
+
+@contextmanager
+def traced(name: str) -> Iterator[Span]:
+    """A span that records only an error's type, never its message or stack: those can hold
+    a search question, a SQL statement's parameters or part of a model reply."""
+    with tracer.start_as_current_span(
+        name, record_exception=False, set_status_on_exception=False
+    ) as current:
+        try:
+            yield current
+        except BaseException as error:
+            current.set_attribute("docforge.error", type(error).__name__)
+            current.set_status(Status(StatusCode.ERROR))
+            raise
+
 
 _prices: tuple[float, float] | None = None
 

@@ -39,7 +39,7 @@ from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
 from docforge.review.service import ReviewService
 from docforge.search.service import SearchService
-from docforge.telemetry import tracer
+from docforge.telemetry import traced
 from docforge.webhooks import WebhookService
 
 logger = logging.getLogger(__name__)
@@ -140,7 +140,7 @@ def create_app(
     ) -> Response:
         # Named by route template, never by path or query: a path can hold an id, a query a
         # question, and neither belongs in a third-party trace store.
-        with tracer.start_as_current_span(request.method) as span:
+        with traced(request.method) as span:
             span.set_attribute("http.request.method", request.method)
             response = await call_next(request)
             route = request.scope.get("route")
