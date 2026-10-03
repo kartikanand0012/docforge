@@ -44,6 +44,12 @@ def _common() -> list[sa.Column[Any]]:
 
 
 def upgrade() -> None:
+    # A reviewer who is also an administrator may upload and manage the organisation.
+    op.add_column(
+        "reviewers",
+        sa.Column("role", sa.Text, nullable=False, server_default="reviewer"),
+    )
+    op.create_check_constraint("ck_reviewers_role", "reviewers", "role IN ('reviewer', 'admin')")
     op.create_table(
         "api_keys",
         *_common(),
@@ -88,3 +94,5 @@ def downgrade() -> None:
                 )
     for table in _TABLES:
         op.drop_table(table)
+    op.execute("ALTER TABLE reviewers DROP CONSTRAINT IF EXISTS ck_reviewers_role")
+    op.execute("ALTER TABLE reviewers DROP COLUMN IF EXISTS role")

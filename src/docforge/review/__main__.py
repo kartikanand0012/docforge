@@ -31,13 +31,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     add.add_argument("--name", required=True)
     add.add_argument("--email", required=True)
     add.add_argument("--tenant", default="default", help="the organisation's name")
+    add.add_argument("--admin", action="store_true", help="may also upload and manage keys")
     args = parser.parse_args(argv)
 
     settings = get_settings()
     try:
         tenant_id = tenant_by_name(settings, args.tenant)
         reviewer_id = build_review(settings).add_reviewer(
-            tenant_id, name=args.name, email=args.email, pin=_read_pin()
+            tenant_id,
+            name=args.name,
+            email=args.email,
+            pin=_read_pin(),
+            role="admin" if args.admin else "reviewer",
         )
     except ValueError as error:
         print(f"Not added: {error}", file=sys.stderr)

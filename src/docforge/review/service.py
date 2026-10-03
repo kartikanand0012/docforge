@@ -206,7 +206,11 @@ class ReviewService:
 
     # Reviewers
 
-    def add_reviewer(self, tenant_id: uuid.UUID, *, name: str, email: str, pin: str) -> uuid.UUID:
+    def add_reviewer(
+        self, tenant_id: uuid.UUID, *, name: str, email: str, pin: str, role: str = "reviewer"
+    ) -> uuid.UUID:
+        if role not in ("reviewer", "admin"):
+            raise ValueError("a reviewer's role is reviewer or admin")
         if len(pin) < _MIN_PIN_DIGITS or not pin.isdigit():
             raise ValueError(f"a PIN must be at least {_MIN_PIN_DIGITS} digits")
         email = email.strip().lower()
@@ -217,7 +221,11 @@ class ReviewService:
             if exists is not None:
                 raise ValueError(f"a reviewer with the email {email} already exists")
             reviewer = Reviewer(
-                tenant_id=tenant_id, name=name.strip(), email=email, pin_hash=hash_pin(pin)
+                tenant_id=tenant_id,
+                name=name.strip(),
+                email=email,
+                pin_hash=hash_pin(pin),
+                role=role,
             )
             session.add(reviewer)
             session.flush()

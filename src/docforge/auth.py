@@ -239,4 +239,6 @@ class Authenticator:
                 or not token_matches(token, token_row.digest)
             ):
                 return None
-            return Principal(reviewer.tenant_id, "session", reviewer.id, "reviewer", reviewer.name)
+            return Principal(
+                reviewer.tenant_id, "session", reviewer.id, reviewer.role, reviewer.name
+            )

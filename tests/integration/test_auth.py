@@ -252,3 +252,16 @@ def test_the_admin_command_makes_organisations_and_keys(
         assert main(["create-key", "--tenant", "nowhere", "--role", "admin", "--name", "x"]) == 1
     finally:
         get_settings.cache_clear()
+
+
+def test_an_admin_reviewer_may_upload_and_a_plain_reviewer_may_not(stack: Stack) -> None:
+    stack.review.add_reviewer(
+        DEFAULT_TENANT_ID, name="Head", email="head@example.com", pin="112233", role="admin"
+    )
+    admin = stack.login("head@example.com", "112233")
+
+    upload = stack.client.post(
+        "/v1/documents", files={"file": ("a.pdf", PDF, "application/pdf")}, headers=admin
+    )
+
+    assert upload.status_code == 202

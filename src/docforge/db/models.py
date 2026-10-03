@@ -175,6 +175,7 @@ class Reviewer(Base):
     name: Mapped[str] = mapped_column(Text)
     email: Mapped[str] = mapped_column(Text)
     pin_hash: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text, server_default="reviewer")  # or admin
     failed_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
