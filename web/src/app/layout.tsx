@@ -18,6 +18,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </Link>
           <nav aria-label="Main">
             <Link href="/">Review queue</Link>
+            <Link href="/documents">Documents</Link>
             <Link href="/upload">Upload</Link>
             <Link href="/search">Search</Link>
             <Link href="/evals">Evals and cost</Link>

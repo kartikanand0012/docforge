@@ -100,6 +100,19 @@ export type DocumentSummary = {
   versions: { version_no: number; status: string; error: string | null }[];
 };
 
+export type DocumentRow = {
+  id: string;
+  doc_type: string;
+  filename: string;
+  status: string;
+  stage: string;
+  ready_for_chat: boolean;
+  page_count: number | null;
+  created_at: string;
+};
+
+export type DocumentPage = { items: DocumentRow[]; next_before: string | null };
+
 export type Credentials = { email: string; pin: string };
 
 export class ApiError extends Error {
@@ -162,6 +175,12 @@ export const api = {
     return call<{ document: { id: string }; created: boolean }>("/v1/documents", { method: "POST", body: form });
   },
   evals: () => call<Record<string, unknown>>("/v1/evals"),
+  documents: (filters: { before?: string | null; doc_type?: string; stage?: string } = {}) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+    const qs = query.toString();
+    return call<DocumentPage>(`/v1/documents${qs ? `?${qs}` : ""}`);
+  },
   timeline: (id: string) => call<Step[]>(`/v1/documents/${encodeURIComponent(id)}/timeline`),
   pageUrl: (id: string, page: number) => `${API_URL}/v1/documents/${encodeURIComponent(id)}/pages/${page}`,
 };

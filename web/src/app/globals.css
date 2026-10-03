@@ -113,3 +113,9 @@ input.inline { width: auto; }
 .chip.stage-done { background: var(--ok-bg); color: var(--ok); }
 .chip.stage-current { background: var(--warn-bg); color: var(--warn); }
 .chip.stage-failed { background: var(--bad-bg); color: var(--bad); }
+
+/* Documents list */
+.filters { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+table.documents { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+table.documents th, table.documents td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+table.documents th { font-weight: 600; color: var(--muted); }

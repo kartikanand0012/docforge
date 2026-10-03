@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -727,6 +727,29 @@ class DocumentService:
                 .order_by(DocumentVersion.version_no)
             )
             return DocumentDetail(document, list(versions))
+
+    @scoped
+    def list_documents(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        limit: int = 50,
+        before: tuple[datetime, uuid.UUID] | None = None,
+        doc_type: str | None = None,
+        stage: str | None = None,
+    ) -> list[Document]:
+        """The organisation's documents, newest first; `before` is the last one already seen
+        (its created_at and id), so a page never repeats or skips one."""
+        query = select(Document).where(Document.tenant_id == tenant_id)
+        if doc_type is not None:
+            query = query.where(Document.doc_type == doc_type)
+        if stage is not None:
+            query = query.where(Document.stage == stage)
+        if before is not None:
+            query = query.where(tuple_(Document.created_at, Document.id) < tuple_(*before))
+        query = query.order_by(Document.created_at.desc(), Document.id.desc()).limit(limit)
+        with self._sessions() as session:
+            return list(session.scalars(query))
 
     @scoped
     def timeline(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> list[Step]:

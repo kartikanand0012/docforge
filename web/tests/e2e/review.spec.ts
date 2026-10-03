@@ -52,6 +52,13 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     await expect(page.getByText("order: match")).toBeVisible();
     // Indexed for search and chat after the extraction: the page says so as it happens.
     await expect(page.locator(".timeline-compact")).toContainText("Ready to chat", { timeout: 60_000 });
+
+    // Both are listed, newest first, with where each one is.
+    await page.getByRole("link", { name: "Documents" }).click();
+    const rows = page.locator("table.documents tbody tr");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText("invoice.pdf");
+    await expect(rows.first()).toContainText("Ready to chat");
   });
 
   test("the invoice waits in the review queue with its reason", async ({ page }) => {

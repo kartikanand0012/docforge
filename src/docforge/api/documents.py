@@ -1,6 +1,7 @@
 """Document endpoints: upload returns at once, a worker does the extraction."""
 
 import asyncio
+import base64
 import json
 import logging
 import time
@@ -9,7 +10,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
@@ -70,6 +71,24 @@ class UploadOut(BaseModel):
     created: bool  # false when this file was already known
     document: DocumentOut
     version: VersionOut | None
+
+
+class DocumentPage(BaseModel):
+    items: list[DocumentOut]
+    next_before: str | None  # pass as `before` for the next page; None at the end
+
+
+def _cursor(document: DocumentOut) -> str:
+    raw = f"{document.created_at.isoformat()}|{document.id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _parse_cursor(value: str) -> tuple[datetime, uuid.UUID]:
+    try:
+        at, _, ident = base64.urlsafe_b64decode(value.encode()).decode().partition("|")
+        return datetime.fromisoformat(at), uuid.UUID(ident)
+    except ValueError as error:
+        raise HTTPException(422, "Not a page cursor from this list.") from error
 
 
 class StepOut(BaseModel):
@@ -256,6 +275,24 @@ def documents_router(
         except ReprocessInProgress:
             raise HTTPException(409, "This document is still being processed.") from None
         return VersionOut.model_validate(version)
+
+    @router.get("/documents", response_model=DocumentPage)
+    def list_documents(
+        principal: Reader,
+        limit: Annotated[int, Query(ge=1, le=500)] = 50,
+        before: str | None = None,
+        doc_type: str | None = None,
+        stage: str | None = None,
+    ) -> DocumentPage:
+        """The organisation's documents, newest first, each with its stage."""
+        cursor = _parse_cursor(before) if before else None
+        rows = service.list_documents(
+            principal.tenant_id, limit=limit + 1, before=cursor, doc_type=doc_type, stage=stage
+        )
+        items = [DocumentOut.model_validate(row) for row in rows[:limit]]
+        return DocumentPage(
+            items=items, next_before=_cursor(items[-1]) if len(rows) > limit else None
+        )
 
     @router.get("/documents/{document_id}/timeline", response_model=list[StepOut])
     def get_timeline(document_id: uuid.UUID, principal: Reader) -> list[StepOut]:
