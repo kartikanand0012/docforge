@@ -97,7 +97,9 @@ class GeminiEmbedder:
                     config=config,  # type: ignore[arg-type]
                 )
             except errors.ClientError as error:
-                if error.code != 429 or (task == "query" and attempt > 0):
+                if error.code != 429:
+                    raise  # a rejected key, a wrong model: an error to see, not a busy service
+                if task == "query" and attempt > 0:
                     raise EmbeddingUnavailable("the embedding service is over its quota") from error
                 time.sleep(_retry_delay(error) if task == "document" else 2.0)
         raise RuntimeError("the embedding quota did not recover")

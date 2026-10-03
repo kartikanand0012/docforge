@@ -8,6 +8,7 @@ by tenant, and row-level security applies underneath.
 
 import logging
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -40,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 _RRF_K = 60
 _CACHE_SIZE = 256
+_EMBEDDING_PAUSE = 60.0  # seconds before a failed embedding service is asked again
 # Equal scores are common: the same file uploaded twice, or in two organisations, gives
 # identical chunks. Older first, then by id, so a search gives the same order every time.
 _TIE_BREAK = (ChunkRow.text, ChunkRow.chunk_no, ChunkRow.created_at, ChunkRow.id)
@@ -88,11 +90,20 @@ class SearchHit:
     boxes: tuple[dict[str, Any], ...]
 
 
+class SearchHits(list[SearchHit]):
+    """The hits, best first, and whether a hybrid search had to use words alone."""
+
+    def __init__(self, hits: list[SearchHit] = (), *, words_only: bool = False) -> None:  # type: ignore[assignment]
+        super().__init__(hits)
+        self.words_only = words_only
+
+
 class SearchService:
     def __init__(self, sessions: SessionFactory, embedder: Embedder) -> None:
         self._sessions = sessions
         self._embedder = embedder
         self._cache: dict[str, list[float]] = {}
+        self._embedding_paused_until = 0.0
 
     # Indexing
 
@@ -218,7 +229,7 @@ class SearchService:
         k: int = 10,
         mode: Mode = "hybrid",
         doc_type: str | None = None,
-    ) -> list[SearchHit]:
+    ) -> "SearchHits":
         # The question itself is not recorded: it may name a patient, a price or a supplier.
         with traced("search.query") as span:
             span.set_attribute("docforge.search.mode", mode)
@@ -226,23 +237,32 @@ class SearchService:
             span.set_attribute("docforge.search.doc_type", doc_type or "")
             hits = self._search(tenant_id, query, k, mode, doc_type)
             span.set_attribute("docforge.search.hits", len(hits))
+            span.set_attribute("docforge.search.words_only", hits.words_only)
             return hits
 
     def _search(
         self, tenant_id: uuid.UUID, query: str, k: int, mode: Mode, doc_type: str | None
-    ) -> list[SearchHit]:
+    ) -> SearchHits:
         ranked: list[list[uuid.UUID]] = []
         # Embedded before a connection is taken, so a slow embedding holds no database session.
         vector = None
+        words_only = False
         if mode == "vector":
             vector = self._query_vector(query)
+        elif mode == "hybrid" and time.monotonic() < self._embedding_paused_until:
+            words_only = True  # the embedding service failed a moment ago: do not wait on it
         elif mode == "hybrid":
             try:
                 vector = self._query_vector(query)
-            except (EmbeddingMissing, EmbeddingUnavailable):
+            except (EmbeddingMissing, EmbeddingUnavailable) as error:
                 # No model key (the demo) or its quota used up: words alone still find what
                 # a question names. A search by meaning alone has nothing to fall back on.
-                logger.warning("query not embedded; hybrid search uses words only")
+                logger.warning(
+                    "query not embedded (%s); hybrid search uses words only", type(error).__name__
+                )
+                words_only = True
+                if isinstance(error, EmbeddingUnavailable):
+                    self._embedding_paused_until = time.monotonic() + _EMBEDDING_PAUSE
 
         with self._sessions() as session:
             if mode in ("keyword", "hybrid"):
@@ -262,7 +282,7 @@ class SearchService:
                 for n, chunk_id in enumerate(dict.fromkeys(i for r in ranked for i in r))
             }
             top = sorted(scores, key=lambda chunk_id: (-scores[chunk_id], order[chunk_id]))[:k]
-            return self._hits(session, top, scores)
+            return SearchHits(self._hits(session, top, scores), words_only=words_only)
 
     def _query_vector(self, query: str) -> list[float]:
         """A question's vector; the most recent ones are kept, so a repeat costs no call."""

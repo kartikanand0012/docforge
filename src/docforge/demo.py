@@ -19,8 +19,9 @@ from sqlalchemy.engine import Engine
 from docforge.db.models import Reviewer, Tenant
 from docforge.db.session import make_session_factory
 from docforge.db.tenancy import tenant_scope
-from docforge.documents import DocumentService
+from docforge.documents import DocumentService, QueueFull
 from docforge.review.service import ReviewService
+from docforge.storage import StorageUnavailable
 
 DEMO_TENANT = "demo"
 DEMO_EMAIL = "demo@docforge.example"
@@ -95,6 +96,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     pin = os.environ.get("DEMO_PIN", "")
+    documents = demo_documents(args.synthetic, args.coa)
+    if not documents:
+        print(
+            f"Not seeded: no demo documents under {args.synthetic} or {args.coa}", file=sys.stderr
+        )
+        return 1
     settings = get_settings()
     owner = create_engine(settings.migration_database_url.get_secret_value())
     try:
@@ -103,10 +110,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             owner,
             service,
             build_review(settings),
-            demo_documents(args.synthetic, args.coa),
+            documents,
             pin=pin,
         )
-    except ValueError as error:
+    except (ValueError, QueueFull, StorageUnavailable) as error:
         print(f"Not seeded: {error}", file=sys.stderr)
         return 1
     finally:

@@ -32,6 +32,9 @@ class HitOut(BaseModel):
 class SearchOut(BaseModel):
     query: str
     mode: str
+    # True when a hybrid search could not ask the embedding service (no key, or its quota used
+    # up) and answered from words alone.
+    words_only: bool = False
     results: list[HitOut]
 
 
@@ -83,6 +86,7 @@ def search_router(search: SearchService, per_minute: int = 60) -> APIRouter:
         return SearchOut(
             query=q,
             mode=mode,
+            words_only=getattr(hits, "words_only", False),
             results=[HitOut(**{**vars(hit), "boxes": list(hit.boxes)}) for hit in hits],
         )
 
