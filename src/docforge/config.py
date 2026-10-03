@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     database_url: SecretStr = SecretStr(_LOCAL_APP_DATABASE_URL)
     migration_database_url: SecretStr = SecretStr(_LOCAL_DATABASE_URL)
 
-    s3_endpoint_url: str = "http://127.0.0.1:9000"
+    # Unset (or blank) means AWS S3 itself, with the instance's role for credentials.
+    s3_endpoint_url: str | None = "http://127.0.0.1:9000"
+    s3_region: str = "us-east-1"
     s3_access_key: str = "docforge"
     s3_secret_key: SecretStr = SecretStr(_LOCAL_S3_SECRET_KEY)
     s3_bucket: str = "docforge-originals"
@@ -107,6 +109,11 @@ class Settings(BaseSettings):
             raise ValueError("PIPELINE_FACTORY must look like module:function")
         return value
 
+    @field_validator("s3_endpoint_url", mode="before")
+    @classmethod
+    def _blank_endpoint_is_aws(cls, value: object) -> object:
+        return None if value == "" else value
+
     @field_validator("gemini_api_key", mode="before")
     @classmethod
     def _blank_key_is_unset(cls, value: object) -> object:
@@ -120,7 +127,9 @@ class Settings(BaseSettings):
             "DATABASE_URL": self.database_url.get_secret_value() == _LOCAL_APP_DATABASE_URL,
             "MIGRATION_DATABASE_URL": self.migration_database_url.get_secret_value()
             == _LOCAL_DATABASE_URL,
-            "S3_SECRET_KEY": self.s3_secret_key.get_secret_value() == _LOCAL_S3_SECRET_KEY,
+            # Only for an S3-compatible server: on AWS the instance role is used instead.
+            "S3_SECRET_KEY": self.s3_endpoint_url is not None
+            and self.s3_secret_key.get_secret_value() == _LOCAL_S3_SECRET_KEY,
             "WEBHOOK_SIGNING_KEY": self.webhook_signing_key.get_secret_value()
             == _LOCAL_WEBHOOK_KEY,
         }

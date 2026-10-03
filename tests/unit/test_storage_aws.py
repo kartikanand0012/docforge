@@ -9,7 +9,7 @@ def test_without_an_endpoint_the_store_talks_to_aws_in_its_region() -> None:
 
     store = S3ObjectStore.from_settings(settings)
 
-    client = store._client  # noqa: SLF001
+    client = store._client
     assert client.meta.region_name == "ap-south-1"
     assert "amazonaws.com" in client.meta.endpoint_url
 
@@ -17,4 +17,4 @@ def test_without_an_endpoint_the_store_talks_to_aws_in_its_region() -> None:
 def test_with_an_endpoint_the_store_uses_its_keys() -> None:
     store = S3ObjectStore.from_settings(Settings())
 
-    assert store._client.meta.endpoint_url == "http://127.0.0.1:9000"  # noqa: SLF001
+    assert store._client.meta.endpoint_url == "http://127.0.0.1:9000"
