@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from pypdf import PdfReader
 
-from docforge.conversion import ConversionError, FileConverter, RecordingConverter
+from docforge.conversion import ConversionError, FileConverter, IsolatedConverter, RecordingConverter
 from office_files import docx_bytes, image_bytes, pptx_bytes
 
 needs_libreoffice = pytest.mark.skipif(
@@ -64,7 +64,7 @@ def test_a_damaged_image_is_refused() -> None:
 
 
 def test_an_office_file_without_libreoffice_says_so() -> None:
-    with pytest.raises(ConversionError, match="LibreOffice"):
+    with pytest.raises(Exception, match="LibreOffice"):
         FileConverter(soffice="/nonexistent/soffice").to_pdf(docx_bytes(), "docx")
 
 
@@ -134,3 +134,156 @@ def test_soffice_is_found_on_the_path_or_in_the_mac_application(
     fake.write_text("")
     monkeypatch.setattr(FileConverter, "MAC_SOFFICE", str(fake))
     assert FileConverter.find_soffice() == str(fake)
+
+
+# --- review findings (C10) ---------------------------------------------------------------
+
+
+def frames_tiff(sizes: list[tuple[int, int]]) -> bytes:
+    from PIL import Image
+
+    pages = [Image.new("RGB", size, "white") for size in sizes]
+    out = io.BytesIO()
+    pages[0].save(out, format="TIFF", save_all=True, append_images=pages[1:], compression="tiff_lzw")
+    return out.getvalue()
+
+
+def test_every_frame_of_an_image_is_held_to_the_pixel_limit() -> None:
+    """A small first page must not let a huge second one through."""
+    tiff = frames_tiff([(10, 10), (2000, 2000)])
+    with pytest.raises(ConversionError, match="too large"):
+        FileConverter(max_image_pixels=1_000_000).to_pdf(tiff, "tiff")
+
+
+def test_the_pixels_of_all_frames_together_are_limited() -> None:
+    tiff = frames_tiff([(900, 900)] * 3)  # each under the limit, all three over it
+    with pytest.raises(ConversionError, match="too large"):
+        FileConverter(max_image_pixels=2_000_000).to_pdf(tiff, "tiff")
+
+
+def test_a_transparent_image_is_put_on_white() -> None:
+    from PIL import Image
+
+    from docforge.parsing.raster import render_pages
+
+    image = Image.new("RGBA", (850, 1100), (0, 0, 0, 0))  # transparent: black if flattened
+    image.paste((0, 0, 0, 255), (100, 100, 700, 130))
+    out = io.BytesIO()
+    image.save(out, format="PNG")
+    (page,) = render_pages(FileConverter().to_pdf(out.getvalue(), "png"), 72)
+    assert page.getpixel((5, 5)) > 240  # background white
+    assert page.getpixel((300, 85)) < 20  # the bar still black
+
+
+def test_libreoffice_gets_only_the_environment_it_needs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    for name in ("AWS_PROFILE", "S3_ENDPOINT", "SENTRY_DSN", "REDIS_URL"):
+        monkeypatch.setenv(name, "x")
+    monkeypatch.setenv("LANG", "en_IN.UTF-8")
+    env = FileConverter.child_environment(tmp_path)
+    assert set(env) <= {"PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "SAL_USE_VCLPLUGIN"}
+    assert env["LANG"] == "en_IN.UTF-8"
+
+
+def office_with(extra: dict[str, str], base: bytes | None = None) -> bytes:
+    """A real DOCX with parts added or replaced."""
+    import zipfile
+
+    source = zipfile.ZipFile(io.BytesIO(base or docx_bytes()))
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            if item.filename not in extra:
+                target.writestr(item, source.read(item.filename))
+        for name, text in extra.items():
+            target.writestr(name, text)
+    return out.getvalue()
+
+
+EXTERNAL = (
+    '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/'
+    'relationships"><Relationship Id="rId99" Type="http://schemas.openxmlformats.org/'
+    'officeDocument/2006/relationships/image" Target="http://169.254.169.254/latest/meta-data"'
+    ' TargetMode="External"/></Relationships>'
+)
+
+
+def test_an_office_file_that_links_outside_itself_is_refused() -> None:
+    linked = office_with({"word/_rels/document.xml.rels": EXTERNAL})
+    with pytest.raises(ConversionError, match="links to"):
+        FileConverter(soffice="/nonexistent/soffice").to_pdf(linked, "docx")
+
+
+def test_an_office_file_with_macros_is_refused() -> None:
+    with pytest.raises(ConversionError, match="macros"):
+        FileConverter(soffice="/nonexistent/soffice").to_pdf(
+            office_with({"word/vbaProject.bin": "x"}), "docx"
+        )
+
+
+def test_an_office_file_that_unpacks_too_large_is_refused() -> None:
+    with pytest.raises(ConversionError, match="too large"):
+        FileConverter(soffice="/nonexistent/soffice", max_unpacked_bytes=1000).to_pdf(
+            docx_bytes(), "docx"
+        )
+
+
+def test_no_libreoffice_is_a_fault_of_the_worker_not_the_file() -> None:
+    from docforge.conversion import ConverterUnavailable
+
+    with pytest.raises(ConverterUnavailable):
+        FileConverter(soffice="/nonexistent/soffice").to_pdf(docx_bytes(), "docx")
+
+
+# --- the converter in a child process ----------------------------------------------------
+
+
+def isolated(**limits: float) -> IsolatedConverter:
+    from isolation_converters import CommandConverter
+
+    return IsolatedConverter(CommandConverter, **limits)  # type: ignore[arg-type]
+
+
+def test_a_conversion_runs_in_a_child_process_and_returns_its_pdf() -> None:
+    assert isolated().to_pdf(b"ok", "docx") == b"%PDF-converted"
+
+
+def test_the_childs_refusal_is_passed_on() -> None:
+    with pytest.raises(ConversionError, match="not one we can convert"):
+        isolated().to_pdf(b"refuse", "docx")
+
+
+def test_a_conversion_over_the_time_limit_is_stopped() -> None:
+    with pytest.raises(ConversionError, match="took too long"):
+        isolated(timeout_seconds=1).to_pdf(b"sleep", "docx")
+
+
+def test_a_conversion_over_the_memory_limit_is_stopped() -> None:
+    with pytest.raises(ConversionError, match="memory"):
+        isolated(max_rss_bytes=200 * 1024 * 1024, timeout_seconds=20).to_pdf(b"hoard", "docx")
+
+
+def test_processes_the_conversion_started_are_stopped_with_it(tmp_path: Path) -> None:
+    import psutil
+
+    pidfile = tmp_path / "pid"
+    with pytest.raises(ConversionError):
+        isolated(timeout_seconds=2).to_pdf(f"grandchild:{pidfile}".encode(), "docx")
+    pid = int(pidfile.read_text())
+    assert not psutil.pid_exists(pid) or psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
+
+
+def test_a_child_that_dies_is_reported() -> None:
+    with pytest.raises(ConversionError, match="stopped unexpectedly"):
+        isolated().to_pdf(b"exit", "docx")
+
+
+def test_a_pdf_larger_than_the_limit_is_refused() -> None:
+    with pytest.raises(ConversionError, match="too large"):
+        isolated(max_output_bytes=1024).to_pdf(b"big", "docx")
+
+
+def test_a_pdf_upload_never_starts_a_child() -> None:
+    pdf = b"%PDF-1.7 as it is"
+    assert isolated(timeout_seconds=0.001).to_pdf(pdf, "pdf") is pdf

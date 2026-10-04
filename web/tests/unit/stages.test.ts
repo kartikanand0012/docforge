@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stageView, type Step } from "@/lib/stages";
+import { currentStage, stageView, type Step } from "@/lib/stages";
 
 const at = (n: number) => `2026-10-03T10:00:0${n}Z`;
 
@@ -108,5 +108,33 @@ describe("stageView", () => {
   it("does not promise extraction for a general document still being read", () => {
     const view = stageView([{ stage: "stored", at: at(0) }, { stage: "parsing", at: at(1) }], "general");
     expect(view.map((s) => s.stage)).toEqual(["stored", "parsing", "indexing", "ready"]);
+  });
+
+  it("says Stored, not Ready to chat, before any stage has arrived", () => {
+    expect(currentStage([]).label).toBe("Stored");
+  });
+
+  it("names the stage reached even when it is not in the plan", () => {
+    expect(currentStage([{ stage: "stored", at: at(0) }, { stage: "matching", at: at(1) }]).label).toBe("matching");
+  });
+
+  it("says Ready to chat once ready, and Failed with its state when failed", () => {
+    const ready = ["stored", "parsing", "indexing", "ready"].map((stage, n) => ({ stage, at: at(n) }));
+    expect(currentStage(ready, "general")).toMatchObject({ label: "Ready to chat", state: "done" });
+    const failed = currentStage([{ stage: "stored", at: at(0) }, { stage: "failed", at: at(1), detail: "x" }]);
+    expect(failed).toMatchObject({ label: "Failed", state: "failed" });
+  });
+
+  it("shows the stage that was running when it failed as not done", () => {
+    const view = stageView([
+      { stage: "stored", at: at(0) },
+      { stage: "parsing", at: at(1) },
+      { stage: "failed", at: at(2), detail: "No text." },
+    ]);
+    expect(view.map((s) => [s.stage, s.state])).toEqual([
+      ["stored", "done"],
+      ["parsing", "failed"],
+      ["failed", "failed"],
+    ]);
   });
 });

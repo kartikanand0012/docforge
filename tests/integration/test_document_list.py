@@ -73,3 +73,23 @@ def test_a_bad_cursor_or_limit_is_refused(world: World) -> None:
     assert client.get("/v1/documents", params={"before": "not-a-cursor"}).status_code == 422
     assert client.get("/v1/documents", params={"limit": 0}).status_code == 422
     assert client.get("/v1/documents", params={"limit": 501}).status_code == 422
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "0001-01-01T00:00:00+23:59|00000000-0000-0000-0000-000000000000",
+        "2026-10-04T10:00:00|00000000-0000-0000-0000-000000000000",  # no time zone
+    ],
+)
+def test_a_cursor_with_an_impossible_time_is_refused_not_an_error(world: World, raw: str) -> None:
+    import base64
+
+    assert world.build() is not None
+    client = TestClient(
+        signed_in(create_app(None, service=world.service), role="reviewer"),
+        raise_server_exceptions=False,
+    )
+    cursor = base64.urlsafe_b64encode(raw.encode()).decode()
+
+    assert client.get("/v1/documents", params={"before": cursor}).status_code == 422

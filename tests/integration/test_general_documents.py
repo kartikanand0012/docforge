@@ -12,7 +12,7 @@ from docforge.api.app import create_app
 from docforge.conversion import ConversionError
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
-from docforge.documents import DocumentService, UnsupportedFormat
+from docforge.documents import DocumentService, TransientProcessingError, UnsupportedFormat
 from docforge.extraction.general import GeneralPipeline
 from docforge.formats import Format
 from docforge.review.service import ReviewService
@@ -48,6 +48,7 @@ class Service:
         self.store = MemoryObjectStore()
         self.converter = converter or Converter()
         self.parser = FakeParser()
+        self.sha = ""
         self.service = DocumentService(
             sessions,
             self.store,
@@ -188,3 +189,116 @@ def test_the_api_takes_word_files_and_images_and_says_which_formats_it_takes(
         "This file type is not accepted. Accepted: PDF, Word (DOCX), PowerPoint (PPTX), "
         "Excel (XLSX), PNG, JPEG and TIFF."
     )
+
+
+# --- review findings (C10) ---------------------------------------------------------------
+
+
+class Unavailable(Converter):
+    def to_pdf(self, data: bytes, fmt: Format) -> bytes:
+        from docforge.conversion import ConverterUnavailable
+
+        self.calls.append(fmt)
+        raise ConverterUnavailable("LibreOffice is not installed on this worker.")
+
+
+def test_a_worker_without_libreoffice_retries_instead_of_failing_the_file(
+    sessions: SessionFactory,
+) -> None:
+    svc = Service(sessions, Unavailable())
+    document_id = svc.ingest(DOCX).document.id
+    version_id = svc.queued[0]
+
+    with pytest.raises(TransientProcessingError):
+        svc.service.process(version_id)
+
+    detail = svc.service.detail(DEFAULT_TENANT_ID, document_id)
+    assert detail.versions[-1].status == "queued"
+    assert detail.document.stage == "retrying"
+    assert svc.stages(document_id)[-1] == "retrying"
+
+
+def test_a_pdf_made_with_too_many_pages_is_refused_before_it_is_stored(
+    sessions: SessionFactory,
+) -> None:
+    class Long(Converter):
+        def to_pdf(self, data: bytes, fmt: Format) -> bytes:
+            return image_bytes("PDF", frames=3)
+
+    svc = Service(sessions, Long())
+    svc.service._max_pages = 2  # noqa: SLF001 - the limit the API passes in production
+    document = svc.ingest(DOCX).document
+
+    assert svc.run() == ["failed"]
+
+    last = svc.service.timeline(DEFAULT_TENANT_ID, document.id)[-1]
+    assert last.detail == "The document has 3 pages; the limit is 2."
+    assert not svc.store.exists(rendition_key(DEFAULT_TENANT_ID, document.sha256))
+
+
+def test_when_two_deliveries_convert_the_stored_pdf_wins(sessions: SessionFactory) -> None:
+    """LibreOffice output differs run to run; page images and boxes must come from one PDF."""
+    stored = image_bytes("PDF", size=(600, 800))
+
+    class Racing(Converter):
+        def __init__(self, store: MemoryObjectStore) -> None:
+            super().__init__()
+            self.store = store
+
+        def to_pdf(self, data: bytes, fmt: Format) -> bytes:
+            # Another delivery finished converting first.
+            self.store.put(rendition_key(DEFAULT_TENANT_ID, svc.sha), stored, "application/pdf")
+            return CONVERTED
+
+    svc = Service(sessions)
+    svc.converter = Racing(svc.store)
+    svc.service._converter = svc.converter  # noqa: SLF001
+    document = svc.ingest(DOCX).document
+    svc.sha = document.sha256
+    svc.run()
+
+    assert svc.store.get(rendition_key(DEFAULT_TENANT_ID, document.sha256)) == stored
+    assert svc.service.detail(DEFAULT_TENANT_ID, document.id).document.page_count == 1
+
+
+def test_reprocessing_moves_the_document_back_to_stored(svc: Service) -> None:
+    document_id = svc.ingest(DOCX).document.id
+    svc.run()
+    version_id = svc.service.detail(DEFAULT_TENANT_ID, document_id).versions[-1].id
+    svc.service.mark_indexed(version_id)
+
+    svc.service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=document_id, actor="t")
+
+    document = svc.service.detail(DEFAULT_TENANT_ID, document_id).document
+    assert document.stage == "stored" and document.ready_for_chat is False
+
+
+def test_an_old_versions_index_job_does_not_make_a_newer_one_ready(svc: Service) -> None:
+    document_id = svc.ingest(DOCX).document.id
+    svc.run()
+    old = svc.service.detail(DEFAULT_TENANT_ID, document_id).versions[-1].id
+    svc.service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=document_id, actor="t")
+
+    svc.service.mark_indexed(old)  # a retried index job of version 1, while 2 waits
+
+    document = svc.service.detail(DEFAULT_TENANT_ID, document_id).document
+    assert document.stage == "stored"
+    assert "ready" not in svc.stages(document_id)
+
+
+def test_a_stage_that_cannot_be_recorded_does_not_retry_the_document(
+    svc: Service, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    original = DocumentService._audit  # noqa: SLF001
+
+    def flaky(session: Any, document: Any, actor: str, action: str, **details: Any) -> None:
+        if action == "processing.stage" and details.get("stage") == "parsing":
+            raise OperationalError("stage", {}, Exception("connection dropped"))
+        original(session, document, actor, action, **details)
+
+    monkeypatch.setattr(DocumentService, "_audit", staticmethod(flaky))
+    svc.ingest(DOCX)
+
+    assert svc.run() == ["succeeded"]

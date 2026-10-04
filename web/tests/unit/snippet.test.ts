@@ -24,4 +24,9 @@ describe("snippet", () => {
   it("ignores short and common words", () => {
     expect(snippet(long, "what is the", 300).startsWith("Purpose")).toBe(true);
   });
+
+  it("keeps its place in text whose letters change length when lowercased", () => {
+    const text = `${"İstanbul depot. ".repeat(30)}Record the temperature of cold-chain goods; anything above 8 °C is rejected. ${"x".repeat(200)}`;
+    expect(snippet(text, "temperature above", 120)).toContain("anything above 8 °C");
+  });
 });
