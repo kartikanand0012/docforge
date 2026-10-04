@@ -2,6 +2,39 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C10 Status and general documents (2026-10-04): gate passed
+
+Branch `c10-status`, stacked on C9. Evidence: `docs/tdd/c10-status.tdd.md`.
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Every stage visible in the UI within 2 s of happening | Pass | Stages are written as they happen and streamed (one read per second per stream); the review app shows each as it arrives, polling every 2 s if the stream drops. The e2e test follows each document to Ready to chat |
+| A DOCX goes from upload to ready | Pass | e2e: a Word SOP uploaded in the browser is converted, read, indexed, shown as a page image and found by search (8/8 steps) |
+| The e2e test follows a document to "ready" | Pass | Both the invoice and the DOCX |
+
+### What was built
+
+- **Stages.** stored, converting, parsing, extracting, checking, indexing, ready (or processed, retrying, failed with its reason). Written to the audit trail as they happen (migration 0014); a timeline and a live event stream per document; `document.ready_for_chat` webhook.
+- **Documents page.** Every document of the organisation, newest first, with its live stage, filtered by type and stage, paged by cursor.
+- **General documents.** A `general` type: read and indexed for search and chat with no model call, never in the review queue. Its summary chunk is its name and first line.
+- **More formats.** PDF, Word, PowerPoint, Excel, PNG, JPEG and TIFF, recognised from their bytes and stored as uploaded (migration 0015, `media_type`). Anything but a PDF is made into a PDF once in the worker and kept beside the original, so page images, cited boxes and search work the same for every format. Photos of invoices can go through the typed packs.
+- **Conversion, hardened after review.** A child process per conversion with time and memory limits over its whole process tree. Images: every frame and all together under a pixel limit, transparency on white. Office files: refused before LibreOffice if they link outside themselves (other than hyperlinks), carry macros or unpack too large; LibreOffice in its own session with only PATH, LANG and a home, killed with everything it started. The PDF made is held to the page limit before it is stored.
+- **Search excerpts** show the part of a passage where the question's words are.
+- **LibreOffice** in the worker image and in CI.
+
+### Review (ECC security-reviewer, python-reviewer, react-reviewer)
+
+Fixed, each with a failing test first: image frames after the first were not size-checked (HIGH); a timed-out LibreOffice left processes running, with no resource limits (HIGH); LibreOffice could be handed files linking outside themselves, and got a deny-listed environment; streams were not capped; the page limit came after the work; the stage column did not show retrying or reprocessing; an old index job could make a newer version ready; a stage that could not be recorded retried the whole job; a missing LibreOffice failed the file instead of retrying; two deliveries could store different PDFs; transparent images turned black; impossible cursors were a 500. Web: the status chip said Ready to chat before any stage arrived; the Documents page showed answers for old filters, lost loaded pages on refresh and could load a page twice; polling never stopped on a refusal; the whole stage list was a live region.
+
+### Honest limits
+
+- **LibreOffice still has the worker's network.** Files that link outside themselves are refused before conversion, but LibreOffice itself is not in a network namespace. A separate converter container with no network is the next step before taking files from untrusted organisations.
+- **A stored PDF is reused forever.** If a LibreOffice upgrade would convert a file better, reprocessing still uses the first PDF.
+- **Stream caps are per API process**, and access is checked when a stream opens, not while it runs (at most ten minutes).
+- **Search ranks passages, not answers.** In the browser test the right passage came first; which passage ranks first in general is for the C11 answer eval to measure.
+
 ## C9 Ship (2026-10-03): built and tried locally; not deployed (needs an AWS account)
 
 Branch `c9-ship`, PR #10 (stacked on C8).
