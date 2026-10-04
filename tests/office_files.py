@@ -40,18 +40,21 @@ def xlsx_bytes() -> bytes:
     return out.getvalue()
 
 
-def image_bytes(fmt: str, size: tuple[int, int] = (850, 1100), frames: int = 1) -> bytes:
-    """A white page with a black bar; `frames` pages for a TIFF."""
+def image_bytes(
+    fmt: str, size: tuple[int, int] = (850, 1100), frames: int = 1, dpi: int | None = None
+) -> bytes:
+    """A white page with a black bar; `frames` pages for a TIFF; `dpi` declared if given."""
     pages = []
     for n in range(frames):
         image = Image.new("RGB", size, "white")
         image.paste((0, 0, 0), (100, 100 + 40 * n, 700, 130 + 40 * n))
         pages.append(image)
     out = io.BytesIO()
+    extra = {"dpi": (dpi, dpi)} if dpi else {}
     if frames > 1:
-        pages[0].save(out, format=fmt, save_all=True, append_images=pages[1:])
+        pages[0].save(out, format=fmt, save_all=True, append_images=pages[1:], **extra)
     else:
-        pages[0].save(out, format=fmt)
+        pages[0].save(out, format=fmt, **extra)
     return out.getvalue()
 
 

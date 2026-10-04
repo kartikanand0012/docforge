@@ -6,7 +6,12 @@ import { api, type DocumentRow } from "@/lib/api";
 import { STAGE_LABELS } from "@/lib/stages";
 
 const FINAL = new Set(["ready", "processed", "failed"]);
-const TYPES: Record<string, string> = { invoice: "Invoice", purchase_order: "Purchase order", coa: "Certificate of analysis" };
+const TYPES: Record<string, string> = {
+  invoice: "Invoice",
+  purchase_order: "Purchase order",
+  coa: "Certificate of analysis",
+  general: "General document",
+};
 
 function stageState(stage: string): string {
   if (stage === "failed") return "failed";
@@ -77,7 +82,7 @@ export default function DocumentsPage() {
           Stage{" "}
           <select value={stage} onChange={(e) => setStage(e.target.value)}>
             <option value="">All</option>
-            {["stored", "parsing", "extracting", "checking", "indexing", "ready", "processed", "failed"].map((s) => (
+            {["stored", "converting", "parsing", "extracting", "checking", "indexing", "ready", "processed", "failed"].map((s) => (
               <option key={s} value={s}>{STAGE_LABELS[s]}</option>
             ))}
           </select>

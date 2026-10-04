@@ -91,6 +91,7 @@ export type DocumentSummary = {
   document: {
     id: string;
     doc_type: string;
+    media_type: string;
     filename: string;
     status: string;
     stage: string;
@@ -103,6 +104,7 @@ export type DocumentSummary = {
 export type DocumentRow = {
   id: string;
   doc_type: string;
+  media_type: string;
   filename: string;
   status: string;
   stage: string;

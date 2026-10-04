@@ -467,7 +467,7 @@ def test_the_audit_log_does_not_record_the_filename(sessions: SessionFactory) ->
 
     with sessions() as session:
         details = session.scalars(select(AuditEntry.details)).one()
-    assert set(details) == {"sha256", "size_bytes", "doc_type"}
+    assert set(details) == {"sha256", "size_bytes", "doc_type", "media_type"}
 
 
 def test_a_duplicate_upload_restores_a_lost_original(sessions: SessionFactory) -> None:

@@ -15,9 +15,12 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 FROM python@sha256:54c85f3c47607a77f32adec749d3c81d1348bf25833671f512b26a9b6d778cb3
-# Shared libraries the OCR and image code load at runtime.
+# Shared libraries the OCR and image code load at runtime; LibreOffice (no GUI) and fonts to
+# turn Word, PowerPoint and Excel files into PDFs (docforge.conversion).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+       libreoffice-writer-nogui libreoffice-impress-nogui libreoffice-calc-nogui \
+       fonts-dejavu-core fonts-liberation2 \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 10001 --create-home --shell /usr/sbin/nologin app
 WORKDIR /app

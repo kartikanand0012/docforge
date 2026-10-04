@@ -28,8 +28,8 @@ def test_a_pdf_is_returned_as_it_is() -> None:
 
 
 @pytest.mark.parametrize("fmt", ["PNG", "JPEG"])
-def test_an_image_becomes_a_one_page_pdf_of_letter_size(fmt: str) -> None:
-    pdf = FileConverter().to_pdf(image_bytes(fmt, (850, 1100)), fmt.lower())
+def test_a_scan_becomes_a_one_page_pdf_of_its_own_size(fmt: str) -> None:
+    pdf = FileConverter().to_pdf(image_bytes(fmt, (850, 1100), dpi=100), fmt.lower())
     assert pdf.startswith(b"%PDF-")
     ((width, height),) = pages(pdf)
     assert (round(width), round(height)) == (612, 792)  # 850 x 1100 pixels at 100 dpi
@@ -37,9 +37,15 @@ def test_an_image_becomes_a_one_page_pdf_of_letter_size(fmt: str) -> None:
 
 def test_a_large_photo_is_scaled_to_fit_a_page() -> None:
     """A 12-megapixel phone photo at 72 dpi would be a page 56 inches high."""
-    ((width, height),) = pages(FileConverter().to_pdf(image_bytes("JPEG", (3000, 4000)), "jpeg"))
-    assert height <= 842 + 1  # no taller than A4
+    photo = image_bytes("JPEG", (3000, 4000), dpi=72)
+    ((width, height),) = pages(FileConverter().to_pdf(photo, "jpeg"))
+    assert height == pytest.approx(842, abs=1)  # as tall as A4
     assert width / height == pytest.approx(3000 / 4000, rel=0.01)
+
+
+def test_an_image_with_no_resolution_fits_a4() -> None:
+    ((_, height),) = pages(FileConverter().to_pdf(image_bytes("PNG", (850, 1100)), "png"))
+    assert height == pytest.approx(842, abs=1)
 
 
 def test_each_frame_of_a_tiff_is_a_page() -> None:
@@ -86,12 +92,14 @@ def test_a_conversion_that_runs_too_long_is_stopped() -> None:
         FileConverter(timeout_seconds=0.001).to_pdf(docx_bytes(), "docx")
 
 
-def test_libreoffice_gets_no_secrets_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_libreoffice_gets_no_secrets_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("GEMINI_API_KEY", "secret")
     monkeypatch.setenv("DATABASE_URL", "postgresql://owner:pw@db/x")
-    env = FileConverter.child_environment(Path("/tmp/profile"))
+    env = FileConverter.child_environment(tmp_path)
     assert "GEMINI_API_KEY" not in env and "DATABASE_URL" not in env
-    assert env["HOME"] == "/tmp/profile"
+    assert env["HOME"] == str(tmp_path)
 
 
 class Counting:

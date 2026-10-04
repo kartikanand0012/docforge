@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { snippet } from "@/lib/snippet";
 import { API_URL } from "@/lib/api";
 
 type Hit = {
@@ -18,6 +19,7 @@ export default function SearchPage() {
   const [hits, setHits] = useState<Hit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [asked, setAsked] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -30,6 +32,7 @@ export default function SearchPage() {
       const body = (await response.json()) as { results?: Hit[]; detail?: unknown };
       if (!response.ok) throw new Error(typeof body.detail === "string" ? body.detail : "Search failed.");
       setHits(body.results ?? []);
+      setAsked(String(form.get("q")));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -70,7 +73,7 @@ export default function SearchPage() {
                   <span className="muted">
                     · {hit.doc_type.replace("_", " ")} · page {hit.page} · {hit.kind.replace("_", " ")}
                   </span>
-                  <div className="value">{hit.text.length > 300 ? `${hit.text.slice(0, 300)}…` : hit.text}</div>
+                  <div className="value">{snippet(hit.text, asked, 300)}</div>
                 </li>
               ))}
             </ol>

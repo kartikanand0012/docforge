@@ -37,7 +37,7 @@ class Converter:
     def to_pdf(self, data: bytes, fmt: Format) -> bytes:
         self.calls.append(fmt)
         if self.fail:
-            raise ConversionError("LibreOffice could not read the file")
+            raise ConversionError("LibreOffice could not read the file.")
         return data if fmt == "pdf" else CONVERTED
 
 
@@ -128,7 +128,7 @@ def test_a_file_that_cannot_be_converted_fails_with_the_reason(sessions: Session
     last = svc.service.timeline(DEFAULT_TENANT_ID, document_id)[-1]
     assert last.stage == "failed"
     assert last.detail == (
-        "The file could not be converted to PDF: LibreOffice could not read the file."
+        "The file could not be converted to PDF. LibreOffice could not read the file."
     )
 
 
@@ -147,6 +147,13 @@ def test_the_page_image_of_a_converted_file_comes_from_its_pdf(
     png = review.page_image(DEFAULT_TENANT_ID, document_id, 1)
 
     assert png.startswith(b"\x89PNG")
+
+
+def test_a_general_document_never_waits_for_review(sessions: SessionFactory, svc: Service) -> None:
+    svc.ingest(DOCX)
+    svc.run()
+
+    assert ReviewService(sessions, svc.store, {}).queue(DEFAULT_TENANT_ID) == []
 
 
 def test_a_general_document_is_found_by_search(sessions: SessionFactory, svc: Service) -> None:

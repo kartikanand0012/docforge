@@ -10,10 +10,13 @@ const time = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-di
  * with a fallback to asking every two seconds if the stream cannot be held open. */
 export default function Timeline({
   id,
+  docType,
   compact = false,
   onChange,
 }: {
   id: string;
+  /** A general document skips extraction and checking, so they are not shown as to come. */
+  docType?: string;
   compact?: boolean;
   /** Called with the steps whenever they change, so the page can load what a stage made. */
   onChange?: (steps: Step[]) => void;
@@ -64,7 +67,7 @@ export default function Timeline({
     };
   }, [id, onChange]);
 
-  const stages = stageView(steps);
+  const stages = stageView(steps, docType);
   if (compact) {
     const current = stages.find((s) => s.state === "current" || s.state === "failed") ?? stages.at(-1);
     return (

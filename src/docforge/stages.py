@@ -9,9 +9,11 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
-# In order. `processed`: finished, but nothing indexes it for search and chat.
+# In order. `converting`: a file that is not a PDF being made into one. `processed`:
+# finished, but nothing indexes it for search and chat.
 STAGES = (
     "stored",
+    "converting",
     "parsing",
     "extracting",
     "checking",

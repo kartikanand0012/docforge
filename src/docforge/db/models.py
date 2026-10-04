@@ -64,6 +64,8 @@ class Document(Base):
     doc_type: Mapped[str] = mapped_column(Text)
     sha256: Mapped[str] = mapped_column(CHAR(64))
     storage_key: Mapped[str] = mapped_column(Text)
+    # As uploaded. Anything but a PDF is read from the PDF made of it (`rendition_key`).
+    media_type: Mapped[str] = mapped_column(Text, server_default="application/pdf")
     filename: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     page_count: Mapped[int | None] = mapped_column(Integer)

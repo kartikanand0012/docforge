@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from docforge.api.auth import require
-from docforge.api.uploads import read_pdf_upload, safe_filename
+from docforge.api.uploads import read_upload, safe_filename
 from docforge.auth import Principal
 from docforge.documents import (
     DocumentNotFound,
@@ -25,7 +25,9 @@ from docforge.documents import (
     QueueFull,
     ReprocessInProgress,
     UnknownDocumentType,
+    UnsupportedFormat,
 )
+from docforge.formats import ACCEPTED, extension
 from docforge.parsing.base import ParseError
 from docforge.parsing.pdf import pdf_page_count
 from docforge.storage import StorageUnavailable
@@ -46,6 +48,7 @@ class DocumentOut(_Out):
     doc_type: str
     filename: str
     sha256: str
+    media_type: str
     size_bytes: int
     page_count: int | None
     status: str
@@ -169,29 +172,40 @@ def documents_router(
         principal: Writer,
         doc_type: Annotated[str, Form()] = "invoice",
     ) -> UploadOut:
-        """Store a PDF and queue it for extraction. The same file twice is one document."""
+        """Store a file and queue it for processing. The same file twice is one document.
+
+        PDFs, office files and images are accepted. A PDF's pages are counted here; any other
+        file is made into a PDF in the worker, and its pages are counted there.
+        """
         if doc_type not in service.document_types:
             supported = ", ".join(service.document_types)
             raise HTTPException(422, f"Unknown document type. Supported: {supported}.")
-        data = await read_pdf_upload(file, max_upload_bytes)
-        try:
-            pages = await run_in_threadpool(pdf_page_count, data)
-        except ParseError as error:
-            raise HTTPException(422, "The file could not be read as a PDF.") from error
-        if pages > max_pages:
-            raise HTTPException(413, f"The document has {pages} pages; the limit is {max_pages}.")
+        data, fmt = await read_upload(file, max_upload_bytes)
+        if fmt == "pdf":
+            try:
+                pages = await run_in_threadpool(pdf_page_count, data)
+            except ParseError as error:
+                raise HTTPException(422, "The file could not be read as a PDF.") from error
+            if pages > max_pages:
+                raise HTTPException(
+                    413, f"The document has {pages} pages; the limit is {max_pages}."
+                )
 
         try:
             result = await run_in_threadpool(
                 service.ingest,
                 tenant_id=principal.tenant_id,
                 doc_type=doc_type,
-                filename=safe_filename(file.filename) or "upload.pdf",
+                filename=safe_filename(file.filename) or f"upload.{extension(fmt)}",
                 data=data,
                 actor=principal.actor,
             )
         except UnknownDocumentType as error:
             raise HTTPException(422, "Unknown document type.") from error
+        except UnsupportedFormat as error:
+            raise HTTPException(
+                415, f"This file type is not accepted. Accepted: {ACCEPTED}."
+            ) from error
         except DocumentTypeConflict as error:
             raise HTTPException(409, f"{str(error).capitalize()}.") from error
         except QueueFull as error:

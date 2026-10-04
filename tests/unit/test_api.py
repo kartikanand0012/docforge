@@ -246,5 +246,5 @@ def test_the_replay_factory_extracts_a_recorded_document_offline() -> None:
     pdf = (repo / "tests" / "fixtures" / "synthetic" / "pair_002" / "invoice.pdf").read_bytes()
     result = pipelines["invoice"].run(pdf)
 
-    assert set(pipelines) == {"invoice", "purchase_order", "coa"}
+    assert set(pipelines) == {"invoice", "purchase_order", "coa", "general"}
     assert result.responses[0].model == settings.gemini_model

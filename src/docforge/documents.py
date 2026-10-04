@@ -29,6 +29,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
 from docforge import audit
+from docforge.conversion import ConversionError, Converter, FileConverter
 from docforge.db.models import (
     ORDER_NUMBER,
     AssessmentRecord,
@@ -45,6 +46,7 @@ from docforge.db.tenancy import scoped, tenant_scope
 from docforge.extraction.pipeline import ExtractionError, PipelineResult
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
+from docforge.formats import ACCEPTED, FORMAT_OF, MEDIA_TYPES, Format, sniff
 from docforge.llm.base import LLMError
 from docforge.parsing.base import (
     DocumentTooLarge,
@@ -53,7 +55,13 @@ from docforge.parsing.base import (
     ParserLimitExceeded,
 )
 from docforge.stages import stage_listener
-from docforge.storage import ObjectNotFound, ObjectStore, StorageUnavailable, original_key
+from docforge.storage import (
+    ObjectNotFound,
+    ObjectStore,
+    StorageUnavailable,
+    original_key,
+    rendition_key,
+)
 from docforge.telemetry import current_prices, document_cost, traced
 from docforge.trust.match import match_invoice_to_order
 
@@ -72,6 +80,10 @@ Outcome = Literal["succeeded", "failed", "skipped"]
 
 class UnknownDocumentType(ValueError):
     """No pipeline is registered for the document type."""
+
+
+class UnsupportedFormat(ValueError):
+    """The file is not one of the accepted formats (`docforge.formats`)."""
 
 
 class DocumentTypeConflict(ValueError):
@@ -252,7 +264,9 @@ class DocumentService:
         events: EventSink | None = None,
         anchors: "AnchorStore | None" = None,
         index: Enqueue | None = None,
+        converter: Converter | None = None,
     ) -> None:
+        self._converter = converter or FileConverter()  # files that are not PDFs, to PDFs
         self._index = index  # queues the search indexing of a finished version
         self._sessions = sessions
         self._events = events
@@ -276,13 +290,17 @@ class DocumentService:
         """Record an upload. The content hash is the identity: the same bytes for the same
         tenant return the existing document and start no new work.
 
-        Raises `UnknownDocumentType`, `DocumentTypeConflict`, `QueueFull` or
-        `StorageUnavailable`. Nothing is recorded when it raises.
+        Raises `UnknownDocumentType`, `UnsupportedFormat`, `DocumentTypeConflict`,
+        `QueueFull` or `StorageUnavailable`. Nothing is recorded when it raises.
         """
         if doc_type not in self._pipelines:
             raise UnknownDocumentType(f"unknown document type {doc_type!r}")
+        fmt = sniff(data)
+        if fmt is None:
+            raise UnsupportedFormat(f"not an accepted file type; accepted: {ACCEPTED}")
+        media_type = MEDIA_TYPES[fmt]
         sha256 = hashlib.sha256(data).hexdigest()
-        key = original_key(tenant_id, sha256)
+        key = original_key(tenant_id, sha256, fmt)
 
         with self._sessions.begin() as session:
             existing = self._by_hash(session, tenant_id, sha256)
@@ -293,7 +311,7 @@ class DocumentService:
                 # Store before the row: an object without a row is harmless and is reused
                 # by the next upload of the same bytes; a row without its object is not.
                 if not self._store.exists(key):
-                    self._store.put(key, data, "application/pdf")
+                    self._store.put(key, data, media_type)
                 inserted = session.execute(
                     insert(Document)
                     .values(
@@ -301,6 +319,7 @@ class DocumentService:
                         doc_type=doc_type,
                         sha256=sha256,
                         storage_key=key,
+                        media_type=media_type,
                         filename=filename,
                         size_bytes=len(data),
                     )
@@ -316,7 +335,7 @@ class DocumentService:
                         f"this file is already stored as document type {existing.doc_type!r}"
                     )
                 if not self._store.exists(existing.storage_key):  # heal a lost original
-                    self._store.put(existing.storage_key, data, "application/pdf")
+                    self._store.put(existing.storage_key, data, existing.media_type)
                 return IngestResult(existing, None, created=False)
 
             document = session.get_one(Document, inserted)
@@ -331,6 +350,7 @@ class DocumentService:
                 sha256=sha256,
                 size_bytes=len(data),
                 doc_type=doc_type,
+                media_type=media_type,
             )
             self._enqueue(session, version)
             return IngestResult(document, version, created=True)
@@ -400,7 +420,9 @@ class DocumentService:
             version.started_at = version.started_at or _now()
             version.error = None
             document.status = "processing"
-            document.stage = "parsing"
+            fmt = FORMAT_OF.get(document.media_type, "pdf")
+            # A file that is not a PDF is made into one first.
+            document.stage = "parsing" if fmt == "pdf" else "converting"
             self._audit(
                 session,
                 document,
@@ -408,9 +430,11 @@ class DocumentService:
                 "processing.started",
                 version_no=version.version_no,
                 attempt=version.attempts,
+                stage=document.stage,
             )
             turn = version.attempts
             doc_type, storage_key, sha256 = document.doc_type, document.storage_key, document.sha256
+            rendition = rendition_key(document.tenant_id, sha256)
 
         final = turn >= self._max_attempts
         span = trace.get_current_span()
@@ -427,8 +451,13 @@ class DocumentService:
                 return self._fail(
                     version_id, turn, "The stored original does not match its recorded hash."
                 )
+            if fmt != "pdf":
+                data = self._rendition(data, fmt, rendition)
+                self._reach(version_id, turn, "parsing", recorded_at_start=False)
             with stage_listener(lambda stage: self._reach(version_id, turn, stage)):
                 result = pipeline.run(data)
+        except ConversionError as error:
+            return self._fail(version_id, turn, f"The file could not be converted to PDF. {error}")
         except ObjectNotFound:
             return self._fail(version_id, turn, "The stored original is missing.")
         except NoTextLayer:
@@ -438,7 +467,12 @@ class DocumentService:
         except ParserLimitExceeded as error:
             return self._fail(version_id, turn, str(error))
         except ParseError:
-            return self._fail(version_id, turn, "The file could not be read as a PDF.")
+            message = (
+                "The file could not be read as a PDF."
+                if fmt == "pdf"
+                else ("The PDF made from the file could not be read.")
+            )
+            return self._fail(version_id, turn, message)
         except ExtractionError:
             return self._fail(version_id, turn, "The model reply did not fit the schema.")
         except StorageUnavailable as error:
@@ -471,6 +505,19 @@ class DocumentService:
                 # The extraction is stored; a failed comparison must not fail the job.
                 logger.exception("could not match version %s with its counterpart", version_id)
         return outcome
+
+    def _rendition(self, data: bytes, fmt: Format, key: str) -> bytes:
+        """The PDF made from `data`: stored the first time, read back after (reprocessing).
+
+        Runs outside any transaction; the conversion can take seconds.
+        """
+        if self._store.exists(key):
+            return self._store.get(key)
+        with traced("document.convert") as span:
+            span.set_attribute("docforge.format", fmt)
+            pdf = self._converter.to_pdf(data, fmt)
+        self._store.put(key, pdf, "application/pdf")
+        return pdf
 
     def _complete(
         self, version_id: uuid.UUID, turn: int, result: PipelineResult[BaseModel]
@@ -523,7 +570,7 @@ class DocumentService:
                     data=assessment.model_dump(mode="json"),
                 )
             )
-            model = result.responses[-1].model
+            model = result.responses[-1].model if result.responses else None  # general: none
             version.status = "succeeded"
             version.finished_at = _now()
             version.parser_version = f"{result.parsed.parser} {result.parsed.parser_version}"
@@ -541,7 +588,7 @@ class DocumentService:
                 "extraction.created",
                 version_no=version.version_no,
                 extraction_sha256=sha256,
-                model=model,
+                model=model or "none",
                 model_calls=len(result.responses),
             )
             self._audit(
@@ -759,6 +806,9 @@ class DocumentService:
             stage = (
                 entry.details.get("stage")
                 if entry.action == "processing.stage"
+                # Processing starts with parsing, or with converting a file that is not a PDF.
+                else entry.details.get("stage", "parsing")
+                if entry.action == "processing.started"
                 else _STAGE_OF.get(entry.action)
             )
             if stage is not None:
@@ -789,12 +839,14 @@ class DocumentService:
                     event_id=event_id("document.ready_for_chat", version.id),
                 )
 
-    def _reach(self, version_id: uuid.UUID, turn: int, stage: str) -> None:
+    def _reach(
+        self, version_id: uuid.UUID, turn: int, stage: str, *, recorded_at_start: bool = True
+    ) -> None:
         """A stage the pipeline reported while working: recorded in its own short
         transaction, so the person waiting sees it at once. Only by the current delivery: a
         stalled one, overtaken by another, must not move a finished document back."""
-        if stage == "parsing":
-            return  # recorded when processing started
+        if stage == "parsing" and recorded_at_start:
+            return  # recorded when processing started, unless conversion came first
         with self._sessions.begin() as session:
             owned = self._owned(session, version_id, turn)
             if owned is None:
