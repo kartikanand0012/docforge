@@ -148,32 +148,25 @@ def test_another_tenant_sees_no_timeline(world: World, other_tenant: uuid.UUID) 
     assert client.get(f"/v1/documents/{document_id}/events").status_code == 404
 
 
-def test_one_caller_cannot_hold_open_unlimited_streams(world: World) -> None:
-    """Each stream polls the database; a cap per caller keeps the API's threads for others."""
-    import asyncio
-
+def test_one_caller_cannot_hold_open_unlimited_streams(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each stream polls the database; a cap per caller keeps the API's threads for others.
+    A stream that ends gives its place back."""
     from docforge.api import documents as api_documents
 
     document_id = world.process("invoice")
     assert world.service is not None
-    app = signed_in(create_app(None, service=world.service), role="integrator")
-    limit = api_documents.MAX_STREAMS_PER_CALLER
+    version_id = world.service.detail(DEFAULT_TENANT_ID, document_id).versions[-1].id
+    world.service.mark_indexed(version_id)  # ready: each stream ends after the history
+    client = TestClient(signed_in(create_app(None, service=world.service), role="integrator"))
+    url = f"/v1/documents/{document_id}/events"
 
-    async def open_streams() -> list[int]:
-        import httpx
+    monkeypatch.setattr(api_documents, "MAX_STREAMS_PER_CALLER", 1)
+    assert client.get(url).status_code == 200
+    assert client.get(url).status_code == 200  # the first one's place was given back
+    assert not api_documents._open_streams
 
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            opened = []
-            for _ in range(limit):
-                request = client.build_request("GET", f"/v1/documents/{document_id}/events")
-                opened.append(await client.send(request, stream=True))
-            over = await client.get(f"/v1/documents/{document_id}/events")
-            for response in opened:
-                await response.aclose()
-            return [r.status_code for r in opened] + [over.status_code]
-
-    statuses = asyncio.run(open_streams())
-
-    assert statuses[:limit] == [200] * limit
-    assert statuses[-1] == 429
+    monkeypatch.setattr(api_documents, "MAX_STREAMS_PER_CALLER", 0)
+    refused = client.get(url)
+    assert refused.status_code == 429

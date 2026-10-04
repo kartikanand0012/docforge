@@ -10,14 +10,16 @@ function terms(question: string): string[] {
  * or the start when none is there. Cut ends are marked with "…". */
 export function snippet(text: string, question: string, size: number): string {
   if (text.length <= size) return text;
-  const lower = text.toLowerCase();
   const wanted = terms(question);
+  // Matched in the text itself, so every position is one in `text`, whatever lowercasing
+  // would do to its length.
+  const found = (window: string) => wanted.filter((w) => new RegExp(escape(w), "iu").test(window)).length;
   let best = { start: 0, score: 0 };
   for (const word of wanted) {
-    for (let at = lower.indexOf(word); at !== -1; at = lower.indexOf(word, at + 1)) {
+    for (const match of text.matchAll(new RegExp(escape(word), "giu"))) {
+      const at = match.index ?? 0;
       const start = Math.max(0, Math.min(at - Math.floor(size / 3), text.length - size));
-      const window = lower.slice(start, start + size);
-      const score = wanted.filter((w) => window.includes(w)).length;
+      const score = found(text.slice(start, start + size));
       if (score > best.score || (score === best.score && score > 0 && start < best.start)) best = { start, score };
     }
   }
@@ -25,3 +27,5 @@ export function snippet(text: string, question: string, size: number): string {
   const end = start + size;
   return `${start > 0 ? "…" : ""}${text.slice(start, end).trim()}${end < text.length ? "…" : ""}`;
 }
+
+const escape = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

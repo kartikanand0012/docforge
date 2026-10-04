@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type DocumentRow } from "@/lib/api";
+import { mergeFresh } from "@/lib/rows";
 import { STAGE_LABELS } from "@/lib/stages";
 
 const FINAL = new Set(["ready", "processed", "failed"]);
@@ -12,6 +13,8 @@ const TYPES: Record<string, string> = {
   coa: "Certificate of analysis",
   general: "General document",
 };
+
+const newestFirst = (a: DocumentRow, b: DocumentRow) => b.created_at.localeCompare(a.created_at) || b.id.localeCompare(a.id);
 
 function stageState(stage: string): string {
   if (stage === "failed") return "failed";
@@ -27,27 +30,43 @@ export default function DocumentsPage() {
   const [stage, setStage] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const page = await api.documents({ doc_type: docType, stage });
-      setRows(page.items);
-      setNext(page.next_before);
-      setProblem(null);
-      return page.items.every((row) => FINAL.has(row.stage));
-    } catch (e) {
-      setProblem((e as Error).message);
-      return false;
-    }
-  }, [docType, stage]);
+  // Bumped whenever the filters change: an answer for older filters is dropped, not shown.
+  const filters = useRef(0);
+  const [busy, setBusy] = useState(false);
+
+  /** The first page: replaces the list when the filters changed, else is merged into it so
+   * pages already loaded below stay. True once nothing on it is still being processed. */
+  const load = useCallback(
+    async (replace: boolean) => {
+      const ticket = filters.current;
+      try {
+        const page = await api.documents({ doc_type: docType, stage });
+        if (ticket !== filters.current) return true;
+        if (replace) {
+          setRows(page.items);
+          setNext(page.next_before);
+        } else {
+          setRows((current) => mergeFresh(current ?? [], page.items));
+        }
+        setProblem(null);
+        return page.items.every((row) => FINAL.has(row.stage));
+      } catch (e) {
+        if (ticket === filters.current) setProblem((e as Error).message);
+        return false;
+      }
+    },
+    [docType, stage],
+  );
 
   useEffect(() => {
+    filters.current += 1;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const tick = async () => {
-      const settled = await load();
-      if (!stopped && !settled) timer = setTimeout(tick, 3000);
+    const tick = async (replace: boolean) => {
+      const settled = await load(replace);
+      if (!stopped && !settled) timer = setTimeout(() => void tick(false), 3000);
     };
-    void tick();
+    void tick(true);
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
@@ -55,13 +74,18 @@ export default function DocumentsPage() {
   }, [load]);
 
   async function more() {
-    if (!next) return;
+    if (!next || busy) return;
+    const ticket = filters.current;
+    setBusy(true);
     try {
       const page = await api.documents({ before: next, doc_type: docType, stage });
-      setRows((current) => [...(current ?? []), ...page.items]);
+      if (ticket !== filters.current) return;
+      setRows((current) => mergeFresh(page.items, current ?? []).sort(newestFirst));
       setNext(page.next_before);
     } catch (e) {
-      setProblem((e as Error).message);
+      if (ticket === filters.current) setProblem((e as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -89,6 +113,9 @@ export default function DocumentsPage() {
         </label>
       </form>
       {problem && <p className="error" role="alert">{problem}</p>}
+      <p className="sr-only" aria-live="polite">
+        {rows === null ? "" : rows.length === 0 ? "No documents match." : `${rows.length} documents shown.`}
+      </p>
       {rows === null ? (
         <p className="muted">Loading…</p>
       ) : rows.length === 0 ? (
@@ -119,7 +146,9 @@ export default function DocumentsPage() {
       )}
       {next && (
         <p>
-          <button type="button" onClick={() => void more()}>Load more</button>
+          <button type="button" onClick={() => void more()} disabled={busy}>
+            {busy ? "Loading…" : "Load more"}
+          </button>
         </p>
       )}
     </>

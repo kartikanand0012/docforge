@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Timeline from "@/components/Timeline";
 import { api, type DocumentSummary } from "@/lib/api";
 import { formatName } from "@/lib/formats";
@@ -12,8 +12,20 @@ export default function GeneralDocument({ summary }: { summary: DocumentSummary 
   const d = current.document;
   const failed = current.versions.at(-1)?.error ?? null;
 
+  const [problem, setProblem] = useState<string | null>(null);
+  const latest = useRef(0);
+
+  // Only the newest answer is shown: an older one arriving late must not undo it.
   const reload = useCallback(() => {
-    void api.document(d.id).then(setCurrent, () => undefined);
+    const ticket = ++latest.current;
+    api.document(d.id).then(
+      (next) => {
+        if (ticket !== latest.current) return;
+        setCurrent(next);
+        setProblem(null);
+      },
+      (e: Error) => ticket === latest.current && setProblem(e.message),
+    );
   }, [d.id]);
 
   return (
@@ -26,6 +38,11 @@ export default function GeneralDocument({ summary }: { summary: DocumentSummary 
         {d.stage === "failed" && failed && (
           <p className="error" role="alert">
             {failed}
+          </p>
+        )}
+        {problem && (
+          <p className="error" role="alert">
+            {problem}
           </p>
         )}
         {d.ready_for_chat && <p className="notice ok">Read and indexed: it can be searched, and it will be ready to chat with.</p>}

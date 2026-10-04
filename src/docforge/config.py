@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     parser_timeout_seconds: float = 900.0
     parser_max_rss_mb: int = 8192
     conversion_timeout_seconds: float = 120.0  # LibreOffice, per office file
+    conversion_max_rss_mb: int = 2048  # the converter and every process it starts
     parser_batch_pages: int = 10  # pages converted at a time; bounds memory on long files
     # Use only models already on disk: no download while a document is being parsed.
     # Needs the models present first (`make models`); the deployed image bakes them in.

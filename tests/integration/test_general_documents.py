@@ -226,7 +226,7 @@ def test_a_pdf_made_with_too_many_pages_is_refused_before_it_is_stored(
             return image_bytes("PDF", frames=3)
 
     svc = Service(sessions, Long())
-    svc.service._max_pages = 2  # noqa: SLF001 - the limit the API passes in production
+    svc.service._max_pages = 2
     document = svc.ingest(DOCX).document
 
     assert svc.run() == ["failed"]
@@ -252,7 +252,7 @@ def test_when_two_deliveries_convert_the_stored_pdf_wins(sessions: SessionFactor
 
     svc = Service(sessions)
     svc.converter = Racing(svc.store)
-    svc.service._converter = svc.converter  # noqa: SLF001
+    svc.service._converter = svc.converter
     document = svc.ingest(DOCX).document
     svc.sha = document.sha256
     svc.run()
@@ -291,7 +291,7 @@ def test_a_stage_that_cannot_be_recorded_does_not_retry_the_document(
 ) -> None:
     from sqlalchemy.exc import OperationalError
 
-    original = DocumentService._audit  # noqa: SLF001
+    original = DocumentService._audit
 
     def flaky(session: Any, document: Any, actor: str, action: str, **details: Any) -> None:
         if action == "processing.stage" and details.get("stage") == "parsing":

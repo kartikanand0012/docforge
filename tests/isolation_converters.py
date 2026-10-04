@@ -1,4 +1,4 @@
-"""Converters for the isolation tests. In a module of their own so a child process can import them."""
+"""Converters for the isolation tests, in a module a child process can import."""
 
 import os
 import subprocess

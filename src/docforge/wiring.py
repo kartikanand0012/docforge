@@ -8,7 +8,7 @@ from pathlib import Path
 from docforge.anchors import AnchorStore
 from docforge.auth import Authenticator
 from docforge.config import Settings
-from docforge.conversion import Converter, FileConverter, RecordingConverter
+from docforge.conversion import Converter, FileConverter, IsolatedConverter, RecordingConverter
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService, EventSink, Pipeline
 from docforge.extraction.coa import COA_SPEC, CoaExtraction
@@ -89,7 +89,11 @@ def build_converter(settings: Settings) -> Converter:
     converted file's recorded parse is keyed by the exact bytes of the PDF made from it."""
     if settings.pipeline_factory == REPLAY_FACTORY:
         return RecordingConverter(Path(settings.recordings_dir) / "renditions", None)
-    return FileConverter(timeout_seconds=settings.conversion_timeout_seconds)
+    return IsolatedConverter(
+        partial(FileConverter, timeout_seconds=settings.conversion_timeout_seconds),
+        timeout_seconds=settings.conversion_timeout_seconds + 30,
+        max_rss_bytes=settings.conversion_max_rss_mb * 1024 * 1024,
+    )
 
 
 def load_pipelines(settings: Settings) -> dict[str, Pipeline]:
@@ -164,6 +168,7 @@ def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
         anchors=AnchorStore(S3ObjectStore.from_settings(settings)),
         index=queue.defer_index,
         converter=build_converter(settings),
+        max_pages=settings.max_pages,
     )
     queue.bind(service)
     queue.bind_search(build_search(settings))

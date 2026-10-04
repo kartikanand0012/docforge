@@ -29,7 +29,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
 from docforge import audit
-from docforge.conversion import ConversionError, Converter, FileConverter
+from docforge.conversion import ConversionError, Converter, ConverterUnavailable, FileConverter
 from docforge.db.models import (
     ORDER_NUMBER,
     AssessmentRecord,
@@ -43,7 +43,7 @@ from docforge.db.models import (
 )
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
-from docforge.extraction.pipeline import ExtractionError, PipelineResult
+from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, PipelineResult
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.formats import ACCEPTED, FORMAT_OF, MEDIA_TYPES, Format, sniff
@@ -54,6 +54,7 @@ from docforge.parsing.base import (
     ParseError,
     ParserLimitExceeded,
 )
+from docforge.parsing.pdf import pdf_page_count
 from docforge.stages import stage_listener
 from docforge.storage import (
     ObjectNotFound,
@@ -265,7 +266,9 @@ class DocumentService:
         anchors: "AnchorStore | None" = None,
         index: Enqueue | None = None,
         converter: Converter | None = None,
+        max_pages: int = DEFAULT_MAX_PAGES,
     ) -> None:
+        self._max_pages = max_pages  # a PDF made from another file is held to it too
         self._converter = converter or FileConverter()  # files that are not PDFs, to PDFs
         self._index = index  # queues the search indexing of a finished version
         self._sessions = sessions
@@ -376,6 +379,9 @@ class DocumentService:
                 raise ReprocessInProgress(f"version {newest.version_no} is {newest.status}")
             version_no = (newest.version_no if newest is not None else 0) + 1
             version = self._new_version(session, document, version_no=version_no)
+            # Back to the start: not ready to chat with until the new version is indexed.
+            document.status = "received"
+            document.stage = "stored"
             self._audit(
                 session, document, actor, "document.reprocess_requested", version_no=version_no
             )
@@ -420,7 +426,7 @@ class DocumentService:
             version.started_at = version.started_at or _now()
             version.error = None
             document.status = "processing"
-            fmt = FORMAT_OF.get(document.media_type, "pdf")
+            fmt = FORMAT_OF[document.media_type]
             # A file that is not a PDF is made into one first.
             document.stage = "parsing" if fmt == "pdf" else "converting"
             self._audit(
@@ -458,6 +464,11 @@ class DocumentService:
                 result = pipeline.run(data)
         except ConversionError as error:
             return self._fail(version_id, turn, f"The file could not be converted to PDF. {error}")
+        except ConverterUnavailable as error:
+            logger.warning("converter unavailable for version %s: %s", version_id, error)
+            return self._retry_or_fail(
+                version_id, turn, "The converter was unavailable.", error, final
+            )
         except ObjectNotFound:
             return self._fail(version_id, turn, "The stored original is missing.")
         except NoTextLayer:
@@ -516,6 +527,13 @@ class DocumentService:
         with traced("document.convert") as span:
             span.set_attribute("docforge.format", fmt)
             pdf = self._converter.to_pdf(data, fmt)
+        pages = pdf_page_count(pdf)
+        if pages > self._max_pages:
+            raise DocumentTooLarge(f"document has {pages} pages; the limit is {self._max_pages}")
+        # LibreOffice's output differs run to run. If another delivery stored its PDF first,
+        # that one is used, so page images and cited boxes always come from the same PDF.
+        if self._store.exists(key):
+            return self._store.get(key)
         self._store.put(key, pdf, "application/pdf")
         return pdf
 
@@ -732,6 +750,7 @@ class DocumentService:
             document, version = owned
             version.status = "queued"
             version.error = message
+            document.stage = "retrying"
             self._audit(
                 session,
                 document,
@@ -824,7 +843,14 @@ class DocumentService:
             raise DocumentNotFound(version_id)
         with tenant_scope(tenant_id), self._sessions.begin() as session:
             document, version = self._locked(session, version_id)
-            if document.stage == "ready" or document.stage == "failed":
+            newest = session.scalar(
+                select(func.max(DocumentVersion.version_no)).where(
+                    DocumentVersion.document_id == document.id
+                )
+            )
+            # Only the newest version, once it is waiting for its index. An index job of an
+            # older version (retried late) must not make a document being reprocessed ready.
+            if version.version_no != newest or document.stage != "indexing":
                 return
             document.stage = "ready"
             self._audit(
@@ -847,13 +873,17 @@ class DocumentService:
         stalled one, overtaken by another, must not move a finished document back."""
         if stage == "parsing" and recorded_at_start:
             return  # recorded when processing started, unless conversion came first
-        with self._sessions.begin() as session:
-            owned = self._owned(session, version_id, turn)
-            if owned is None:
-                return
-            document, _ = owned
-            document.stage = stage
-            self._audit(session, document, WORKER, "processing.stage", stage=stage)
+        try:
+            with self._sessions.begin() as session:
+                owned = self._owned(session, version_id, turn)
+                if owned is None:
+                    return
+                document, _ = owned
+                document.stage = stage
+                self._audit(session, document, WORKER, "processing.stage", stage=stage)
+        except Exception:
+            # Progress shown to a person; failing to show it must not redo the work.
+            logger.warning("could not record stage %s of version %s", stage, version_id)
 
     @scoped
     def latest_extraction(

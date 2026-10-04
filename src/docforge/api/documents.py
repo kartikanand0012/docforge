@@ -6,8 +6,9 @@ import json
 import logging
 import time
 import uuid
+from collections import Counter
 from collections.abc import AsyncIterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile
@@ -37,6 +38,10 @@ logger = logging.getLogger(__name__)
 Reader = Annotated[Principal, Depends(require("documents:read"))]
 Writer = Annotated[Principal, Depends(require("documents:write"))]
 _FINAL_STAGES = ("ready", "processed", "failed")
+# Each open stream reads the timeline every second; a cap per caller (per API process)
+# keeps one caller from taking every thread and connection.
+MAX_STREAMS_PER_CALLER = 5
+_open_streams: Counter[tuple[uuid.UUID, str]] = Counter()
 
 
 class _Out(BaseModel):
@@ -87,10 +92,14 @@ def _cursor(document: DocumentOut) -> str:
 
 
 def _parse_cursor(value: str) -> tuple[datetime, uuid.UUID]:
+    """Only what `_cursor` makes: an aware time the database can compare, and an id."""
     try:
         at, _, ident = base64.urlsafe_b64decode(value.encode()).decode().partition("|")
-        return datetime.fromisoformat(at), uuid.UUID(ident)
-    except ValueError as error:
+        when = datetime.fromisoformat(at)
+        if when.tzinfo is None or not 2000 <= when.astimezone(UTC).year <= 9000:
+            raise ValueError("not a time this list gives")
+        return when, uuid.UUID(ident)
+    except (ValueError, OverflowError) as error:
         raise HTTPException(422, "Not a page cursor from this list.") from error
 
 
@@ -326,20 +335,32 @@ def documents_router(
         except DocumentNotFound:
             raise _NOT_FOUND from None
 
+        caller = (principal.tenant_id, principal.actor)
+        if _open_streams[caller] >= MAX_STREAMS_PER_CALLER:
+            raise HTTPException(429, "Too many open streams; close one or poll the timeline.")
+        _open_streams[caller] += 1
+
         async def events() -> AsyncIterator[str]:
-            sent = 0
-            deadline = time.monotonic() + 600
-            while time.monotonic() < deadline:
-                steps = await run_in_threadpool(service.timeline, principal.tenant_id, document_id)
-                for step in steps[sent:]:
-                    payload = {"stage": step.stage, "at": step.at.isoformat()}
-                    if step.detail:
-                        payload["detail"] = step.detail
-                    yield f"event: stage\ndata: {json.dumps(payload)}\n\n"
-                sent = len(steps)
-                if steps and steps[-1].stage in _FINAL_STAGES:
-                    return
-                await asyncio.sleep(1)
+            try:
+                sent = 0
+                deadline = time.monotonic() + 600
+                while time.monotonic() < deadline:
+                    steps = await run_in_threadpool(
+                        service.timeline, principal.tenant_id, document_id
+                    )
+                    for step in steps[sent:]:
+                        payload = {"stage": step.stage, "at": step.at.isoformat()}
+                        if step.detail:
+                            payload["detail"] = step.detail
+                        yield f"event: stage\ndata: {json.dumps(payload)}\n\n"
+                    sent = len(steps)
+                    if steps and steps[-1].stage in _FINAL_STAGES:
+                        return
+                    await asyncio.sleep(1)
+            finally:
+                _open_streams[caller] -= 1
+                if _open_streams[caller] <= 0:
+                    del _open_streams[caller]
 
         return StreamingResponse(
             events(),

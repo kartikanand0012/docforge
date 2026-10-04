@@ -9,7 +9,12 @@ from pathlib import Path
 import pytest
 from pypdf import PdfReader
 
-from docforge.conversion import ConversionError, FileConverter, IsolatedConverter, RecordingConverter
+from docforge.conversion import (
+    ConversionError,
+    FileConverter,
+    IsolatedConverter,
+    RecordingConverter,
+)
 from office_files import docx_bytes, image_bytes, pptx_bytes
 
 needs_libreoffice = pytest.mark.skipif(
@@ -144,7 +149,9 @@ def frames_tiff(sizes: list[tuple[int, int]]) -> bytes:
 
     pages = [Image.new("RGB", size, "white") for size in sizes]
     out = io.BytesIO()
-    pages[0].save(out, format="TIFF", save_all=True, append_images=pages[1:], compression="tiff_lzw")
+    pages[0].save(
+        out, format="TIFF", save_all=True, append_images=pages[1:], compression="tiff_lzw"
+    )
     return out.getvalue()
 
 

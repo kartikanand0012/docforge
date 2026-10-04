@@ -42,8 +42,11 @@ export function stageView(steps: Step[], docType?: string): StageView[] {
   const reached = plan.filter((stage) => latest.has(stage));
 
   if (last?.stage === "failed" || last?.stage === "processed") {
-    const done = reached.map((stage) => view(stage, "done", latest.get(stage)));
-    return [...done, view(last.stage, last.stage === "failed" ? "failed" : "done", last)];
+    const failed = last.stage === "failed";
+    // The stage that was running when it failed did not finish.
+    const running = failed ? steps.at(-2)?.stage : undefined;
+    const done = reached.map((stage) => view(stage, stage === running ? "failed" : "done", latest.get(stage)));
+    return [...done, view(last.stage, failed ? "failed" : "done", last)];
   }
   if (last?.stage === "retrying") {
     const done = reached.map((stage) => view(stage, "done", latest.get(stage)));
@@ -56,6 +59,16 @@ export function stageView(steps: Step[], docType?: string): StageView[] {
     const current = stage === last?.stage && stage !== "ready";
     return view(stage, current ? "current" : "done", step);
   });
+}
+
+/** The one stage to name in a compact status: where the document is now. Stored before
+ * anything has arrived, never a stage still to come. */
+export function currentStage(steps: Step[], docType?: string): StageView {
+  const last = steps.at(-1);
+  if (!last) return view("stored", "current");
+  const shown = stageView(steps, docType).find((s) => s.stage === last.stage);
+  if (shown) return shown;
+  return view(last.stage, "current", last);
 }
 
 /** True once nothing more will happen without someone asking. */
