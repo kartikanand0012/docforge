@@ -75,4 +75,38 @@ describe("stageView", () => {
 
     expect(view.find((s) => s.stage === "retrying")).toMatchObject({ state: "current", detail: "The model provider failed." });
   });
+
+  it("shows converting only for a file that was converted", () => {
+    const converted = stageView([
+      { stage: "stored", at: at(0) },
+      { stage: "converting", at: at(1) },
+    ]);
+    expect(converted.map((s) => [s.stage, s.state]).slice(0, 2)).toEqual([
+      ["stored", "done"],
+      ["converting", "current"],
+    ]);
+    expect(converted[1].label).toBe("Converting to PDF");
+
+    const pdf = stageView([{ stage: "stored", at: at(0) }]);
+    expect(pdf.map((s) => s.stage)).not.toContain("converting");
+  });
+
+  it("leaves out the stages a general document skips", () => {
+    const steps: Step[] = ["stored", "converting", "parsing", "indexing", "ready"].map((stage, n) => ({ stage, at: at(n) }));
+
+    const view = stageView(steps, "general");
+
+    expect(view.map((s) => [s.stage, s.state])).toEqual([
+      ["stored", "done"],
+      ["converting", "done"],
+      ["parsing", "done"],
+      ["indexing", "done"],
+      ["ready", "done"],
+    ]);
+  });
+
+  it("does not promise extraction for a general document still being read", () => {
+    const view = stageView([{ stage: "stored", at: at(0) }, { stage: "parsing", at: at(1) }], "general");
+    expect(view.map((s) => s.stage)).toEqual(["stored", "parsing", "indexing", "ready"]);
+  });
 });
