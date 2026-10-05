@@ -2,6 +2,31 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## H1 Hardening (2026-10-05): the five known limits, resolved before C14
+
+Branch `h1-hardening` (also carries C13's first two steps: folder references, the sync plan, Drive settings). Owner's request: resolve the limits recorded in C10-C12 before C14, the follow-up one first.
+
+| Limit | What changed | Evidence |
+| --- | --- | --- |
+| A third follow-up lost its subject | A follow-up was searched with only the question before it, so what the first turn named was gone. Now: every earlier question and the codes earlier answers named; the documents the conversation cited searched first (at most half the passages); documents a question names by code searched within | Answer eval with three-turn conversations in an organisation of 20 invoices, recorded live: third turns 1/8 before, 8/8 after; follow-ups 9/16 before, 16/16 after; all answerable 60/72 before (line quantities at scale also failed), 72/72 after |
+| A quote proved the source, not every word | Answers are statements, each with its quotes (prompt `chat-2`); a statement stands only with a found quote and every figure it states in one of its quotes (or repeated from the conversation beside one of its own); others are dropped and counted (migration 0020) | 72/72 correct, 0 wrong, 32/32 unanswerable declined; unit tests on figures written differently, signs, lists, ellipsis quotes |
+| LibreOffice had the worker's network | A converter container on an internal network shared only with the worker; reads only its token; read-only filesystem; required in production | Checked inside the running stack: internet, metadata service, Postgres, MinIO and the API unreachable from it; no app secrets; a DOCX converted through it |
+| A converted PDF outlived a LibreOffice upgrade | Kept under the converter's version; each reading records the PDF it used (migration 0018); page images from that one | Integration tests on an upgrade and on page images |
+| Caps held per API process | Per-minute counts and places held at once (questions in flight, open streams) kept in Postgres (migration 0019), leases expire if a process dies, swept | Two "processes" sharing one database in tests; concurrent takers |
+
+### Review (ECC security-reviewer, python-reviewer, react-reviewer)
+
+No critical finding. Fixed with failing tests first: an ellipsis could join a batch to another row's amount (now at most three meaningful parts, close together, except across DocForge's own summary of one document); figures written the ordinary ways were dropped (250mg, 95.0-105.0, Rs.500), a minus sign and a list were lost, and a figure only repeated from the question stood alone; cited documents could fill every place, and the conversation's codes held the wide search to them; any digit-letter token triggered searches within documents; a malformed converter version became an internal error, and the version never refreshed; a failed release could hide the real error, a stream that never started kept its place, and old counts were never swept.
+
+### Honest limits
+
+- **Wording without figures** stands on its quote being found: an instruction written into a document can still shape such a statement. Figures, codes and dates cannot be invented.
+- **Figures are matched against a statement's quotes together**, not each against the label beside it.
+- **Superseded converted PDFs are not deleted**; nothing deletes documents yet (retention and erasure are on the roadmap).
+- **The per-minute window is fixed**, so a caller can reach twice the rate across a minute boundary.
+
+Tests: 1,797 Python; web 68; e2e 9/9; gate 48/48.
+
 ## C12 Knowledge bases (2026-10-05): gate passed
 
 Branch `c12-knowledge`, stacked on C11. Evidence: `docs/tdd/c12-knowledge.tdd.md`.
