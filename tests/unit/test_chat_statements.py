@@ -110,8 +110,10 @@ def keep(text: str, quote: str, given: str = "") -> bool:
 
 def test_ordinary_ways_of_writing_a_figure_are_the_same_figure() -> None:
     assert keep("Each capsule is 250mg.", "Amoxicillin Capsules IP 250 mg")
-    assert keep("The limit is 95.0-105.0 %.", "Assay 95.0 - 105.0 %")
-    assert keep("It costs Rs.500.", "Rs. 500")
+    assert keep(
+        "The limit is 95.0-105.0 %.", "Assay 95.0 - 105.0 %", given="What is the assay limit?"
+    )
+    assert keep("It costs Rs.500.", "Rs. 500", given="What does it cost?")
 
 
 def test_a_sign_and_a_list_are_not_lost() -> None:
@@ -148,7 +150,10 @@ INVOICE = [
         n=1,
         filename="inv.pdf",
         page=1,
-        text="Invoice NVM/26-27/32001 from Navjivan Medical Agencies | Discount 0.00 | Grand total 98,697.00",
+        text=(
+            "Invoice NVM/26-27/32001 from Navjivan Medical Agencies | Discount 0.00 "
+            "| Grand total 98,697.00"
+        ),
     ),
     Passage(
         n=2,

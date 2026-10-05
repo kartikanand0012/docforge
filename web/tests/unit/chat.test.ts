@@ -64,6 +64,7 @@ describe("reasonNote", () => {
       "The documents read (a.pdf, b.pdf) do not give the bank account number.",
     );
     expect(reasonNote("figures_not_in_quotes", {})).toMatch(/figures/);
+    expect(reasonNote("wording_not_in_passages", {})).toMatch(/do not say/);
     expect(reasonNote(null, {})).toBeNull();
   });
 

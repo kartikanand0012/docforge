@@ -57,6 +57,7 @@ class Checked:
     dropped_statements: int = 0
     dropped_citations: int = 0
     dropped_for_figures: int = 0  # of the statements dropped: quoted, but a figure not held
+    dropped_for_wording: int = 0  # of those: saying what its passages do not
 
 
 def _plain(text: str) -> str:
@@ -103,6 +104,156 @@ def _supported(statement: str, quotes: Sequence[str], given: str) -> bool:
     return every and bool(from_quotes)
 
 
+_STOP = frozenset(
+    [
+        "the",
+        "a",
+        "an",
+        "is",
+        "was",
+        "were",
+        "are",
+        "be",
+        "been",
+        "being",
+        "of",
+        "for",
+        "in",
+        "on",
+        "to",
+        "and",
+        "or",
+        "by",
+        "with",
+        "it",
+        "its",
+        "this",
+        "that",
+        "these",
+        "those",
+        "as",
+        "at",
+        "from",
+        "which",
+        "what",
+        "who",
+        "whom",
+        "whose",
+        "there",
+        "their",
+        "they",
+        "them",
+        "has",
+        "have",
+        "had",
+        "not",
+        "no",
+        "but",
+        "also",
+        "than",
+        "then",
+        "into",
+        "over",
+        "under",
+        "about",
+        "after",
+        "before",
+        "each",
+        "per",
+        "any",
+        "all",
+        "some",
+        "said",
+        "says",
+        "shows",
+        "show",
+        "given",
+        "gives",
+        "does",
+        "did",
+        "done",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        # verbs that only join a value to what it is: they claim nothing of their own
+        "come",
+        "comes",
+        "came",
+        "cost",
+        "costs",
+        "amount",
+        "amounts",
+        "make",
+        "makes",
+        "made",
+        "stand",
+        "stands",
+        "equal",
+        "equals",
+        "read",
+        "reads",
+        "state",
+        "states",
+        "list",
+        "lists",
+        "note",
+        "notes",
+        "record",
+        "records",
+    ]
+)
+_WORD = re.compile(r"[^\W\d_]{4,}")
+_SEGMENT = re.compile(r"\s*(?:\||\n|;|(?<=\.)\s+(?=[A-Z]))\s*")
+_MIN_WORDING = 0.6  # of a statement's own words found in its passages or the conversation
+
+
+def _words(text: str) -> set[str]:
+    """Content words, compared by their first five letters ("issued" is "issue")."""
+    return {w[:5] for w in (m.casefold() for m in _WORD.findall(text)) if w not in _STOP}
+
+
+def _wording_supported(statement: str, passages: Sequence[str], given: str) -> bool:
+    """Most of the statement's own words are in the passages it cites or in what it
+    repeats: an answer cannot add a claim ("and it was paid") its passages do not make."""
+    own = _words(CODE.sub(" ", statement))
+    if not own:
+        return True
+    held = _words(" ".join([*passages, given]))
+    return len(own & held) / len(own) >= _MIN_WORDING
+
+
+def _labelled(statement: str, passages: Sequence[Passage], given: str) -> bool:
+    """Each figure the statement takes from its passages stands, there, beside a word the
+    statement uses for it: "the discount is 98,697" cannot borrow the grand total's figure.
+    A table row's first cell (what the row is) counts as beside each of its values."""
+    own = _words(CODE.sub(" ", statement))
+    if not own:
+        return True
+    named = own | _words(given)  # "what is the grand total?" names what "it comes to" is
+    from_given = _numbers(_plain(given))
+    for number in _numbers(_plain(CODE.sub(" ", statement))) - from_given:
+        beside = False
+        for passage in passages:
+            segments = _SEGMENT.split(_plain(passage.text))
+            row = segments[0] if passage.kind == "table_row" and segments else ""
+            for segment in segments:
+                if number not in _numbers(segment):
+                    continue
+                label = _words(f"{row} {segment}")
+                # A bare value ("Qty 20") has no word to weigh: it is not held against it.
+                if not label or named & label:
+                    beside = True
+                    break
+            if beside:
+                break
+        if not beside:
+            return False
+    return True
+
+
 def check_statements(
     statements: Sequence[RawStatement], passages: Sequence[Passage], *, given: str
 ) -> Checked:
@@ -120,9 +271,16 @@ def check_statements(
             else:
                 checked.dropped_citations += 1
         text = statement.text.strip()
-        if text and found and _supported(text, [q for _, q in found], given):
+        cited = [passages[i] for i in dict.fromkeys(i for i, _ in found)]
+        figures_ok = bool(text and found) and _supported(text, [q for _, q in found], given)
+        wording_ok = figures_ok and _wording_supported(text, [p.text for p in cited], given)
+        if figures_ok and wording_ok and _labelled(text, cited, given):
             checked.kept.append(KeptStatement(text=text, citations=tuple(found)))
         else:
             checked.dropped_statements += 1
-            checked.dropped_for_figures += bool(text and found)
+            if text and found:
+                if not figures_ok or wording_ok:
+                    checked.dropped_for_figures += 1  # a figure not held, or not beside its label
+                else:
+                    checked.dropped_for_wording += 1
     return checked

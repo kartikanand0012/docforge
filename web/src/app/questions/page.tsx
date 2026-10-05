@@ -9,6 +9,7 @@ const REASONS: Record<string, string> = {
   no_passages: "Nothing matched",
   quotes_not_found: "Quotes not found",
   figures_not_in_quotes: "Figures not in quotes",
+  wording_not_in_passages: "Not what the documents say",
   model_error: "Model failed",
 };
 

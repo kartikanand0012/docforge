@@ -231,7 +231,13 @@ def _checked(
             if citation not in citations:
                 citations.append(citation)
     if not checked.kept:
-        reason = "figures_not_in_quotes" if checked.dropped_for_figures else "quotes_not_found"
+        reason = (
+            "figures_not_in_quotes"
+            if checked.dropped_for_figures
+            else "wording_not_in_passages"
+            if checked.dropped_for_wording
+            else "quotes_not_found"
+        )
         detail = {"statements": checked.dropped_statements, "quotes": checked.dropped_citations}
         return (
             "unsupported",
