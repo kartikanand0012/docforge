@@ -139,3 +139,42 @@ def test_a_quote_may_join_distant_parts_of_a_summary_but_not_of_other_passages()
     text = [Passage(n=1, filename="i.pdf", page=1, text=far, kind="text")]
     assert check_statements([statement(said, (1, quote))], summary, given="").kept
     assert not check_statements([statement(said, (1, quote))], text, given="").kept
+
+
+# --- wording and labels (limits) -----------------------------------------------------------
+
+INVOICE = [
+    Passage(
+        n=1,
+        filename="inv.pdf",
+        page=1,
+        text="Invoice NVM/26-27/32001 from Navjivan Medical Agencies | Discount 0.00 | Grand total 98,697.00",
+    ),
+    Passage(
+        n=2,
+        filename="coa.pdf",
+        page=1,
+        text="Test: Assay | Specification: 95.0 - 105.0 % | Result: 96.3 %",
+        kind="table_row",
+    ),
+]
+
+
+def kept(text: str, quote: str, n: int = 1, given: str = "") -> bool:
+    return bool(check_statements([statement(text, (n, quote))], INVOICE, given=given).kept)
+
+
+def test_a_statement_that_says_what_its_passage_does_not_is_dropped() -> None:
+    """No figure to check, but the words are not the passage's: 'paid in full' is said nowhere."""
+    assert not kept("The invoice was paid in full and approved.", "Navjivan Medical Agencies")
+    assert kept("The invoice is from Navjivan Medical Agencies.", "Navjivan Medical Agencies")
+
+
+def test_a_figure_must_stand_beside_what_the_statement_calls_it() -> None:
+    assert kept("The grand total is 98,697.00.", "Grand total 98,697.00")
+    assert not kept("The discount is 98,697.00.", "Grand total 98,697.00")
+
+
+def test_a_table_cell_quoted_alone_is_read_with_its_row() -> None:
+    assert kept("The assay result was 96.3 %.", "96.3 %", n=2)
+    assert not kept("The water content was 96.3 %.", "96.3 %", n=2)

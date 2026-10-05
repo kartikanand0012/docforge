@@ -1,0 +1,14 @@
+{
+  "key": "d55fe46e22001301ab637c4a46e477426cde9425a37e71cf3fec9907fa7a141f",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the phone number of Umiya Medical Store\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1421,
+    "output_tokens": 34,
+    "thinking_tokens": null,
+    "latency_ms": 1423.4
+  }
+}

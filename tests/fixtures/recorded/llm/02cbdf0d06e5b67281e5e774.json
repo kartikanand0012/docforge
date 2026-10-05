@@ -1,0 +1,14 @@
+{
+  "key": "02cbdf0d06e5b67281e5e7748d7ba2729367c2badc2aa7bc2339e69a8da097ac",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"Invoice SRP/26-27/28005 was issued by Shreeram Pharma Distributors.\",\n      \"citations\": [\n        {\n          \"passage\": 2,\n          \"quote\": \"Invoice SRP/26-27/28005 dated 15 April 2026 from Shreeram Pharma Distributors\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 2040,
+    "output_tokens": 115,
+    "thinking_tokens": null,
+    "latency_ms": 1343.9
+  }
+}

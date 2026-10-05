@@ -1,0 +1,14 @@
+{
+  "key": "c31f91a92d11b61669c4a5aa4e17c780f5529b54e3abe672759f8efbf6cebc25",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"assay result for batch BO893576\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1552,
+    "output_tokens": 36,
+    "thinking_tokens": null,
+    "latency_ms": 2141.6
+  }
+}
