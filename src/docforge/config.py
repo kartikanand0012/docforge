@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     google_service_account_json: SecretStr | None = None
     drive_client: Literal["google", "fake"] = "google"  # fake: tests and local demos only
     drive_sync_interval_minutes: int = 10
+    # The converter service (LibreOffice with no network of its own); without it, conversion
+    # runs in a child process of the worker (development and tests).
+    converter_url: str | None = None
+    converter_token: SecretStr | None = None
     chat_daily_limit: int = 500  # questions per organisation per day (each is a model call)
     chat_daily_limit_per_person: int = 100  # so one person cannot use up the organisation's
     chat_record: bool = False  # record chat replies for replay (with a key; never deployed)
@@ -184,6 +188,12 @@ class Settings(BaseSettings):
         if not self.pipeline_factory.startswith("docforge."):
             # The factory is imported and called with every secret in these settings.
             raise ValueError("PIPELINE_FACTORY must name a function in this package")
+        # Last, so the checks above name their own problem first.
+        if not self.converter_url:
+            raise ValueError("CONVERTER_URL must name the isolated converter service")
+        token = self.converter_token.get_secret_value() if self.converter_token else ""
+        if len(token) < 32:
+            raise ValueError("CONVERTER_TOKEN must be set (32 characters or more)")
         return self
 
 

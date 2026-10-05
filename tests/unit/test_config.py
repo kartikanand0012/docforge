@@ -180,6 +180,8 @@ def test_production_on_aws_uses_the_instance_role_for_s3(monkeypatch: pytest.Mon
         "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
     )
     monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("CONVERTER_URL", "http://converter:8090")
+    monkeypatch.setenv("CONVERTER_TOKEN", "c" * 32)
     monkeypatch.setenv("S3_ENDPOINT_URL", "")
     monkeypatch.setenv("S3_REGION", "ap-south-1")
 

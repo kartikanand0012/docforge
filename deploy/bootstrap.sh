@@ -34,6 +34,8 @@ for part in compose:.env app:app.env owner:owner.env; do
   aws ssm get-parameter --name "/docforge/demo/${part%%:*}" --with-decryption \
     --query Parameter.Value --output text > "${part#*:}"
 done
+# The converter reads its token and nothing else of app.env.
+grep '^CONVERTER_TOKEN=' app.env > converter.env
 umask 022
 
 # Images.
