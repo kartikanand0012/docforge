@@ -1,5 +1,6 @@
 """Application settings, read from the environment and an optional `.env` file."""
 
+import json
 import re
 from functools import lru_cache
 from typing import Literal, Self
@@ -56,6 +57,10 @@ class Settings(BaseSettings):
     parser_max_documents: int = 50
     parser_timeout_seconds: float = 900.0
     parser_max_rss_mb: int = 8192
+    # Google Drive sync: DocForge's service account key (JSON), shared folders are read with it.
+    google_service_account_json: SecretStr | None = None
+    drive_client: Literal["google", "fake"] = "google"  # fake: tests and local demos only
+    drive_sync_interval_minutes: int = 10
     chat_daily_limit: int = 500  # questions per organisation per day (each is a model call)
     chat_daily_limit_per_person: int = 100  # so one person cannot use up the organisation's
     chat_record: bool = False  # record chat replies for replay (with a key; never deployed)
@@ -119,6 +124,32 @@ class Settings(BaseSettings):
     def _blank_endpoint_is_aws(cls, value: object) -> object:
         return None if value == "" else value
 
+    @field_validator("google_service_account_json", mode="before")
+    @classmethod
+    def _service_account_key(cls, value: object) -> object:
+        if value in (None, ""):
+            return None
+        try:
+            data = json.loads(str(value))
+        except ValueError:
+            data = None
+        # The key itself is never put in an error message.
+        if (
+            not isinstance(data, dict)
+            or data.get("type") != "service_account"
+            or not (data.get("client_email") and data.get("private_key"))
+        ):
+            raise ValueError("GOOGLE_SERVICE_ACCOUNT_JSON must be a service account key (JSON)")
+        return value
+
+    @property
+    def drive_service_account_email(self) -> str | None:
+        """Who a customer shares a folder with; the only part of the key ever shown."""
+        if self.google_service_account_json is None:
+            return None
+        email = json.loads(self.google_service_account_json.get_secret_value())["client_email"]
+        return str(email)
+
     @field_validator("gemini_api_key", mode="before")
     @classmethod
     def _blank_key_is_unset(cls, value: object) -> object:
@@ -143,6 +174,10 @@ class Settings(BaseSettings):
             raise ValueError(f"{', '.join(unset)} still has its local default value")
         if self.webhook_allow_local:
             raise ValueError("WEBHOOK_ALLOW_LOCAL is for local development only")
+        if self.drive_client != "google":
+            raise ValueError("DRIVE_CLIENT=fake is for tests and local demos only")
+        if self.drive_sync_interval_minutes < 5:
+            raise ValueError("DRIVE_SYNC_INTERVAL_MINUTES must be at least 5 in production")
         if self.chat_record:
             # Recording writes questions, passages and answers to disk, unprotected.
             raise ValueError("CHAT_RECORD is for local development only")
