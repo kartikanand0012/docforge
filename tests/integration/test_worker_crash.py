@@ -141,15 +141,15 @@ def test_killing_a_worker_mid_job_loses_nothing(
         "processing.stage",  # processed (or indexing, where search is wired in)
     ]
 
-    with engine.connect() as conn:
-        jobs = (
-            conn.execute(
-                text("SELECT status::text FROM procrastinate_jobs WHERE queue_name = 'extract'")
-            )
-            .scalars()
-            .all()
-        )
-    assert jobs == ["succeeded"]  # (a search-index job for the version is queued as well)
+    def extract_jobs() -> list[str]:
+        with engine.connect() as conn:
+            query = "SELECT status::text FROM procrastinate_jobs WHERE queue_name = 'extract'"
+            return list(conn.execute(text(query)).scalars().all())
+
+    # The queue marks its job done just after the task returns, so a moment after the
+    # version is: wait for it rather than catch it in between (seen on a busy CI runner).
+    wait_for(lambda: extract_jobs() == ["succeeded"], "the queue to record the job as done")
+    assert extract_jobs() == ["succeeded"]  # (a search-index job is queued as well)
 
     second.send_signal(signal.SIGTERM)  # and a worker asked to stop does so cleanly
     assert second.wait(timeout=20) == 0
