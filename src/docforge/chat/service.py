@@ -768,8 +768,11 @@ _INSTRUCTIONS = re.compile(
     r"|\b(?:as\s+an?\s+)?(?:ai|assistant|language\s+model),?\s+(?:you\s+)?(?:must|should)\b",
     re.IGNORECASE,
 )
-# Characters that do not show, used to break a phrase up so a pattern misses it.
-_INVISIBLE = re.compile("[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]")
+# Characters that do not show, used to break a phrase up so a pattern misses it; the Unicode
+# tag characters (U+E0000 to U+E007F) can also carry whole hidden text.
+_INVISIBLE = re.compile(
+    "[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff\U000e0000-\U000e007f]"
+)
 
 
 def _instructs(text: str) -> bool:
