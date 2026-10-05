@@ -124,3 +124,18 @@ def test_a_figure_only_repeated_from_the_question_does_not_stand_without_its_own
     assert not keep("The total is 5,000.", "Loss 500", given="Is the total 5,000?")
     # A code named in the question may be repeated next to a figure its quote holds.
     assert keep("Batch XGX944068 assayed 96.3 %.", "96.3 %", given="Assay of batch XGX944068?")
+
+
+def test_a_quote_may_join_distant_parts_of_a_summary_but_not_of_other_passages() -> None:
+    far = (
+        "Invoice NVM/26-27/09004 dated 3 May 2026 "
+        + "Products: "
+        + "Paracetamol, " * 50
+        + "Grand total 31674.00."
+    )
+    quote = "Invoice NVM/26-27/09004 [...] Grand total 31674.00."
+    said = "The grand total of invoice NVM/26-27/09004 is 31674.00."
+    summary = [Passage(n=1, filename="i.pdf", page=1, text=far, kind="summary")]
+    text = [Passage(n=1, filename="i.pdf", page=1, text=far, kind="text")]
+    assert check_statements([statement(said, (1, quote))], summary, given="").kept
+    assert not check_statements([statement(said, (1, quote))], text, given="").kept

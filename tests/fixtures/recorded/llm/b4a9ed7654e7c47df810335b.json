@@ -1,0 +1,14 @@
+{
+  "key": "b4a9ed7654e7c47df810335b59423f3708cd3ae273f75ab39195060a70e0128d",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"120 units of Omeprazole Capsules IP 20mg were billed on invoice CPA/26-27/33007.\",\n      \"citations\": [\n        {\n          \"passage\": 3,\n          \"quote\": \"Sl Product: 1 Omeprazole Capsules IP 20mg | Pack: 10x10 | HSN: 30049099 | Batch: VJV3873 | Mfg: 01/26 | Exp: 01/29 | Qty: 120 | Free: 10 | MRP: 61.09 | PTR: 42.15 | Disc%: 0 | Taxable: 5058.00 | GST%: 12 | Amount: 5664.96\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1656,
+    "output_tokens": 223,
+    "thinking_tokens": null,
+    "latency_ms": 1413.9
+  }
+}

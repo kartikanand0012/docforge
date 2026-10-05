@@ -326,7 +326,10 @@ class IsolatedConverter:
     @property
     def version(self) -> str:
         if self._version is None:
-            self._version = str(getattr(self._factory(), "version", "unknown"))
+            try:
+                self._version = str(getattr(self._factory(), "version", "unknown"))
+            except Exception as error:
+                raise ConverterUnavailable("The converter could not say its version.") from error
         return self._version
 
     def to_pdf(self, data: bytes, fmt: Format) -> bytes:

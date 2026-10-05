@@ -13,6 +13,7 @@ conversion raises, so the document service cannot tell them apart.
 
 import hmac
 import os
+import time
 from functools import partial
 from typing import Annotated, Any
 
@@ -28,6 +29,7 @@ from docforge.conversion import (
 )
 from docforge.formats import FORMATS, Format
 
+_VERSION_SECONDS = 600
 DEFAULT_MAX_BYTES = 12 * 1024 * 1024  # a little above the largest upload
 _CONVERTED: frozenset[str] = frozenset(FORMATS) - {"pdf"}
 
@@ -94,14 +96,22 @@ class RemoteConverter:
         self._client = client or httpx.Client(base_url=url, timeout=timeout_seconds)
         self._headers = {"Authorization": f"Bearer {token}"}
         self._version: str | None = None
+        self._asked = 0.0
 
     @property
     def version(self) -> str:
-        """The service's converter, asked once: a converted PDF is kept under it, so a new
-        LibreOffice converts again."""
-        if self._version is None:
+        """The service's converter: a converted PDF is kept under it, so a new LibreOffice
+        converts again. Asked again every ten minutes, so an upgraded service is noticed."""
+        now = time.monotonic()
+        if self._version is None or now - self._asked > _VERSION_SECONDS:
             response = self._send("GET", "/v1/version")
-            self._version = str(response.json()["version"])
+            try:
+                version = response.json()["version"]
+            except (ValueError, KeyError, TypeError) as error:
+                raise ConverterUnavailable("The converter did not say its version.") from error
+            if not isinstance(version, str) or not version:
+                raise ConverterUnavailable("The converter did not say its version.")
+            self._version, self._asked = version, now
         return self._version
 
     def to_pdf(self, data: bytes, fmt: Format) -> bytes:

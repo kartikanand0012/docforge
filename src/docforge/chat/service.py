@@ -26,7 +26,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passage, build_prompt
-from docforge.chat.statements import RawStatement, check_statements
+from docforge.chat.statements import CODE, RawStatement, check_statements
 from docforge.chat.verify import cited_blocks
 from docforge.collections import CollectionNotFound, CollectionService
 from docforge.db.models import Conversation, Document, Message
@@ -50,8 +50,8 @@ _HISTORY = 3  # earlier turns given with a follow-up
 _ANSWERED = ("supported", "partly_supported")
 _ANCHORS = 3  # documents an earlier answer cited, searched first for a follow-up
 _ANCHORED = 4  # passages from each
-# A code an answer named (an invoice or batch number): letters with digits, or with / or -.
-_CODE = re.compile(r"\b(?=[\w/.-]*\d)(?=[\w/.-]*[A-Za-z/-])[\w][\w/.-]*[\w]")
+_NAMED = 2  # documents a question names by code, searched within
+_MIN_CODE = 5  # characters: "Q3" or "A4" names no one document
 _BOX_KEYS = ("page", "x0", "y0", "x1", "y1", "page_width", "page_height")
 
 
@@ -259,12 +259,12 @@ class ChatService:
             with traced("chat.answer") as span:
                 tell("searching", {})
                 hits = self._retrieve(
-                    tenant_id, _follow_up_query(question, history), scope, anchors
+                    tenant_id, _follow_up_query(question, history), scope, anchors, question
                 )
                 span.set_attribute("docforge.chat.passages", len(hits))
                 span.set_attribute("docforge.chat.scope", scope.kind)
                 passages = [
-                    Passage(n=n, filename=hit.filename, page=hit.page, text=hit.text)
+                    Passage(n=n, filename=hit.filename, page=hit.page, text=hit.text, kind=hit.kind)
                     for n, hit in enumerate(hits, start=1)
                 ]
                 tell("reading", {"passages": len(passages)})
@@ -307,7 +307,12 @@ class ChatService:
         )
 
     def _retrieve(
-        self, tenant_id: uuid.UUID, query: str, scope: "Scope", anchors: Sequence[uuid.UUID]
+        self,
+        tenant_id: uuid.UUID,
+        query: str,
+        scope: "Scope",
+        anchors: Sequence[uuid.UUID],
+        question: str | None = None,
     ) -> SearchHits:
         """The passages to answer from. A follow-up ("what is its total?") names nothing, so
         the documents its conversation has cited are searched first, each on its own, and
@@ -328,24 +333,28 @@ class ChatService:
             )
             found += near
             words_only = words_only or near.words_only
+        # The cited documents carry the conversation's subject; the search as a whole then
+        # looks for the question itself, so the codes of earlier answers (which keyword search
+        # requires a passage to print) do not hold it to those documents.
         wide = self._search.search(
             tenant_id,
-            query,
+            question if anchors and question else query,
             k=self._passages,
             mode="hybrid",
             document_id=scope.document_id,
             collection_id=scope.collection_id,
         )
         # A question that names a document's code (an invoice number) is about that document,
-        # but only its header prints the code, not its line rows: search within it too.
-        codes = {code.casefold() for code in _CODE.findall(query)}
-        named = [
-            hit.document_id
-            for hit in wide
-            if codes and any(code in hit.text.casefold() for code in codes)
+        # but only its header prints the code, not its line rows: search within it too. Only
+        # codes long enough to name one document, matched whole, and at most two documents.
+        codes = [
+            re.compile(rf"(?<!\w){re.escape(code)}(?!\w)", re.IGNORECASE)
+            for code in dict.fromkeys(CODE.findall(query))
+            if len(code) >= _MIN_CODE
         ]
-        for document_id in dict.fromkeys(named):
-            if document_id in anchors or len(found) >= self._passages:
+        named = [hit.document_id for hit in wide if any(code.search(hit.text) for code in codes)]
+        for document_id in list(dict.fromkeys(named))[:_NAMED]:
+            if document_id in anchors:
                 continue
             near = self._search.search(
                 tenant_id,
@@ -357,14 +366,22 @@ class ChatService:
             )
             found += near
             words_only = words_only or near.words_only
+        # The documents in question first, but at most half the places: the rest go to the
+        # search as a whole, so a follow-up about another document can still reach it.
         seen: set[tuple[uuid.UUID, int, str]] = set()
         merged: list[SearchHit] = []
-        for hit in [*found, *wide]:
-            key = (hit.document_id, hit.page, hit.text)
-            if key not in seen:
-                seen.add(key)
-                merged.append(hit)
-        return SearchHits(merged[: self._passages], words_only=words_only or wide.words_only)
+
+        def add(hits: Sequence[SearchHit], limit: int) -> None:
+            for hit in hits:
+                key = (hit.document_id, hit.page, hit.text)
+                if len(merged) < limit and key not in seen:
+                    seen.add(key)
+                    merged.append(hit)
+
+        add(found, max(1, self._passages // 2) if found else 0)
+        add(wide, self._passages)
+        add(found, self._passages)  # any places left
+        return SearchHits(merged, words_only=words_only or wide.words_only)
 
     def _reserve(
         self,
@@ -596,7 +613,7 @@ def _follow_up_query(question: str, history: Sequence[tuple[str, str]]) -> str:
     the hardening checkpoint, and a third turn lost what the first one named."""
     if not history:
         return question
-    codes = [code for _, answer in history for code in _CODE.findall(answer)]
+    codes = [code for _, answer in history for code in CODE.findall(answer)]
     return " ".join([*(asked for asked, _ in history), *dict.fromkeys(codes), question])
 
 

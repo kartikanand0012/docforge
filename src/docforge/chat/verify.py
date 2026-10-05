@@ -54,25 +54,36 @@ def _meaningful(wanted: str) -> bool:
     return any(c.isdigit() for c in wanted) or len(wanted.split()) >= 2 or len(wanted) >= 12
 
 
+_MAX_PARTS = 3
+_MAX_GAP = 400  # characters between parts: within a passage, not across its far ends
 _ELLIPSIS = re.compile(r"\s*(?:\[\s*(?:\.\.\.|\u2026)\s*\]|\.\.\.|\u2026)\s*")
 
 
-def quote_in(quote: str, passage: str) -> bool:
+def quote_in(quote: str, passage: str, *, max_gap: int | None = _MAX_GAP) -> bool:
     """The quote is in the passage, word for word. A quote that joins parts of the passage
     with an ellipsis ("Invoice X [...] Grand total Y") is found when every part is, in that
-    order; no part may be made up."""
+    order, close together (one passage row, not across the page), at most three parts, and
+    each meaning something: an ellipsis cannot join a batch to another row's amount."""
     text = normalise(passage)
     parts = [normalise(part) for part in _ELLIPSIS.split(quote)]
     parts = [part.strip(" .,;:") for part in parts if part.strip(" .,;:")]
-    if not parts or not any(_meaningful(part) for part in parts):
+    if not parts or len(parts) > _MAX_PARTS:
         return False
-    start = 0
-    for part in parts:
+    if len(parts) > 1 and not all(_meaningful(part) or _has_digit_code(part) for part in parts):
+        return False
+    if len(parts) == 1 and not _meaningful(parts[0]):
+        return False
+    start = end = 0
+    for n, part in enumerate(parts):
         at = _find_from(part, text, start)
-        if at == -1:
+        if at == -1 or (n and max_gap is not None and at - end > max_gap):
             return False
-        start = at + len(part)
+        start = end = at + len(part)
     return True
+
+
+def _has_digit_code(part: str) -> bool:
+    return len(part) >= 4 and any(c.isdigit() for c in part) and any(c.isalpha() for c in part)
 
 
 def _find_from(wanted: str, text: str, start: int) -> int:

@@ -14,8 +14,8 @@
   "follow_ups_correct": 1.0,
   "cross_tenant_citations": 0,
   "outside_knowledge_base": 0,
-  "input_tokens_per_question": 1521,
-  "output_tokens_per_question": 113,
+  "input_tokens_per_question": 1493,
+  "output_tokens_per_question": 108,
   "missed": [],
   "answers": {}
 }

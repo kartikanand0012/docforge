@@ -1,0 +1,14 @@
+{
+  "key": "06c22eeadbdef13238f4bda5ae93d4d7760ea478b5379703bd67277e872745a4",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"Invoice NVM/26-27/27003 billed 20 units of Pantoprazole Tablets IP 40mg.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Invoice NVM/26-27/27003\"\n        },\n        {\n          \"passage\": 3,\n          \"quote\": \"Product: 1 Pantoprazole Tablets IP 40mg | Pack: 10x10 | HSN: 30049099 | Batch: RL5781 | Mfg: 08/25 | Exp: 08/28 | Qty: 20\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1688,
+    "output_tokens": 197,
+    "thinking_tokens": null,
+    "latency_ms": 3095.4
+  }
+}

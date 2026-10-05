@@ -95,7 +95,7 @@ def test_an_ellipsis_cannot_join_parts_out_of_order_or_hide_a_made_up_part() -> 
 
 
 def test_an_ellipsis_cannot_join_parts_far_apart_or_lean_on_trivial_parts() -> None:
-    far = "Batch B-17 shipped | " + "filler text " * 40 + "| Grand total 98,697"
+    far = "Batch B-17 shipped | " + "filler text " * 40 + "| Grand total 98,697"  # ~480 apart
     assert not quote_in("Batch B-17 [...] Grand total 98,697", far)
     near = "Batch B-17 | Qty 20 | Grand total 98,697"
     assert quote_in("Batch B-17 [...] Grand total 98,697", near)

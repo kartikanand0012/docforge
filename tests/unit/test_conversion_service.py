@@ -121,8 +121,7 @@ def test_a_malformed_version_answer_is_unavailable_not_an_internal_error() -> No
     def html(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, text="<html>proxy</html>")
 
-    converter = RemoteConverter(
-        "http://converter:8090", TOKEN, client=httpx.Client(transport=httpx.MockTransport(html))
-    )
+    client = httpx.Client(base_url="http://converter:8090", transport=httpx.MockTransport(html))
+    converter = RemoteConverter("http://converter:8090", TOKEN, client=client)
     with pytest.raises(ConverterUnavailable):
         _ = converter.version

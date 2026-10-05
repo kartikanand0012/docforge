@@ -22,9 +22,17 @@ from pydantic import BaseModel
 from docforge.chat.prompt import Passage
 from docforge.chat.verify import normalise, quote_in
 
-_NUMBER = re.compile(r"(?<![\w.])\d[\d,]*(?:\.\d+)?")
+# A number: Western or Indian digit grouping (98,697.00, 1,23,456.00) or none, with its sign
+# when it stands alone ("-500", or with the minus sign U+2212). "1,2,3" is three numbers.
+_NUMBER = re.compile(
+    r"(?:(?<![\w.])(?P<sign>[-\u2212]))?(?<![\d])(?<!\d\.)"
+    r"(?P<digits>\d{1,3}(?:,\d{2,3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
+)
 # Letters with digits, or digits with / or - inside: an invoice or batch number, a date.
-_CODE = re.compile(r"\b(?=[\w/.-]*\d)(?=[\w/.-]*[A-Za-z/-])[\w][\w/.-]*[\w]")
+CODE = re.compile(r"\b(?=[\w/.-]*\d)(?=[\w/.-]*[A-Za-z/-])[\w][\w/.-]*[\w]")
+# A number written against its unit ("250mg", "10ml", "Rs.500"): the number, not a code.
+_UNIT = re.compile(r"(\d)([A-Za-z]{1,3})\b")
+_PREFIX = re.compile(r"\b([A-Za-z]{1,3})\.(?=\d)")
 
 
 class RawCitation(BaseModel):  # no extra="forbid": Gemini's schema has no additionalProperties
@@ -50,27 +58,48 @@ class Checked:
     dropped_citations: int = 0
 
 
+def _plain(text: str) -> str:
+    """Units and currency prefixes set apart from their numbers: "250mg" is 250 mg."""
+    return _PREFIX.sub(r"\1 ", _UNIT.sub(r"\1 \2", text))
+
+
 def _numbers(text: str) -> set[Decimal]:
     found = set()
-    for token in _NUMBER.findall(text):
+    for match in _NUMBER.finditer(text):
         try:
-            found.add(Decimal(token.replace(",", "")).normalize())
+            value = Decimal(match["digits"].replace(",", "")).normalize()
         except InvalidOperation:
             continue
+        found.add(-value if match["sign"] else value)
     return found
 
 
 def _codes(text: str) -> set[str]:
-    return {normalise(code) for code in _CODE.findall(text)}
+    # Compared without spaces: "95.0-105.0" is "95.0 - 105.0".
+    return {re.sub(r"\s+", "", normalise(code)) for code in CODE.findall(text)}
+
+
+def _squashed(text: str) -> str:
+    return re.sub(r"\s+", "", normalise(text))
 
 
 def _supported(statement: str, quotes: Sequence[str], given: str) -> bool:
-    """Every figure of the statement is in its quotes or in what it repeats."""
-    held = " ".join([*quotes, given])
-    if not _codes(statement) <= _codes(held):
-        return False
-    # A number that is part of a code (2026 in NVM/26-27/32001) is checked with its code.
-    return _numbers(_CODE.sub(" ", statement)) <= _numbers(held)
+    """Every figure of the statement is in its quotes or in what it repeats, and at least one
+    is in its quotes: a figure only repeated from the question ("is the total 5,000?") does
+    not stand on its own. Figures are matched against the quotes together, not each against
+    the label beside it."""
+    statement = _plain(statement)
+    quoted, repeated = _plain(" ".join(quotes)), _plain(given)
+    codes = _codes(statement)
+    numbers = _numbers(CODE.sub(" ", statement))  # a code's own digits go with the code
+    if not codes and not numbers:
+        return True
+    in_quotes, in_given = _squashed(quoted), _squashed(repeated)
+    quote_numbers, given_numbers = _numbers(quoted), _numbers(repeated)
+    from_quotes = {c for c in codes if c in in_quotes} | (numbers & quote_numbers)
+    from_given = {c for c in codes if c in in_given} | (numbers & given_numbers)
+    every = (codes | numbers) <= (from_quotes | from_given)
+    return every and bool(from_quotes)
 
 
 def check_statements(
@@ -81,7 +110,11 @@ def check_statements(
         found: list[tuple[int, str]] = []
         for cited in statement.citations:
             index = cited.passage - 1
-            if 0 <= index < len(passages) and quote_in(cited.quote, passages[index].text):
+            # A summary is DocForge's own account of one document: a quote may join any of
+            # its parts. Elsewhere the parts must sit close together.
+            passage = passages[index] if 0 <= index < len(passages) else None
+            gap = None if passage is not None and passage.kind == "summary" else 400
+            if passage is not None and quote_in(cited.quote, passage.text, max_gap=gap):
                 found.append((index, cited.quote))
             else:
                 checked.dropped_citations += 1

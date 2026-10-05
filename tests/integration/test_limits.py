@@ -110,12 +110,12 @@ def test_a_failed_release_does_not_hide_what_happened_inside(sessions: SessionFa
     class Broken(Exception):
         pass
 
-    real = limits._release  # noqa: SLF001
+    real = limits._release
 
     def failing(lease: object) -> None:
         raise RuntimeError("database gone")
 
-    limits._release = failing  # type: ignore[method-assign]  # noqa: SLF001
+    limits._release = failing  # type: ignore[method-assign]
     with pytest.raises(Broken), limits.hold("k:t:a", at_most=1, seconds=60):
         raise Broken
-    limits._release = real  # type: ignore[method-assign]  # noqa: SLF001
+    limits._release = real  # type: ignore[method-assign]

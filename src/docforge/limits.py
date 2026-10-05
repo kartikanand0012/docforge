@@ -4,6 +4,7 @@
 `LocalLimits` keeps them in the process, for tests and tools with no database.
 """
 
+import logging
 import random
 import threading
 import time
@@ -15,6 +16,8 @@ from typing import Protocol
 from sqlalchemy import text
 
 from docforge.db.session import SessionFactory
+
+logger = logging.getLogger(__name__)
 
 
 class LimitReached(Exception):
@@ -47,10 +50,8 @@ class DatabaseLimits:
                 ),
                 {"key": key},
             ).scalar_one()
-            if random.random() < 0.01:  # noqa: S311 - housekeeping, not security
-                session.execute(
-                    text("DELETE FROM rate_windows WHERE window_start < now() - interval '1 hour'")
-                )
+        if random.random() < 0.01:  # noqa: S311 - housekeeping, not security
+            self.sweep()
         return int(count) <= per_minute
 
     @contextmanager
@@ -78,8 +79,23 @@ class DatabaseLimits:
         try:
             yield
         finally:
-            with self._sessions.begin() as session:
-                session.execute(text("DELETE FROM leases WHERE id = :id"), {"id": lease})
+            try:
+                self._release(lease)
+            except Exception:
+                # The place frees itself when it expires; what happened inside is what counts.
+                logger.warning("could not give back a place under %s", key, exc_info=True)
+
+    def _release(self, lease: object) -> None:
+        with self._sessions.begin() as session:
+            session.execute(text("DELETE FROM leases WHERE id = :id"), {"id": lease})
+
+    def sweep(self) -> None:
+        """Counts older than an hour and places past their expiry, for every key."""
+        with self._sessions.begin() as session:
+            session.execute(
+                text("DELETE FROM rate_windows WHERE window_start < now() - interval '1 hour'")
+            )
+            session.execute(text("DELETE FROM leases WHERE expires_at < now()"))
 
 
 class LocalLimits:

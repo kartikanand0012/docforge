@@ -28,6 +28,7 @@ class Passage:
     filename: str
     page: int
     text: str
+    kind: str = "text"  # summary (DocForge's own, of one document), table_row or text
 
 
 def _data(text: str) -> str:

@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, Up
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
+from starlette.background import BackgroundTask
 
 from docforge.api.auth import require
 from docforge.api.uploads import read_upload, safe_filename
@@ -345,6 +346,13 @@ def documents_router(
             raise HTTPException(
                 429, "Too many open streams; close one or poll the timeline."
             ) from None
+        released = False
+
+        async def release() -> None:
+            nonlocal released
+            if not released:
+                released = True
+                await run_in_threadpool(held.__exit__, None, None, None)
 
         async def events() -> AsyncIterator[str]:
             try:
@@ -364,10 +372,12 @@ def documents_router(
                         return
                     await asyncio.sleep(1)
             finally:
-                await run_in_threadpool(held.__exit__, None, None, None)
+                await release()
 
+        # Given back by the stream when it ends, or after the response if it never started.
         return StreamingResponse(
             events(),
+            background=BackgroundTask(release),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
         )
