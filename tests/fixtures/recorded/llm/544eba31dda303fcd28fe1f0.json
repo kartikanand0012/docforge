@@ -1,0 +1,14 @@
+{
+  "key": "544eba31dda303fcd28fe1f033678ffbbaf3a792187000d99e84b18e43ca8daf",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"The grand total of invoice KLP/26-27/13006 is 39373.00.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Invoice KLP/26-27/13006... Grand total 39373.00.\"\n        },\n        {\n          \"passage\": 4,\n          \"quote\": \"Grand Total\\n39373.00\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1488,
+    "output_tokens": 152,
+    "thinking_tokens": null,
+    "latency_ms": 1365.0
+  }
+}

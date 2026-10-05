@@ -1,0 +1,14 @@
+{
+  "key": "989b35ca74887c61c7a90269771f18132f6d01e0f935d88a4136c792066d2ad2",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"20 units of Atorvastatin Tablets IP 10mg were billed on invoice SRP/26-27/40002.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Invoice SRP/26-27/40002 dated 5 June 2026 from Shreeram Pharma Distributors (GSTIN 27AAKCS4821M1ZW) to Sanjeevani Wellness Chemist (GSTIN 27AAVFS2087J1ZF), against purchase order PO-SWC-62002. Products: Atorvastatin Tablets IP 10mg\"\n        },\n        {\n          \"passage\": 3,\n          \"quote\": \"Description of Goods: Atorvastatin Tablets IP 10mg | Batch No.: UNL2812 | Expiry: 02/27 | Mfg.: 08/25 | Packing: 10x10 | M.R.P.: 104.64 | Qty: 20\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1745,
+    "output_tokens": 282,
+    "thinking_tokens": null,
+    "latency_ms": 2571.1
+  }
+}

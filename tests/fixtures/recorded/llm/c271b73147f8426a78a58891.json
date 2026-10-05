@@ -1,0 +1,14 @@
+{
+  "key": "c271b73147f8426a78a58891c8595d3b7577c819ea6b55ba4d23fe02f10b35e4",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1498,
+    "output_tokens": 17,
+    "thinking_tokens": null,
+    "latency_ms": 1082.3
+  }
+}

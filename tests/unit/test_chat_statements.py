@@ -4,8 +4,7 @@ of its quotes, or in the question or conversation it repeats. A statement that f
 dropped; one real quote can no longer carry a wrong figure."""
 
 from docforge.chat.prompt import Passage
-from docforge.chat.statements import RawStatement, check_statements
-from docforge.chat.service import RawCitation
+from docforge.chat.statements import RawCitation, RawStatement, check_statements
 
 PASSAGES = [
     Passage(

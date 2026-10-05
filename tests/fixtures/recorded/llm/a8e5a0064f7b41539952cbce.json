@@ -1,0 +1,14 @@
+{
+  "key": "a8e5a0064f7b41539952cbceb4c499c5c7cfbf0042807dce741334455705324b",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"The grand total is 27808.00.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Grand Total\\n27808.00\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1447,
+    "output_tokens": 88,
+    "thinking_tokens": null,
+    "latency_ms": 1317.9
+  }
+}

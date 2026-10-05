@@ -343,7 +343,7 @@ def test_a_third_follow_up_is_searched_with_the_whole_conversation(
 ) -> None:
     spy = Spy(setup.search)
     chat = ChatService(sessions, spy, setup.model)
-    setup.model.reply = quoting(setup.batch, f"Invoice {setup.invoice_no} billed it.")
+    setup.model.reply = quoting(setup.invoice_no, f"Invoice {setup.invoice_no} billed it.")
     first = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?")
     chat.ask(
         DEFAULT_TENANT_ID, "reviewer:a", "Who issued it?", conversation_id=first.conversation_id
@@ -368,7 +368,7 @@ def test_passages_from_the_documents_already_cited_come_first(
     sessions: SessionFactory, setup: Setup
 ) -> None:
     chat = ChatService(sessions, setup.search, setup.model)
-    setup.model.reply = quoting(setup.batch, f"Invoice {setup.invoice_no} billed it.")
+    setup.model.reply = quoting(setup.invoice_no, f"Invoice {setup.invoice_no} billed it.")
     first = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?")
 
     chat.ask(

@@ -1,0 +1,14 @@
+{
+  "key": "366b7a8d7b25693f8d83fbb36a9f8a94018699488a1905e4a3a5e72731adf853",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"The grand total of invoice SRP/26-27/28005 is 45741.00.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Grand Total\\n45741.00\"\n        },\n        {\n          \"passage\": 2,\n          \"quote\": \"Invoice SRP/26-27/28005 ... Grand total 45741.00.\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1593,
+    "output_tokens": 150,
+    "thinking_tokens": null,
+    "latency_ms": 1203.9
+  }
+}

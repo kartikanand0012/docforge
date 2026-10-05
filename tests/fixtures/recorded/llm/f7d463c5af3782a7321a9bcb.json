@@ -1,0 +1,14 @@
+{
+  "key": "f7d463c5af3782a7321a9bcb16bd442040b896ae651c359a46772ccf5178a283",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"10 units of Metformin Tablets IP 500mg were billed on invoice SRP/26-27/28005.\",\n      \"citations\": [\n        {\n          \"passage\": 3,\n          \"quote\": \"Sl Product: 1 Metformin Tablets IP 500mg | Pack: 10x15 | HSN: 30049099 | Batch: QC5253 | Mfg: 12/25 | Exp: 12/27 | Qty: 10 | Free: 1 | MRP: 45.28 | PTR: 31.70 | Disc%: 2 | Taxable: 310.66 | GST%: 5 | Amount: 326.20\"\n        },\n        {\n          \"passage\": 1,\n          \"quote\": \"Invoice SRP/26-27/28005 dated 15 April 2026 from Shreeram Pharma Distributors (GSTIN 27AAKCS4821M1ZW) to Sanjeevani Wellness Chemist (GSTIN 27AAVFS2087J1ZF), against purchase order PO-SWC-30005. Products: Metformin Tablets IP 500mg\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1811,
+    "output_tokens": 334,
+    "thinking_tokens": null,
+    "latency_ms": 3339.0
+  }
+}

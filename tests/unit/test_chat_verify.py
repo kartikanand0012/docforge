@@ -76,3 +76,17 @@ def test_a_lone_common_word_is_not_a_citation() -> None:
 def test_a_short_number_cell_is_not_outlined_inside_a_longer_number() -> None:
     blocks = [block("b1", "1"), block("b2", "Grand total"), block("b3", "1,100.00")]
     assert [b["id"] for b in cited_blocks("Grand total 1,100.00", blocks)] == ["b2", "b3"]
+
+
+def test_a_quote_joining_parts_of_a_passage_with_an_ellipsis_is_found_when_every_part_is() -> None:
+    passage = "Invoice NVM/26-27/09004 dated 14 June 2026 | Taxable 30,000.00 | Grand total 31674.00"
+    assert quote_in("Invoice NVM/26-27/09004 [...] Grand total 31674.00.", passage)
+    assert quote_in("Invoice NVM/26-27/09004 ... Grand total 31674.00", passage)
+    assert quote_in("Invoice NVM/26-27/09004 … Grand total 31674.00", passage)
+
+
+def test_an_ellipsis_cannot_join_parts_out_of_order_or_hide_a_made_up_part() -> None:
+    passage = "Invoice NVM/26-27/09004 dated 14 June 2026 | Grand total 31674.00"
+    assert not quote_in("Grand total 31674.00 [...] Invoice NVM/26-27/09004", passage)
+    assert not quote_in("Invoice NVM/26-27/09004 [...] Grand total 99999.00", passage)
+    assert not quote_in("[...]", passage)

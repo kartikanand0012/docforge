@@ -1,0 +1,14 @@
+{
+  "key": "c52db09c77719c0ad22f391ea3002ccff754de3c7b344af28b39f45ed5be98d4",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"Invoice SRP/26-27/40002 was issued by Shreeram Pharma Distributors.\",\n      \"citations\": [\n        {\n          \"passage\": 2,\n          \"quote\": \"Invoice SRP/26-27/40002 dated 5 June 2026 from Shreeram Pharma Distributors (GSTIN 27AAKCS4821M1ZW) to Sanjeevani Wellness Chemist (GSTIN 27AAVFS2087J1ZF), against purchase order PO-SWC-62002.\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 2170,
+    "output_tokens": 169,
+    "thinking_tokens": null,
+    "latency_ms": 1876.8
+  }
+}
