@@ -119,3 +119,19 @@ def test_a_failed_release_does_not_hide_what_happened_inside(sessions: SessionFa
     with pytest.raises(Broken), limits.hold("k:t:a", at_most=1, seconds=60):
         raise Broken
     limits._release = real  # type: ignore[method-assign]
+
+
+def test_the_minute_before_still_counts_so_no_burst_at_the_turn_of_a_minute(
+    sessions: SessionFactory,
+) -> None:
+    from sqlalchemy import text
+
+    with sessions.begin() as session:
+        session.execute(
+            text(
+                "INSERT INTO rate_windows VALUES "
+                "('burst:t:a', date_trunc('minute', now()) - interval '1 minute', 10000)"
+            )
+        )
+
+    assert not DatabaseLimits(sessions).allow("burst:t:a", per_minute=3)

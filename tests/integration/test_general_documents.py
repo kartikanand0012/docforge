@@ -365,3 +365,18 @@ def test_a_pdf_upload_records_no_converted_pdf(svc: Service) -> None:
     document = svc.ingest(CONVERTED, "manual.pdf").document
     svc.run()
     assert svc.service.detail(DEFAULT_TENANT_ID, document.id).versions[-1].rendition_key is None
+
+
+def test_a_converted_pdf_replaced_by_a_newer_one_is_deleted(
+    sessions: SessionFactory, svc: Service
+) -> None:
+    """It can always be made again from the original; only the one in use is kept."""
+    document = svc.ingest(DOCX).document
+    svc.run()
+    svc.converter.version = "fake-2"
+    svc.service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=document.id, actor="t")
+    svc.run()
+
+    assert not svc.store.exists(rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-1"))
+    assert svc.store.exists(rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-2"))
+    assert svc.store.exists(document.storage_key)  # the original, always

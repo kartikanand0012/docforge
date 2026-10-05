@@ -129,3 +129,23 @@ def test_a_follow_up_naming_another_document_is_refused(sessions: SessionFactory
         "document_id": str(uuid.uuid4()),
     }
     assert api.post("/v1/chat", json=follow_up).status_code == 422
+
+
+def test_admins_see_the_unanswered_questions_and_others_do_not(sessions: SessionFactory) -> None:
+    admin = client(sessions, role="admin")
+    admin.post("/v1/chat", json={"question": "Bank account?"})
+
+    report = admin.get("/v1/questions/unanswered")
+    assert report.status_code == 200
+    body = report.json()
+    assert body["questions"][0]["question"] == "Bank account?"
+    assert body["questions"][0]["reason"] == "no_passages"
+    assert body["by_reason"] == {"no_passages": 1}
+
+    reviewer = client(sessions, role="reviewer", reviewer_id=uuid.uuid4())
+    assert reviewer.get("/v1/questions/unanswered").status_code == 403
+
+
+def test_an_answer_says_why_it_is_not_an_answer(sessions: SessionFactory) -> None:
+    body = client(sessions).post("/v1/chat", json={"question": "Bank account?"}).json()
+    assert body["reason"] == "no_passages"
