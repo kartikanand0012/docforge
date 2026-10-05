@@ -62,7 +62,10 @@ def test_questions_come_from_the_labels_with_answers_and_unanswerables() -> None
     assert len({q.id for q in questions}) == len(questions)
     answerable = [q for q in questions if q.expect is not None]
     unanswerable = [q for q in questions if q.expect is None]
-    assert len(answerable) == 12 and len(unanswerable) == 8
+    assert len(answerable) == 18 and len(unanswerable) == 8
+    chain = [q for q in questions if q.id.startswith("pair_001-chain")]
+    assert [q.follows for q in chain] == [None, "pair_001-chain-1", "pair_001-chain-2"]
+    assert chain[2].text == "What is its grand total?"
     scoped = [q for q in questions if q.scoped]
     assert [q.id for q in scoped] == ["pair_001-total-in-document", "pair_002-total-in-document"]
     # Within a knowledge base: the certificates answer; the invoices must not.
@@ -72,7 +75,7 @@ def test_questions_come_from_the_labels_with_answers_and_unanswerables() -> None
     total = next(q for q in questions if q.id == "pair_001-total")
     assert total.expect == Expect(kind="number", value="98697.00")
     assert total.documents == ("pair_001/invoice",)
-    assert {q.tenant for q in questions} == {"a", "b"}
+    assert {q.tenant for q in questions} == {"a", "b", "all"}  # conversations: in "all"
     assert questions == build_questions(FIXTURES / "synthetic", FIXTURES / "coa", pairs=2)
 
 
@@ -109,12 +112,13 @@ def test_the_report_counts_right_answers_citations_abstention_and_leaks() -> Non
     report = score_answers(questions, results, model="m", prompt_version="chat-1")
 
     assert report.questions == len(questions) == len(by_id)
-    assert report.answered_correctly == pytest.approx(1 / 6, abs=1e-4)
-    assert report.cited_expected_document == pytest.approx(2 / 6, abs=1e-4)
-    assert report.false_abstention == pytest.approx(4 / 6, abs=1e-4)
+    assert report.answered_correctly == pytest.approx(1 / 9, abs=1e-4)
+    assert report.cited_expected_document == pytest.approx(2 / 9, abs=1e-4)
+    assert report.false_abstention == pytest.approx(7 / 9, abs=1e-4)
     assert report.wrong_answers == 1
     assert report.abstained_when_no_answer == pytest.approx(3 / 4, abs=1e-4)  # rounded to 4 places
     assert report.answered_unanswerable == 1  # the bank question, answered when it cannot be
+    assert (report.follow_ups, report.follow_ups_correct) == (2, 0.0)
     assert report.cross_tenant_citations == 1
     assert (report.input_tokens_per_question, report.output_tokens_per_question) == (1000, 100)
     assert "pair_001-seller" in report.missed

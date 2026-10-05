@@ -14,6 +14,7 @@ A conversation belongs to the person who started it. Questions and answers are s
 """
 
 import logging
+import re
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -25,7 +26,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passage, build_prompt
-from docforge.chat.verify import cited_blocks, quote_in
+from docforge.chat.statements import CODE, RawStatement, check_statements
+from docforge.chat.verify import cited_blocks
 from docforge.collections import CollectionNotFound, CollectionService
 from docforge.db.models import Conversation, Document, Message
 from docforge.db.session import SessionFactory
@@ -46,6 +48,10 @@ DEFAULT_PASSAGES = 8
 DEFAULT_DAILY_LIMIT = 500
 _HISTORY = 3  # earlier turns given with a follow-up
 _ANSWERED = ("supported", "partly_supported")
+_ANCHORS = 3  # documents an earlier answer cited, searched first for a follow-up
+_ANCHORED = 4  # passages from each
+_NAMED = 2  # documents a question names by code, searched within
+_MIN_CODE = 5  # characters: "Q3" or "A4" names no one document
 _BOX_KEYS = ("page", "x0", "y0", "x1", "y1", "page_width", "page_height")
 
 
@@ -108,14 +114,10 @@ class Search(Protocol):
     ) -> SearchHits: ...
 
 
-class RawCitation(BaseModel):  # no extra="forbid": Gemini's schema has no additionalProperties
-    passage: int = Field(description="The number of the passage quoted.")
-    quote: str = Field(description="Words copied exactly from that passage.")
-
-
-class RawAnswer(BaseModel):
-    answer: str
-    citations: list[RawCitation]
+class RawAnswer(BaseModel):  # no extra="forbid": Gemini's schema has no additionalProperties
+    statements: list[RawStatement] = Field(
+        description="The answer, one claim per statement, each with its citations."
+    )
     unanswerable: bool
 
 
@@ -147,6 +149,7 @@ class Answer:
     text: str
     citations: tuple[Citation, ...]
     dropped_citations: int  # quotes not found in the passages they named
+    dropped_statements: int  # statements without a found quote, or with a figure it lacks
     words_only: bool  # the passages were found by words alone (no embedding service)
     model: str | None
     input_tokens: int | None
@@ -175,35 +178,35 @@ class ConversationSummary:
 
 
 def _checked(
-    raw: RawAnswer, passages: Sequence[Passage], hits: Sequence[SearchHit]
-) -> tuple[Status, str, tuple[Citation, ...], int]:
+    raw: RawAnswer, passages: Sequence[Passage], hits: Sequence[SearchHit], given: str
+) -> tuple[Status, str, tuple[Citation, ...], int, int]:
+    """Status, text, citations, and the citations and statements dropped."""
     if raw.unanswerable:
-        return "not_found", NOT_FOUND, (), 0
+        return "not_found", NOT_FOUND, (), 0, 0
+    checked = check_statements(raw.statements, passages, given=given)
     citations: list[Citation] = []
-    dropped = 0
-    for cited in raw.citations:
-        index = cited.passage - 1
-        if not 0 <= index < len(passages) or not quote_in(cited.quote, passages[index].text):
-            dropped += 1
-            continue
-        hit = hits[index]
-        blocks = cited_blocks(cited.quote, hit.blocks)
-        citation = Citation(
-            document_id=hit.document_id,
-            filename=hit.filename,
-            doc_type=hit.doc_type,
-            page=int(blocks[0]["page"]) if blocks else hit.page,
-            quote=cited.quote,
-            # Where the quote is; failing that, where the passage is.
-            boxes=tuple({k: block[k] for k in _BOX_KEYS if k in block} for block in blocks)
-            or hit.boxes,
-        )
-        if citation not in citations:
-            citations.append(citation)
-    if not citations:
-        return "unsupported", WITHHELD, (), dropped
+    for kept in checked.kept:
+        for index, quote in kept.citations:
+            hit = hits[index]
+            blocks = cited_blocks(quote, hit.blocks)
+            citation = Citation(
+                document_id=hit.document_id,
+                filename=hit.filename,
+                doc_type=hit.doc_type,
+                page=int(blocks[0]["page"]) if blocks else hit.page,
+                quote=quote,
+                # Where the quote is; failing that, where the passage is.
+                boxes=tuple({k: block[k] for k in _BOX_KEYS if k in block} for block in blocks)
+                or hit.boxes,
+            )
+            if citation not in citations:
+                citations.append(citation)
+    if not checked.kept:
+        return "unsupported", WITHHELD, (), checked.dropped_citations, checked.dropped_statements
+    dropped = checked.dropped_citations + checked.dropped_statements
     status: Status = "partly_supported" if dropped else "supported"
-    return status, raw.answer.strip(), tuple(citations), dropped
+    text = " ".join(kept.text for kept in checked.kept)
+    return status, text, tuple(citations), checked.dropped_citations, checked.dropped_statements
 
 
 class ChatService:
@@ -248,47 +251,46 @@ class ChatService:
         if document_id is not None and collection_id is not None:
             raise ScopeConflict("a question is about one document or one knowledge base")
         tell = _safe(progress)
-        conversation_id, message_id, scope, history = self._reserve(
+        conversation_id, message_id, scope, history, anchors = self._reserve(
             tenant_id, owner, question, Scope(document_id, collection_id), conversation_id
         )
         responses: tuple[LLMResponse, ...] = ()
         try:
             with traced("chat.answer") as span:
                 tell("searching", {})
-                # A follow-up such as "and its batch?" is searched with the question before.
-                query = f"{history[-1][0]} {question}" if history else question
-                hits = self._search.search(
-                    tenant_id,
-                    query,
-                    k=self._passages,
-                    mode="hybrid",
-                    document_id=scope.document_id,
-                    collection_id=scope.collection_id,
+                hits = self._retrieve(
+                    tenant_id, _follow_up_query(question, history), scope, anchors, question
                 )
                 span.set_attribute("docforge.chat.passages", len(hits))
                 span.set_attribute("docforge.chat.scope", scope.kind)
                 passages = [
-                    Passage(n=n, filename=hit.filename, page=hit.page, text=hit.text)
+                    Passage(n=n, filename=hit.filename, page=hit.page, text=hit.text, kind=hit.kind)
                     for n, hit in enumerate(hits, start=1)
                 ]
                 tell("reading", {"passages": len(passages)})
                 citations: tuple[Citation, ...] = ()
                 if not passages:
                     status: Status = "not_found"
-                    text, dropped = NOT_FOUND, 0
+                    text, dropped, dropped_statements = NOT_FOUND, 0, 0
                 else:
                     raw, responses = self._ask(build_prompt(passages, question, history))
                     tell("checking", {})
-                    status, text, citations, dropped = _checked(raw, passages, hits)
+                    # Figures a statement repeats from the question or the conversation need
+                    # no quote of their own.
+                    given = " ".join([question, *(f"{q} {a}" for q, a in history)])
+                    status, text, citations, dropped, dropped_statements = _checked(
+                        raw, passages, hits, given
+                    )
                 span.set_attribute("docforge.chat.status", status)
                 span.set_attribute("docforge.chat.dropped_citations", dropped)
+                span.set_attribute("docforge.chat.dropped_statements", dropped_statements)
         except Exception as error:
             spent = getattr(error, "responses", responses)
             self._complete(message_id, "error", "The model could not answer.", (), 0, spent)
             raise
         if not passages:
             tell("checking", {})  # nothing to check, but every stream shows the same stages
-        self._complete(message_id, status, text, citations, dropped, responses)
+        self._complete(message_id, status, text, citations, dropped, responses, dropped_statements)
         input_tokens, output_tokens = _tokens(responses)
         return Answer(
             conversation_id=conversation_id,
@@ -297,11 +299,89 @@ class ChatService:
             text=text,
             citations=citations,
             dropped_citations=dropped,
+            dropped_statements=dropped_statements,
             words_only=hits.words_only,
             model=responses[-1].model if responses else None,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
         )
+
+    def _retrieve(
+        self,
+        tenant_id: uuid.UUID,
+        query: str,
+        scope: "Scope",
+        anchors: Sequence[uuid.UUID],
+        question: str | None = None,
+    ) -> SearchHits:
+        """The passages to answer from. A follow-up ("what is its total?") names nothing, so
+        the documents its conversation has cited are searched first, each on its own, and
+        their passages come before the rest: what "it" is stays in front of the model, however
+        many other documents match the words."""
+        found: list[SearchHit] = []
+        words_only = False
+        for anchor in anchors:
+            if scope.document_id is not None and anchor != scope.document_id:
+                continue  # never outside the conversation's own scope
+            near = self._search.search(
+                tenant_id,
+                query,
+                k=_ANCHORED,
+                mode="hybrid",
+                document_id=anchor,
+                collection_id=scope.collection_id,
+            )
+            found += near
+            words_only = words_only or near.words_only
+        # The cited documents carry the conversation's subject; the search as a whole then
+        # looks for the question itself, so the codes of earlier answers (which keyword search
+        # requires a passage to print) do not hold it to those documents.
+        wide = self._search.search(
+            tenant_id,
+            question if anchors and question else query,
+            k=self._passages,
+            mode="hybrid",
+            document_id=scope.document_id,
+            collection_id=scope.collection_id,
+        )
+        # A question that names a document's code (an invoice number) is about that document,
+        # but only its header prints the code, not its line rows: search within it too. Only
+        # codes long enough to name one document, matched whole, and at most two documents.
+        codes = [
+            re.compile(rf"(?<!\w){re.escape(code)}(?!\w)", re.IGNORECASE)
+            for code in dict.fromkeys(CODE.findall(query))
+            if len(code) >= _MIN_CODE
+        ]
+        named = [hit.document_id for hit in wide if any(code.search(hit.text) for code in codes)]
+        for document_id in list(dict.fromkeys(named))[:_NAMED]:
+            if document_id in anchors:
+                continue
+            near = self._search.search(
+                tenant_id,
+                query,
+                k=_ANCHORED,
+                mode="hybrid",
+                document_id=document_id,
+                collection_id=scope.collection_id,
+            )
+            found += near
+            words_only = words_only or near.words_only
+        # The documents in question first, but at most half the places: the rest go to the
+        # search as a whole, so a follow-up about another document can still reach it.
+        seen: set[tuple[uuid.UUID, int, str]] = set()
+        merged: list[SearchHit] = []
+
+        def add(hits: Sequence[SearchHit], limit: int) -> None:
+            for hit in hits:
+                key = (hit.document_id, hit.page, hit.text)
+                if len(merged) < limit and key not in seen:
+                    seen.add(key)
+                    merged.append(hit)
+
+        add(found, max(1, self._passages // 2) if found else 0)
+        add(wide, self._passages)
+        add(found, self._passages)  # any places left
+        return SearchHits(merged, words_only=words_only or wide.words_only)
 
     def _reserve(
         self,
@@ -310,7 +390,7 @@ class ChatService:
         question: str,
         asked: "Scope",
         conversation_id: uuid.UUID | None,
-    ) -> tuple[uuid.UUID, uuid.UUID, "Scope", list[tuple[str, str]]]:
+    ) -> tuple[uuid.UUID, uuid.UUID, "Scope", list[tuple[str, str]], list[uuid.UUID]]:
         """Check the limits and take the question's place, in one transaction under a lock
         per organisation, so two questions cannot both take the last place."""
         with self._sessions.begin() as session:
@@ -334,6 +414,7 @@ class ChatService:
                 raise QuestionLimitReached(f"{self._per_person} questions a day per person")
 
             history: list[tuple[str, str]] = []
+            anchors: list[uuid.UUID] = []
             if conversation_id is not None:
                 conversation = self._owned(session, tenant_id, owner, conversation_id)
                 scope = Scope(conversation.document_id, conversation.collection_id)
@@ -356,6 +437,16 @@ class ChatService:
                     (m.question, m.answer if m.status in _ANSWERED else "(no answer found)")
                     for m in reversed(earlier)
                 ]
+                # The documents the conversation is about: those its answers cited, newest
+                # first.
+                anchors = list(
+                    dict.fromkeys(
+                        uuid.UUID(c["document_id"])
+                        for m in earlier
+                        if m.status in _ANSWERED
+                        for c in m.citations
+                    )
+                )[:_ANCHORS]
             else:
                 scope = asked
                 if scope.document_id is not None:
@@ -391,7 +482,7 @@ class ChatService:
             )
             session.add(message)
             session.flush()
-            return conversation.id, message.id, scope, history
+            return conversation.id, message.id, scope, history, anchors
 
     def _complete(
         self,
@@ -401,6 +492,7 @@ class ChatService:
         citations: tuple[Citation, ...],
         dropped: int,
         responses: tuple[LLMResponse, ...],
+        dropped_statements: int = 0,
     ) -> None:
         input_tokens, output_tokens = _tokens(responses)
         try:
@@ -410,6 +502,7 @@ class ChatService:
                 message.answer = text
                 message.citations = [c.as_json() for c in citations]
                 message.dropped_citations = dropped
+                message.dropped_statements = dropped_statements
                 message.model = responses[-1].model if responses else None
                 message.input_tokens = input_tokens
                 message.output_tokens = output_tokens
@@ -512,6 +605,16 @@ class ChatService:
         if conversation is None:
             raise ConversationNotFound(conversation_id)
         return conversation
+
+
+def _follow_up_query(question: str, history: Sequence[tuple[str, str]]) -> str:
+    """What a follow-up is searched with: every earlier question of the conversation and the
+    codes its answers named, then the question. Only the question before was used until
+    the hardening checkpoint, and a third turn lost what the first one named."""
+    if not history:
+        return question
+    codes = [code for _, answer in history for code in CODE.findall(answer)]
+    return " ".join([*(asked for asked, _ in history), *dict.fromkeys(codes), question])
 
 
 def _safe(progress: Progress | None) -> Progress:

@@ -1,0 +1,14 @@
+{
+  "key": "288620ed533f098cf1ed753fced98da6245d507a5d40d08c09180e5978932d3d",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"Invoice NVM/26-27/09004 billed batch BO893576.\",\n      \"citations\": [\n        {\n          \"passage\": 2,\n          \"quote\": \"Invoice NVM/26-27/09004 dated 12 June 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Umiya Medical Store (GSTIN 24ACDPU8840L1Z3), against purchase order PO-UMS-63004. Products: Pantoprazole Tablets IP 40mg, Insulin Injection IP 40IU/ml, Vitamin C Tablets 500mg, Amoxicillin Capsules IP 250mg, Omeprazole Capsules IP 20mg, Salbutamol Inhaler 100mcg, Ibuprofen Tablets IP 400mg. Batches: BO893576, EK8246, QIS3376, UX28993, THW619695, SM817511, GWV7319.\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1829,
+    "output_tokens": 302,
+    "thinking_tokens": null,
+    "latency_ms": 2217.2
+  }
+}

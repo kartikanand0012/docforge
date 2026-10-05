@@ -1,0 +1,14 @@
+{
+  "key": "0b3350fe9d69e65afc6b62e1667765ba09f6b77ea0ac295c1064104db3b5e973",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not contain the assay result for batch QC5253.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1645,
+    "output_tokens": 39,
+    "thinking_tokens": null,
+    "latency_ms": 948.0
+  }
+}

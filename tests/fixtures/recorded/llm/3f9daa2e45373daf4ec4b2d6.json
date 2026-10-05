@@ -1,0 +1,14 @@
+{
+  "key": "3f9daa2e45373daf4ec4b2d6a50bbd2c7867fad889256a516eca8a1c45ea47d2",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The provided documents do not state how many units of Pantoprazole Tablets IP 40mg were billed on invoice NVM/26-27/09004.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1458,
+    "output_tokens": 61,
+    "thinking_tokens": null,
+    "latency_ms": 1235.4
+  }
+}

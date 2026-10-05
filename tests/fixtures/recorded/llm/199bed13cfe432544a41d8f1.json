@@ -1,0 +1,14 @@
+{
+  "key": "199bed13cfe432544a41d8f1da254fa3438d9e79d4867545e316058d71e970cc",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The provided documents do not contain information about the total microbial count for batch BO893576.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1365,
+    "output_tokens": 45,
+    "thinking_tokens": null,
+    "latency_ms": 1312.7
+  }
+}

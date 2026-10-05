@@ -1,23 +1,21 @@
 {
   "model": "gemini-3.5-flash-lite",
-  "prompt_version": "chat-1",
-  "questions": 80,
-  "answerable": 48,
+  "prompt_version": "chat-2",
+  "questions": 104,
+  "answerable": 72,
   "unanswerable": 32,
-  "answered_correctly": 0.9792,
-  "cited_expected_document": 0.9792,
-  "false_abstention": 0.0208,
+  "answered_correctly": 1.0,
+  "cited_expected_document": 1.0,
+  "false_abstention": 0.0,
   "wrong_answers": 0,
   "abstained_when_no_answer": 1.0,
   "answered_unanswerable": 0,
+  "follow_ups": 16,
+  "follow_ups_correct": 1.0,
   "cross_tenant_citations": 0,
   "outside_knowledge_base": 0,
-  "input_tokens_per_question": 1490,
-  "output_tokens_per_question": 82,
-  "missed": [
-    "pair_004-quantity"
-  ],
-  "answers": {
-    "pair_004-quantity": "[not_found] The documents do not say."
-  }
+  "input_tokens_per_question": 1493,
+  "output_tokens_per_question": 108,
+  "missed": [],
+  "answers": {}
 }

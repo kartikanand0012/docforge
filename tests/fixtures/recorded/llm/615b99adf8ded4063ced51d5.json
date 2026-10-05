@@ -1,0 +1,14 @@
+{
+  "key": "615b99adf8ded4063ced51d547e8f72b4c7be67ef81bd7050e47dc628f617962",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The assay result for batch XGX944068 was 96.3 %.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Assay 96.3 % (limit 95.0 - 105.0 %)\"\n    },\n    {\n      \"passage\": 5,\n      \"quote\": \"Test: Assay | Specification: 95.0 - 105.0 % | Result: 96.3 %\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 839,
+    "output_tokens": 140,
+    "thinking_tokens": null,
+    "latency_ms": 1675.4
+  }
+}

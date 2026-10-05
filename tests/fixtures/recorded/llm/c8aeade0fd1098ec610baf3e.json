@@ -1,0 +1,14 @@
+{
+  "key": "c8aeade0fd1098ec610baf3e196cce48f3208999762a670efdb9363fc9ab004d",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Invoice NVM/26-27/32001 billed batch XGX944068.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Batch: XGX944068\"\n    },\n    {\n      \"passage\": 3,\n      \"quote\": \"Invoice NVM/26-27/32001 dated 2 September 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Jalaram Pharmacy (GSTIN 24AAHFJ1196Q1ZU), against purchase order PO-JPH-12001. Products: Amoxicillin Capsules IP 250mg, Ciprofloxacin Tablets IP 500mg, Atorvastatin Tablets IP 10mg, Salbutamol Inhaler 100mcg, Insulin Injection IP 40IU/ml, Cetirizine Tablets IP 10mg, Pantoprazole Tablets IP 40mg, Ibuprofen Tablets IP 400mg, Azithromycin Tablets IP 500mg, ORS Powder WHO Formula 21g. Batches: XGX944068\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1846,
+    "output_tokens": 307,
+    "thinking_tokens": null,
+    "latency_ms": 11754.6
+  }
+}

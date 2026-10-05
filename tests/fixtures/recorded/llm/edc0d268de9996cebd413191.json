@@ -1,0 +1,14 @@
+{
+  "key": "edc0d268de9996cebd413191baea66a3b8cca901ba1f65cba839ba9a5aeba77e",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The assay result for batch CD27015 was 102.4 %.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Assay 102.4 %\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 821,
+    "output_tokens": 76,
+    "thinking_tokens": null,
+    "latency_ms": 1249.2
+  }
+}

@@ -59,7 +59,30 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      converter:
+        condition: service_healthy
+    # Its database and storage on the default network; the converter on its own.
+    networks: [default, convert]
     mem_limit: 3g  # the parser's own limit (PARSER_MAX_RSS_MB) is set below this
+
+  # LibreOffice, for Word, PowerPoint and Excel files, kept apart from everything: an internal
+  # network shared only with the worker (no route to the internet, the metadata service, the
+  # database or storage), only its token to read, and nothing to write but scratch space.
+  converter:
+    <<: *hardened
+    image: ${APP_IMAGE:?set in .env}
+    command: ["python", "-m", "docforge.conversion_service"]
+    env_file: [converter.env]  # CONVERTER_TOKEN, the same as in app.env
+    networks: [convert]
+    read_only: true
+    tmpfs: ["/tmp:size=1g,mode=1777", "/home/app:size=256m,uid=10001"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    mem_limit: 2560m  # the conversion's own limit (CONVERSION_MAX_RSS_MB) is set below this
+    pids_limit: 256
 
   # Migrations, the database login, the demo seed and the ops check: run, then gone.
   admin:
@@ -114,6 +137,11 @@ services:
     entrypoint: ["/bin/sh", "-c", "mkdir -p /data/docforge-originals && exec minio server /data"]
     volumes:
       - miniodata:/data
+
+networks:
+  # Internal: Docker gives it no gateway, so nothing on it can reach outside the host.
+  convert:
+    internal: true
 
 volumes:
   pgdata:

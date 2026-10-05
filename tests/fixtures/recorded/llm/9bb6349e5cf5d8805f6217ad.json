@@ -1,0 +1,14 @@
+{
+  "key": "9bb6349e5cf5d8805f6217ad96b67b6faabe7ee9c157f64398af048fe0dd5fb6",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Invoice KLP/26-27/13006 was issued by Kaveri Lifecare Pharma.\",\n  \"citations\": [\n    {\n      \"passage\": 2,\n      \"quote\": \"Invoice KLP/26-27/13006 dated 22 June 2026 from Kaveri Lifecare Pharma\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1837,
+    "output_tokens": 104,
+    "thinking_tokens": null,
+    "latency_ms": 1541.2
+  }
+}

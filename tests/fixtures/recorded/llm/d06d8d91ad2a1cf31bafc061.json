@@ -1,0 +1,14 @@
+{
+  "key": "d06d8d91ad2a1cf31bafc0615fc0af105e7db55cf944f3886a1e12758c503e42",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not state the total microbial count for batch QC5253.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1370,
+    "output_tokens": 40,
+    "thinking_tokens": null,
+    "latency_ms": 1158.1
+  }
+}

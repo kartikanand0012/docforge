@@ -54,9 +54,49 @@ def _meaningful(wanted: str) -> bool:
     return any(c.isdigit() for c in wanted) or len(wanted.split()) >= 2 or len(wanted) >= 12
 
 
-def quote_in(quote: str, passage: str) -> bool:
-    wanted = normalise(quote)
-    return _meaningful(wanted) and _found(wanted, normalise(passage))
+_MAX_PARTS = 3
+_MAX_GAP = 400  # characters between parts: within a passage, not across its far ends
+_ELLIPSIS = re.compile(r"\s*(?:\[\s*(?:\.\.\.|\u2026)\s*\]|\.\.\.|\u2026)\s*")
+
+
+def quote_in(quote: str, passage: str, *, max_gap: int | None = _MAX_GAP) -> bool:
+    """The quote is in the passage, word for word. A quote that joins parts of the passage
+    with an ellipsis ("Invoice X [...] Grand total Y") is found when every part is, in that
+    order, close together (one passage row, not across the page), at most three parts, and
+    each meaning something: an ellipsis cannot join a batch to another row's amount."""
+    text = normalise(passage)
+    parts = [normalise(part) for part in _ELLIPSIS.split(quote)]
+    parts = [part.strip(" .,;:") for part in parts if part.strip(" .,;:")]
+    if not parts or len(parts) > _MAX_PARTS:
+        return False
+    if len(parts) > 1 and not all(_meaningful(part) or _has_digit_code(part) for part in parts):
+        return False
+    if len(parts) == 1 and not _meaningful(parts[0]):
+        return False
+    start = end = 0
+    for n, part in enumerate(parts):
+        at = _find_from(part, text, start)
+        if at == -1 or (n and max_gap is not None and at - end > max_gap):
+            return False
+        start = end = at + len(part)
+    return True
+
+
+def _has_digit_code(part: str) -> bool:
+    return len(part) >= 4 and any(c.isdigit() for c in part) and any(c.isalpha() for c in part)
+
+
+def _find_from(wanted: str, text: str, start: int) -> int:
+    """Where `wanted` is in `text` from `start`, on boundaries; -1 if nowhere."""
+    at = text.find(wanted, start)
+    while at != -1:
+        end = at + len(wanted)
+        before_ok = not wanted[0].isalnum() or at == 0 or not text[at - 1].isalnum()
+        after_ok = not wanted[-1].isalnum() or end == len(text) or not text[end].isalnum()
+        if before_ok and after_ok:
+            return at
+        at = text.find(wanted, at + 1)
+    return -1
 
 
 def cited_blocks(quote: str, blocks: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:

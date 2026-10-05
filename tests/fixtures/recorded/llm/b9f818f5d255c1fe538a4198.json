@@ -1,0 +1,14 @@
+{
+  "key": "b9f818f5d255c1fe538a4198c60dddf0129b0b50442e97533ee58e84262e5613",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Coromandel Pharma Agency issued invoice CPA/26-27/02008.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Invoice CPA/26-27/02008 dated 2 April 2026 from Coromandel Pharma Agency\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 2213,
+    "output_tokens": 97,
+    "thinking_tokens": null,
+    "latency_ms": 2188.5
+  }
+}

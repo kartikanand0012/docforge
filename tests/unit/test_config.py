@@ -113,6 +113,8 @@ def test_production_accepts_explicit_credentials(monkeypatch: pytest.MonkeyPatch
     )
     monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
     monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("CONVERTER_URL", "http://converter:8090")
+    monkeypatch.setenv("CONVERTER_TOKEN", "c" * 32)
 
     assert make_settings().environment == "production"
 
@@ -178,6 +180,8 @@ def test_production_on_aws_uses_the_instance_role_for_s3(monkeypatch: pytest.Mon
         "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
     )
     monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("CONVERTER_URL", "http://converter:8090")
+    monkeypatch.setenv("CONVERTER_TOKEN", "c" * 32)
     monkeypatch.setenv("S3_ENDPOINT_URL", "")
     monkeypatch.setenv("S3_REGION", "ap-south-1")
 
@@ -199,4 +203,60 @@ def test_recording_chat_is_refused_in_production(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("CHAT_RECORD", "1")
 
     with pytest.raises(ValueError, match="CHAT_RECORD"):
+        make_settings()
+
+
+SERVICE_ACCOUNT = (
+    '{"type": "service_account", "client_email": "docforge-sync@proj.iam.gserviceaccount.com",'
+    ' "private_key": "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n"}'
+)
+
+
+def test_a_service_account_key_is_read_for_its_email(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", SERVICE_ACCOUNT)
+    assert (
+        make_settings().drive_service_account_email == "docforge-sync@proj.iam.gserviceaccount.com"
+    )
+
+
+@pytest.mark.parametrize(
+    "value", ["not json", '{"type": "authorized_user"}', '{"type": "service_account"}']
+)
+def test_anything_but_a_service_account_key_is_refused_without_echoing_it(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", value)
+    with pytest.raises(ValueError) as caught:
+        make_settings()
+    assert "service account" in str(caught.value) and value not in str(caught.value)
+
+
+def test_the_fake_drive_is_refused_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
+    monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("DRIVE_CLIENT", "fake")
+    with pytest.raises(ValueError, match="DRIVE_CLIENT"):
+        make_settings()
+
+
+def test_production_converts_in_the_isolated_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
+    monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.delenv("CONVERTER_URL", raising=False)
+    with pytest.raises(ValueError, match="CONVERTER_URL"):
+        make_settings()
+
+    monkeypatch.setenv("CONVERTER_URL", "http://converter:8090")
+    monkeypatch.setenv("CONVERTER_TOKEN", "short")
+    with pytest.raises(ValueError, match="CONVERTER_TOKEN"):
         make_settings()

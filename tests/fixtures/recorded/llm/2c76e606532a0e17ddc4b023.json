@@ -1,0 +1,14 @@
+{
+  "key": "2c76e606532a0e17ddc4b023302e2b500812bbebbd2fe1e9a2e1db0f83480bab",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"50 units of Pantoprazole Tablets IP 40mg were billed on invoice NVM/26-27/09004.\",\n      \"citations\": [\n        {\n          \"passage\": 3,\n          \"quote\": \"Description of Goods: Pantoprazole Tablets IP 40mg | Batch No.: BO893576 | Expiry: 10/28 | Mfg.: 10/25 | Packing: 10x10 | M.R.P.: 120.38 | Qty: 50\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1526,
+    "output_tokens": 167,
+    "thinking_tokens": null,
+    "latency_ms": 1525.2
+  }
+}

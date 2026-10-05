@@ -398,12 +398,20 @@ class ReviewService:
         with self._sessions() as session:
             document = self._find(session, tenant_id, document_id)
             pages = document.page_count or 0
-            # A file that was not a PDF is shown from the PDF made of it.
-            key = (
-                document.storage_key
-                if document.media_type == "application/pdf"
-                else rendition_key(document.tenant_id, document.sha256)
-            )
+            # A file that was not a PDF is shown from the PDF made of it: the one the newest
+            # reading used (the key before versions were kept, for readings older than that).
+            key = document.storage_key
+            if document.media_type != "application/pdf":
+                used = session.scalar(
+                    select(DocumentVersion.rendition_key)
+                    .where(
+                        DocumentVersion.document_id == document.id,
+                        DocumentVersion.rendition_key.is_not(None),
+                    )
+                    .order_by(DocumentVersion.version_no.desc())
+                    .limit(1)
+                )
+                key = used or rendition_key(document.tenant_id, document.sha256)
         if not 1 <= page <= pages:
             raise PageNotFound(f"the document has no page {page}")
         with self._renders:  # rendering holds the PDF library's lock; keep a queue short

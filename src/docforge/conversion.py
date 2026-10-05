@@ -16,6 +16,7 @@ costs that one document and never the worker.
 """
 
 import contextlib
+import functools
 import hashlib
 import io
 import multiprocessing
@@ -34,6 +35,7 @@ from multiprocessing.context import SpawnProcess
 from pathlib import Path
 from typing import Protocol
 
+import PIL
 import psutil
 from PIL import Image, ImageSequence
 
@@ -68,6 +70,12 @@ class ConverterUnavailable(Exception):
 
 
 class Converter(Protocol):
+    @property
+    def version(self) -> str:
+        """What converts, with the versions that shape its PDFs: a converted PDF is kept
+        under it, so an upgrade converts again."""
+        ...
+
     def to_pdf(self, data: bytes, fmt: Format) -> bytes:
         """Raises `ConversionError` or `ConverterUnavailable`."""
         ...
@@ -88,6 +96,10 @@ class FileConverter:
         self._timeout = timeout_seconds
         self._max_pixels = max_image_pixels
         self._max_unpacked = max_unpacked_bytes
+
+    @property
+    def version(self) -> str:
+        return _local_version(self._soffice or self.find_soffice())
 
     @classmethod
     def find_soffice(cls) -> str | None:
@@ -218,6 +230,28 @@ class FileConverter:
             return result.read_bytes()
 
 
+_CODE_VERSION = "docforge-convert-1"  # change when conversion here changes its output
+
+
+@functools.cache
+def _local_version(soffice: str | None) -> str:
+    libreoffice = "none"
+    if soffice is not None and Path(soffice).is_file():
+        try:
+            out = subprocess.run(  # noqa: S603 - fixed arguments, no shell
+                [soffice, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                env=FileConverter.child_environment(Path(tempfile.gettempdir())),
+                check=False,
+            ).stdout.split()
+            libreoffice = out[1] if len(out) > 1 else "unknown"
+        except (OSError, subprocess.SubprocessError):
+            libreoffice = "unknown"
+    return f"{_CODE_VERSION};libreoffice={libreoffice};pillow={PIL.__version__}"
+
+
 def _on_white(frame: Image.Image) -> Image.Image:
     """The frame as RGB, any transparent part made white rather than black."""
     if frame.mode in ("RGBA", "LA") or (frame.mode == "P" and "transparency" in frame.info):
@@ -285,8 +319,18 @@ class IsolatedConverter:
     ) -> None:
         self._factory = factory
         self._timeout = timeout_seconds
+        self._version: str | None = None
         self._max_rss = max_rss_bytes
         self._max_output = max_output_bytes
+
+    @property
+    def version(self) -> str:
+        if self._version is None:
+            try:
+                self._version = str(getattr(self._factory(), "version", "unknown"))
+            except Exception as error:
+                raise ConverterUnavailable("The converter could not say its version.") from error
+        return self._version
 
     def to_pdf(self, data: bytes, fmt: Format) -> bytes:
         if fmt == "pdf":
@@ -356,6 +400,8 @@ class RecordingConverter:
     The browser test and demos replay conversions, so they need no LibreOffice and give the
     same PDF, and so the same recorded parse, on every machine.
     """
+
+    version = "recorded"
 
     def __init__(self, directory: Path, inner: Converter | None) -> None:
         self._directory = directory

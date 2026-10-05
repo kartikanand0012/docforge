@@ -440,7 +440,7 @@ class DocumentService:
             )
             turn = version.attempts
             doc_type, storage_key, sha256 = document.doc_type, document.storage_key, document.sha256
-            rendition = rendition_key(document.tenant_id, sha256)
+            tenant = document.tenant_id
 
         final = turn >= self._max_attempts
         span = trace.get_current_span()
@@ -457,7 +457,10 @@ class DocumentService:
                 return self._fail(
                     version_id, turn, "The stored original does not match its recorded hash."
                 )
+            rendition: str | None = None
             if fmt != "pdf":
+                # Kept under the converter's version, which may need asking (the service).
+                rendition = rendition_key(tenant, sha256, self._converter.version)
                 data = self._rendition(data, fmt, rendition)
                 self._reach(version_id, turn, "parsing", recorded_at_start=False)
             with stage_listener(lambda stage: self._reach(version_id, turn, stage)):
@@ -507,7 +510,7 @@ class DocumentService:
         cost = document_cost(calls, current_prices())
         if cost is not None:
             span.set_attribute("docforge.cost_usd", cost)
-        outcome = self._complete(version_id, turn, result)
+        outcome = self._complete(version_id, turn, result, rendition)
         if outcome == "succeeded":
             try:
                 with traced("document.match"):
@@ -538,7 +541,11 @@ class DocumentService:
         return pdf
 
     def _complete(
-        self, version_id: uuid.UUID, turn: int, result: PipelineResult[BaseModel]
+        self,
+        version_id: uuid.UUID,
+        turn: int,
+        result: PipelineResult[BaseModel],
+        rendition: str | None = None,
     ) -> Outcome:
         data = result.extraction.model_dump(mode="json")
         sha256 = hashlib.sha256(audit.canonical_json(data).encode("utf-8")).hexdigest()
@@ -595,6 +602,7 @@ class DocumentService:
             version.schema_version = result.schema_version
             version.prompt_version = result.prompt_version
             version.model_id = model
+            version.rendition_key = rendition  # the PDF this reading was made from, if any
             document.status = "extracted"
             # Indexed for search and chat next, if this service queues that; else done here.
             document.stage = "indexing" if self._index is not None else "processed"

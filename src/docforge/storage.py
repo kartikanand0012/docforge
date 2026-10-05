@@ -1,5 +1,6 @@
 """Object storage for original files. S3 in production, MinIO locally."""
 
+import hashlib
 import uuid
 from typing import Any, Protocol
 
@@ -36,9 +37,14 @@ def original_key(tenant_id: uuid.UUID, sha256: str, fmt: Format = "pdf") -> str:
     return f"originals/{tenant_id}/{sha256}.{extension(fmt)}"
 
 
-def rendition_key(tenant_id: uuid.UUID, sha256: str) -> str:
-    """Where the PDF made from an upload that was not a PDF lives (`docforge.conversion`)."""
-    return f"renditions/{tenant_id}/{sha256}.pdf"
+def rendition_key(tenant_id: uuid.UUID, sha256: str, converter: str | None = None) -> str:
+    """Where the PDF made from an upload that was not a PDF lives (`docforge.conversion`):
+    one per converter version, so an upgraded LibreOffice converts again. Without a version,
+    the key PDFs had before versions were kept."""
+    if converter is None:
+        return f"renditions/{tenant_id}/{sha256}.pdf"
+    tag = hashlib.sha256(converter.encode()).hexdigest()[:16]
+    return f"renditions/{tenant_id}/{sha256}/{tag}.pdf"
 
 
 class S3ObjectStore:

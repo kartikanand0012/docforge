@@ -1,0 +1,14 @@
+{
+  "key": "f281383caa4f2e58f010b212268960f125cfc9f1e398e48a72234d3d08517098",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The assay result for batch VJV3873 was 102.1 %.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Assay 102.1 %\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 824,
+    "output_tokens": 76,
+    "thinking_tokens": null,
+    "latency_ms": 1316.7
+  }
+}

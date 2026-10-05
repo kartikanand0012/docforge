@@ -1,0 +1,14 @@
+{
+  "key": "be27850cd613948901765087b70b9ae894e38b9e31536da34a40daa638a46a51",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Coromandel Pharma Agency issued the invoice.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Invoice CPA/26-27/33007 dated 13 September 2026 from Coromandel Pharma Agency\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 2069,
+    "output_tokens": 86,
+    "thinking_tokens": null,
+    "latency_ms": 2249.6
+  }
+}

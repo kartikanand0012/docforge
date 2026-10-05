@@ -39,7 +39,7 @@ class Model:
     def __init__(self) -> None:
         self.requests: list[LLMRequest] = []
         self.reply: Callable[[dict[int, str]], dict[str, Any] | str] = lambda passages: {
-            "answer": "Not stated.", "citations": [], "unanswerable": True,
+            "statements": [], "unanswerable": True,
         }  # fmt: skip
 
     def generate(self, request: LLMRequest) -> LLMResponse:
@@ -63,7 +63,7 @@ def quoting(
         citations = [{"passage": n, "quote": target}]
         if also is not None:
             citations.append({"passage": n, "quote": also})
-        return {"answer": answer, "citations": citations, "unanswerable": False}
+        return {"statements": [{"text": answer, "citations": citations}], "unanswerable": False}
 
     return reply
 
@@ -121,8 +121,12 @@ def test_when_the_documents_do_not_say_it_says_so(setup: Setup) -> None:
 
 def test_an_answer_whose_quotes_are_not_in_the_passages_is_withheld(setup: Setup) -> None:
     setup.model.reply = lambda passages: {
-        "answer": "The total is 99,999.00.",
-        "citations": [{"passage": 1, "quote": "Grand total 99,999.00 approved"}],
+        "statements": [
+            {
+                "text": "The total is 99,999.00.",
+                "citations": [{"passage": 1, "quote": "Grand total 99,999.00 approved"}],
+            }
+        ],
         "unanswerable": False,
     }
 
@@ -135,9 +139,9 @@ def test_an_answer_whose_quotes_are_not_in_the_passages_is_withheld(setup: Setup
 
 def test_a_citation_naming_a_passage_that_was_not_given_is_not_a_citation(setup: Setup) -> None:
     setup.model.reply = lambda passages: {
-        "answer": "Yes.", "citations": [{"passage": 99, "quote": setup.invoice_no}],
+        "statements": [{"text": "Yes.", "citations": [{"passage": 99, "quote": setup.invoice_no}]}],
         "unanswerable": False,
-    }  # fmt: skip
+    }
 
     assert setup.ask("Is there an invoice?").status == "unsupported"
 
@@ -221,7 +225,7 @@ def test_an_organisation_has_a_daily_number_of_questions(setup: Setup) -> None:
 
 
 def test_a_malformed_reply_is_asked_again_once_then_fails(setup: Setup) -> None:
-    replies = iter(["not json", json.dumps({"answer": "x", "citations": [], "unanswerable": True})])
+    replies = iter(["not json", json.dumps({"statements": [], "unanswerable": True})])
     setup.model.reply = lambda passages: next(replies)
     assert setup.ask("What is the invoice number?").status == "not_found"
 
@@ -317,3 +321,141 @@ def test_a_person_can_delete_their_conversation(setup: Setup) -> None:
 
     with pytest.raises(ConversationNotFound):
         setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", first.conversation_id)
+
+
+# --- follow-ups keep their subject (hardening) --------------------------------------------
+
+
+class Spy:
+    """The real search, with every call it is asked to make recorded."""
+
+    def __init__(self, inner: SearchService) -> None:
+        self.inner = inner
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def search(self, tenant_id: uuid.UUID, query: str, **kwargs: Any) -> Any:
+        self.calls.append((query, kwargs))
+        return self.inner.search(tenant_id, query, **kwargs)
+
+
+def test_a_third_follow_up_is_searched_with_the_whole_conversation(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    spy = Spy(setup.search)
+    chat = ChatService(sessions, spy, setup.model)
+    setup.model.reply = quoting(setup.invoice_no, f"Invoice {setup.invoice_no} billed it.")
+    first = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?")
+    chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", "Who issued it?", conversation_id=first.conversation_id
+    )
+    spy.calls.clear()
+
+    chat.ask(
+        DEFAULT_TENANT_ID,
+        "reviewer:a",
+        "What is its grand total?",
+        conversation_id=first.conversation_id,
+    )
+
+    queries = " ".join(query for query, _ in spy.calls)
+    assert setup.batch in queries  # the first question is still part of the search
+    assert setup.invoice_no in queries  # and what its answer named
+    # The documents earlier answers cited are searched directly.
+    assert any(kwargs.get("document_id") == setup.invoice_id for _, kwargs in spy.calls)
+
+
+def test_passages_from_the_documents_already_cited_come_first(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    chat = ChatService(sessions, setup.search, setup.model)
+    setup.model.reply = quoting(setup.invoice_no, f"Invoice {setup.invoice_no} billed it.")
+    first = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?")
+
+    chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", "And the order?", conversation_id=first.conversation_id
+    )
+
+    prompt = setup.model.requests[-1].prompt
+    first_passage = prompt.split("<passage ", 2)[1]
+    assert 'document="invoice.pdf"' in first_passage
+
+
+def test_a_follow_up_stays_within_its_scope_when_searching_cited_documents(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    spy = Spy(setup.search)
+    chat = ChatService(sessions, spy, setup.model)
+    setup.model.reply = quoting(setup.batch, "That one.")
+    first = chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?",
+        document_id=setup.invoice_id,
+    )  # fmt: skip
+    spy.calls.clear()
+
+    chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Its total?", conversation_id=first.conversation_id)
+
+    assert spy.calls and all(
+        kwargs.get("document_id") == setup.invoice_id for _, kwargs in spy.calls
+    )
+
+
+def test_a_question_naming_a_document_reads_that_documents_other_passages(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    """A line row does not print its invoice's number: a question naming the number must still
+    reach the row, by searching within the document that prints it."""
+    spy = Spy(setup.search)
+    chat = ChatService(sessions, spy, setup.model)
+
+    chat.ask(
+        DEFAULT_TENANT_ID,
+        "reviewer:a",
+        f"How many units were billed on invoice {setup.invoice_no}?",
+    )
+
+    assert any(kwargs.get("document_id") == setup.invoice_id for _, kwargs in spy.calls)
+
+
+def test_a_statement_with_a_figure_its_quote_does_not_hold_is_dropped(setup: Setup) -> None:
+    """One real quote no longer carries a wrong figure: each statement is checked alone."""
+
+    def reply(passages: dict[int, str]) -> dict[str, Any]:
+        n = next(n for n, text in passages.items() if setup.batch in text)
+        return {
+            "statements": [
+                {
+                    "text": f"Batch {setup.batch} is on it.",
+                    "citations": [{"passage": n, "quote": setup.batch}],
+                },
+                {
+                    "text": "It billed 9,999 units.",
+                    "citations": [{"passage": n, "quote": setup.batch}],
+                },
+            ],
+            "unanswerable": False,
+        }
+
+    setup.model.reply = reply
+    answer = setup.ask(f"Which invoice billed batch {setup.batch}?")
+
+    assert answer.status == "partly_supported"
+    assert answer.text == f"Batch {setup.batch} is on it."
+    assert answer.dropped_statements == 1
+
+
+def test_cited_documents_leave_room_for_the_rest(sessions: SessionFactory, setup: Setup) -> None:
+    """Passages from documents a conversation cited take at most half the places, so a
+    follow-up about another document still reaches it."""
+    chat = ChatService(sessions, setup.search, setup.model, passages=4)
+    setup.model.reply = quoting(setup.invoice_no, f"Invoice {setup.invoice_no} billed it.")
+    first = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?")
+
+    chat.ask(
+        DEFAULT_TENANT_ID,
+        "reviewer:a",
+        "And the purchase order?",
+        conversation_id=first.conversation_id,
+    )
+
+    prompt = setup.model.requests[-1].prompt
+    assert 'document="purchase_order.pdf"' in prompt  # four places of the invoice alone, before

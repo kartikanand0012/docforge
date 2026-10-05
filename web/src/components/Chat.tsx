@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
-import { STAGE_TEXT, chatScope, sendsOnEnter, statusNote, type Citation, type Turn } from "@/lib/chat";
+import { STAGE_TEXT, chatScope, sendsOnEnter, statusNote, type Answer, type Citation, type Turn } from "@/lib/chat";
 
 /** Questions about one document (`documentId`) or every document of the organisation.
  * Each answer shows the quotes it rests on; choosing one shows it on its page (`onCite`),
  * or opens its document. Answers whose quotes are not in the documents are not shown. */
+/** What a reader should know beyond the answer's text, worked out once. */
+function StatusNote({ answer }: { answer: Answer }) {
+  const note = statusNote(answer.status, answer.dropped_citations, answer.dropped_statements);
+  return note ? <p className="muted">{note}</p> : null;
+}
+
 export default function Chat({
   documentId,
   collectionId,
@@ -132,9 +138,7 @@ export default function Chat({
             ) : (
               <div className={`answer ${turn.answer.status}`}>
                 <p>{turn.answer.text}</p>
-                {statusNote(turn.answer.status, turn.answer.dropped_citations) && (
-                  <p className="muted">{statusNote(turn.answer.status, turn.answer.dropped_citations)}</p>
-                )}
+                <StatusNote answer={turn.answer} />
                 {turn.answer.citations.length > 0 && (
                   <ol className="citations" aria-label="Sources">
                     {turn.answer.citations.map((c, n) => {

@@ -1,0 +1,14 @@
+{
+  "key": "5fbf596e0f974c288c5cd422b83fa9ab4e8adc2aee3c13d4eb1ac7333cb7a22e",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not contain the assay result for batch RL5781.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1408,
+    "output_tokens": 39,
+    "thinking_tokens": null,
+    "latency_ms": 1149.7
+  }
+}

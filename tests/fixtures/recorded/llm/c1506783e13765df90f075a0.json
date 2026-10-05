@@ -1,0 +1,14 @@
+{
+  "key": "c1506783e13765df90f075a067d2c2bbef28a8aba9417b2490b4c284e6f762dc",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"Invoice Klp/26-27/13006 billed 100 units of Atorvastatin Tablets IP 10mg.\",\n      \"citations\": [\n        {\n          \"passage\": 3,\n          \"quote\": \"Description of Goods: Atorvastatin Tablets IP 10mg | Batch No.: CD27015 | Expiry: 11/27 | Mfg.: 11/25 | Packing: 10x10 | M.R.P.: 101.76 | Qty: 100\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1481,
+    "output_tokens": 167,
+    "thinking_tokens": null,
+    "latency_ms": 1309.8
+  }
+}

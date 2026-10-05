@@ -1,0 +1,14 @@
+{
+  "key": "758e549c7bf1a003ba9bcf5b9de1885ab0c4cd94b07528c00e84617fccc05bfc",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The provided documents do not contain the bank account number of Kaveri Lifecare Pharma.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1405,
+    "output_tokens": 41,
+    "thinking_tokens": null,
+    "latency_ms": 1119.4
+  }
+}

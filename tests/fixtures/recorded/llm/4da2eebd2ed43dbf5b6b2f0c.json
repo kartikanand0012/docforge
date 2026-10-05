@@ -1,0 +1,14 @@
+{
+  "key": "4da2eebd2ed43dbf5b6b2f0c969107767b2db0955057afc091a3ca21f04d88d9",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Invoice SRP/26-27/40002 billed batch UNL2812.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Invoice SRP/26-27/40002 dated 5 June 2026 from Shreeram Pharma Distributors (GSTIN 27AAKCS4821M1ZW) to Sanjeevani Wellness Chemist (GSTIN 27AAVFS2087J1ZF), against purchase order PO-SWC-62002. Products: Atorvastatin Tablets IP 10mg, Amlodipine Tablets IP 5mg, Cetirizine Tablets IP 10mg, Amoxicillin Capsules IP 250mg, Omeprazole Capsules IP 20mg, ORS Powder WHO Formula 21g. Batches: UNL2812\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1945,
+    "output_tokens": 228,
+    "thinking_tokens": null,
+    "latency_ms": 3437.3
+  }
+}

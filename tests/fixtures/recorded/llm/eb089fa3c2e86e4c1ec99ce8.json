@@ -1,0 +1,14 @@
+{
+  "key": "eb089fa3c2e86e4c1ec99ce8aadfcb498b0a546e74b43735acc9f7a7b22ed258",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The grand total of invoice CPA/26-27/02008 is 33891.00.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Grand total 33891.00.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1656,
+    "output_tokens": 87,
+    "thinking_tokens": null,
+    "latency_ms": 1260.1
+  }
+}

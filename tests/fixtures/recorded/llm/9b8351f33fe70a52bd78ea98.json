@@ -1,0 +1,14 @@
+{
+  "key": "9b8351f33fe70a52bd78ea9891a32843eef9a29352d3b9300126210626146abf",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not contain the phone number of Jalaram Pharmacy.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1113,
+    "output_tokens": 37,
+    "thinking_tokens": null,
+    "latency_ms": 13197.4
+  }
+}

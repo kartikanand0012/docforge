@@ -1,0 +1,14 @@
+{
+  "key": "f95e8bb2724bc6c464e3ab388339da0974534bb8571d25b7ef396253eb672ffc",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Coromandel Pharma Agency issued the invoice.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Invoice CPA/26-27/33007 dated 13 September 2026 from Coromandel Pharma Agency (GSTIN 33AADFC9047H1ZJ) to Vaigai Medical Pharmacy (GSTIN 33ADLPV9925B1ZA), against purchase order PO-VMP-92007. Products: Omeprazole Capsules IP 20mg, Azithromycin Tablets IP 500mg, Ibuprofen Tablets IP 400mg, Amlodipine Tablets IP 5mg, Ciprofloxacin Tablets IP 500mg, Prednisolone Tablets IP 5mg, Pantoprazole Tablets IP 40mg, Salbutamol Inhaler 100mcg, Metformin Tablets IP 500mg, Insulin Injection IP 40IU/ml. Batches: VJV3873, SXV865580, FW5725, XGF9499, SKK02405, THX46504, IGX15971, YAX032812, EBD26805, BFB20720.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 2053,
+    "output_tokens": 325,
+    "thinking_tokens": null,
+    "latency_ms": 1817.3
+  }
+}

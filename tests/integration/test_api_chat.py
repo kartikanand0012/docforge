@@ -28,7 +28,7 @@ class Unanswering:
         if self.fail:
             raise LLMError("provider down")
         return LLMResponse(
-            text='{"answer": "No.", "citations": [], "unanswerable": true}',
+            text='{"statements": [], "unanswerable": true}',
             provider="fake", model=self.model, input_tokens=10, output_tokens=5, latency_ms=1.0,
         )  # fmt: skip
 

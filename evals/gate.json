@@ -248,14 +248,14 @@
     "report": "answers",
     "path": "answered_correctly",
     "op": ">=",
-    "value": 0.93,
-    "why": "answerable questions answered with the right value and no other figure (39 of 40 measured)"
+    "value": 0.95,
+    "why": "answerable questions answered with the right value and no other figure (72 of 72 measured)"
   },
   {
     "report": "answers",
     "path": "cited_expected_document",
     "op": ">=",
-    "value": 0.93,
+    "value": 0.95,
     "why": "answers cite the document the answer is in"
   },
   {
@@ -276,7 +276,7 @@
     "report": "answers",
     "path": "false_abstention",
     "op": "<=",
-    "value": 0.07,
+    "value": 0.05,
     "why": "it does not hide behind 'not found' when the answer is there"
   },
   {
@@ -297,7 +297,7 @@
     "report": "answers",
     "path": "questions",
     "op": "==",
-    "value": 80,
+    "value": 104,
     "why": "the question set the floors were set on"
   },
   {
@@ -311,7 +311,7 @@
     "report": "answers",
     "path": "prompt_version",
     "op": "==",
-    "value": "chat-1",
+    "value": "chat-2",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
@@ -327,5 +327,12 @@
     "op": "==",
     "value": 0,
     "why": "a question within a knowledge base never answers from documents outside it"
+  },
+  {
+    "report": "answers",
+    "path": "follow_ups_correct",
+    "op": ">=",
+    "value": 0.93,
+    "why": "a follow-up that names nothing ('its total') is answered about what the conversation is about (16 of 16 measured; 9 of 16 before the hardening fix)"
   }
 ]

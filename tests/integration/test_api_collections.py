@@ -130,3 +130,27 @@ def test_one_person_has_a_few_questions_in_flight_at_most(
 
     assert api.post("/v1/chat", json={"question": "Total?"}).status_code == 429
     assert api.post("/v1/chat/stream", json={"question": "Total?"}).status_code == 429
+
+
+def test_two_api_processes_share_the_cap_on_questions_in_flight(
+    sessions: SessionFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docforge.api import chat as chat_api
+    from docforge.limits import DatabaseLimits
+
+    monkeypatch.setattr(chat_api, "MAX_IN_FLIGHT_PER_CALLER", 1)
+    limits = DatabaseLimits(sessions)
+    from docforge.db import DEFAULT_TENANT_ID
+
+    caller = f"chat:{DEFAULT_TENANT_ID}:key:{uuid.UUID(int=1)}"
+    held = limits.hold(caller, at_most=1, seconds=60)  # this caller's question, elsewhere
+    held.__enter__()
+    try:
+        search = SearchService(sessions, FakeEmbedder())
+        app = create_app(
+            None, chat=ChatService(sessions, search, Unanswering()), limits=DatabaseLimits(sessions)
+        )
+        api = TestClient(signed_in(app, role="admin"))
+        assert api.post("/v1/chat", json={"question": "Total?"}).status_code == 429
+    finally:
+        held.__exit__(None, None, None)

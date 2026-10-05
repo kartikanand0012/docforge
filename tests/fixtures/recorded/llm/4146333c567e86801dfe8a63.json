@@ -1,0 +1,14 @@
+{
+  "key": "4146333c567e86801dfe8a63ae790639c7cf266771779349a3f97324d8037d0a",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"The grand total of invoice CPA/26-27/02008 is 33891.00.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Grand total 33891.00.\"\n        },\n        {\n          \"passage\": 2,\n          \"quote\": \"Inv. Number CPA/26-27/02008\"\n        },\n        {\n          \"passage\": 3,\n          \"quote\": \"Grand Total\\n33891.00\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1724,
+    "output_tokens": 172,
+    "thinking_tokens": null,
+    "latency_ms": 1438.7
+  }
+}

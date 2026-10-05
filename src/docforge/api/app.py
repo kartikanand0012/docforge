@@ -39,6 +39,7 @@ from docforge.collections import CollectionService
 from docforge.documents import DocumentService
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, InvoicePipeline
 from docforge.extraction.schema import InvoiceExtraction
+from docforge.limits import Limits, LocalLimits
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
 from docforge.review.service import ReviewService
@@ -109,11 +110,14 @@ def create_app(
     chat: ChatService | None = None,
     questions_per_minute: int = 20,
     collections: CollectionService | None = None,
+    limits: Limits | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     # FastAPI's own telemetry is off: its request spans record the query string (a search
     # question) and it would configure exporters from the environment. Requests are traced
     # below, by route only.
+    # Kept in the database in a deployment (every API process shares them); here otherwise.
+    caps = limits or LocalLimits()
     app = FastAPI(
         title="DocForge",
         version=__version__,
@@ -179,7 +183,9 @@ def create_app(
 
     if service is not None:
         app.include_router(
-            documents_router(service, max_upload_bytes=max_upload_bytes, max_pages=max_pages)
+            documents_router(
+                service, max_upload_bytes=max_upload_bytes, max_pages=max_pages, limits=caps
+            )
         )
     limiter = authenticator.limiter if authenticator else FailureLimiter(20, 300)
     if authenticator is not None:
@@ -191,9 +197,9 @@ def create_app(
     if review is not None:
         app.include_router(exports_router(review))
     if search is not None:
-        app.include_router(search_router(search, searches_per_minute))
+        app.include_router(search_router(search, searches_per_minute, caps))
     if chat is not None:
-        app.include_router(chat_router(chat, questions_per_minute))
+        app.include_router(chat_router(chat, questions_per_minute, caps))
     if collections is not None:
         app.include_router(collections_router(collections))
     if pipeline is not None:

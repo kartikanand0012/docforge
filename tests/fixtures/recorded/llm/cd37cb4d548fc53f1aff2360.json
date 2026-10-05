@@ -1,0 +1,14 @@
+{
+  "key": "cd37cb4d548fc53f1aff2360a54de65f193b1171852190b51d33e1ee094f8da0",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Coromandel Pharma Agency issued invoice CPA/26-27/33007.\",\n  \"citations\": [\n    {\n      \"passage\": 2,\n      \"quote\": \"Invoice CPA/26-27/33007 dated 13 September 2026 from Coromandel Pharma Agency (GSTIN 33AADFC9047H1ZJ)\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1959,
+    "output_tokens": 114,
+    "thinking_tokens": null,
+    "latency_ms": 2240.2
+  }
+}

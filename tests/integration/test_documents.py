@@ -634,12 +634,12 @@ def test_a_worker_killed_after_the_model_call_but_before_the_write_loses_nothing
     deaths: list[int] = []
 
     def die_once(
-        version_id: uuid.UUID, turn: int, result: PipelineResult[InvoiceExtraction]
+        version_id: uuid.UUID, turn: int, result: PipelineResult[InvoiceExtraction], *rest: Any
     ) -> Any:
         if not deaths:
             deaths.append(turn)
             raise Killed()
-        return write_result(version_id, turn, result)
+        return write_result(version_id, turn, result, *rest)
 
     monkeypatch.setattr(harness.service, "_complete", die_once)
 

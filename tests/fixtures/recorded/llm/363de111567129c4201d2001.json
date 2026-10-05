@@ -1,0 +1,14 @@
+{
+  "key": "363de111567129c4201d20014d0c47a8d4a099042fd5f6bd7931b81c99f916eb",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not say how many units of Amoxicillin Capsules IP 250mg were billed on invoice NVM/26-27/32001.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1594,
+    "output_tokens": 61,
+    "thinking_tokens": null,
+    "latency_ms": 1127.1
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "key": "f28b09213d95568b020b8d9d273a1a1696b3504436e64b0b330ae54ee73b7031",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The grand total of invoice NVM/26-27/32001 is 98697.00.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Grand total 98697.00.\"\n    },\n    {\n      \"passage\": 2,\n      \"quote\": \"Grand Total\\n98697.00\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1755,
+    "output_tokens": 121,
+    "thinking_tokens": null,
+    "latency_ms": 2870.3
+  }
+}

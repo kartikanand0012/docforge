@@ -1,0 +1,14 @@
+{
+  "key": "3c4e350915c23553a6af502f2974e46af035ae3387d7838b9c58d00129d3defc",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"Coromandel Pharma Agency issued the invoice.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Invoice CPA/26-27/02008 dated 2 April 2026 from Coromandel Pharma Agency (GSTIN 33AADFC9047H1ZJ) to Marina Medical Stores (GSTIN 33AAUFM5873T1Z1)\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1550,
+    "output_tokens": 138,
+    "thinking_tokens": null,
+    "latency_ms": 1370.6
+  }
+}

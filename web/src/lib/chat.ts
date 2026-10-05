@@ -13,17 +13,31 @@ export type Answer = {
   text: string;
   citations: Citation[];
   dropped_citations: number;
+  dropped_statements?: number;
   words_only: boolean;
 };
 
 export type Turn = { question: string; answer: Answer | null; error: string | null };
 
 /** What a reader should know about an answer beyond its text, or nothing. */
-export function statusNote(status: ChatStatus, dropped: number): string | null {
+export function statusNote(status: ChatStatus, dropped: number, droppedStatements = 0): string | null {
   if (status === "partly_supported") {
-    return dropped === 1
-      ? "1 quote could not be found in the documents and was left out."
-      : `${dropped} quotes could not be found in the documents and were left out.`;
+    const parts: string[] = [];
+    if (droppedStatements) {
+      parts.push(
+        droppedStatements === 1
+          ? "1 statement could not be checked against the documents and was left out."
+          : `${droppedStatements} statements could not be checked against the documents and were left out.`,
+      );
+    }
+    if (dropped) {
+      parts.push(
+        dropped === 1
+          ? "1 quote could not be found in the documents and was left out."
+          : `${dropped} quotes could not be found in the documents and were left out.`,
+      );
+    }
+    return parts.join(" ") || null;
   }
   if (status === "unsupported") return "The answer drafted could not be checked against the documents, so it is not shown.";
   if (status === "not_found") return "The answer is not in the documents searched.";

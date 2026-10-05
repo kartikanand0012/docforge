@@ -9,6 +9,7 @@ from docforge.collections import CollectionService
 from docforge.config import get_settings
 from docforge.db.session import make_engine, make_session_factory
 from docforge.extraction.pipeline import InvoicePipeline
+from docforge.limits import DatabaseLimits
 from docforge.telemetry import configure_tracing, settings_prices
 from docforge.wiring import (
     build_authenticator,
@@ -30,6 +31,7 @@ def create_default_app() -> FastAPI:
     preview = load_pipelines(settings).get("invoice")
     prices = settings_prices(settings)
     search = build_search(settings)
+    sessions = make_session_factory(make_engine(settings.database_url.get_secret_value()))
     return create_app(
         preview if isinstance(preview, InvoicePipeline) else None,
         max_upload_bytes=settings.max_upload_bytes,
@@ -43,7 +45,6 @@ def create_default_app() -> FastAPI:
         webhooks=webhooks,
         search=search,
         chat=build_chat(settings, search),
-        collections=CollectionService(
-            make_session_factory(make_engine(settings.database_url.get_secret_value()))
-        ),
+        collections=CollectionService(sessions),
+        limits=DatabaseLimits(sessions),
     )

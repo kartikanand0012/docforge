@@ -49,6 +49,7 @@ class Question(_Model):
     documents: tuple[str, ...]  # where the answer is, e.g. pair_001/invoice, coa_001
     scoped: bool = False  # asked about its document alone, not the whole organisation
     collection: str | None = None  # asked within this knowledge base: invoices or certificates
+    follows: str | None = None  # a follow-up, asked in the conversation of this question
 
 
 class AnswerResult(_Model):
@@ -74,6 +75,8 @@ class AnswerReport(_Model):
     wrong_answers: int  # answered, cited, and wrong
     abstained_when_no_answer: float
     answered_unanswerable: int  # answered, with checked quotes, what the documents do not say
+    follow_ups: int  # questions asked as follow-ups, the second and third of a conversation
+    follow_ups_correct: float  # of those, answered with the expected value
     cross_tenant_citations: int
     outside_knowledge_base: int  # citations from outside the knowledge base asked; must be 0
     input_tokens_per_question: int  # mean, over questions the model was asked
@@ -87,11 +90,16 @@ def _label(path: Path) -> dict[str, Any]:
     return data
 
 
-def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question]:
+def build_questions(
+    synthetic: Path, coa: Path, pairs: int = 8, corpus_pairs: int | None = None
+) -> list[Question]:
+    """Questions about the first `pairs` pairs, in the organisations the corpus of
+    `corpus_pairs` puts them in. Conversations are held in the organisation with every
+    document ("all"), where the invoice asked about is one of many."""
     questions: list[Question] = []
     for index in range(1, pairs + 1):
         pair, case = f"pair_{index:03d}", f"coa_{index:03d}"
-        tenant = _tenant(index, pairs)
+        tenant = _tenant(index, corpus_pairs or pairs)
         invoice = _label(synthetic / pair / "label.json")["invoice"]
         certificate = _label(coa / case / "label.json")["coa"]
         number, seller = invoice["invoice_no"], invoice["seller"]["name"]
@@ -110,16 +118,19 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question
             tenant: str = tenant,
             scoped: bool = False,
             collection: str | None = None,
+            follows: str | None = None,
+            where: str | None = None,
         ) -> None:
             questions.append(
                 Question(
                     id=f"{pair}-{qid}",
                     text=text,
-                    tenant=tenant,
+                    tenant=where or tenant,
                     expect=expect,
                     documents=documents,
                     scoped=scoped,
                     collection=collection,
+                    follows=follows,
                 )
             )
 
@@ -165,6 +176,31 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question
             (),
             collection="invoices",
         )
+        # A conversation of three turns: the second and third name nothing but "it", so they
+        # can only be answered with what came before.
+        ask(
+            "chain-1",
+            f"Which invoice billed batch {line['batch_no']}?",
+            Expect(kind="text", value=number),
+            here,
+            where="all",
+        )
+        ask(
+            "chain-2",
+            "Who issued it?",
+            Expect(kind="text", value=seller),
+            here,
+            follows=f"{pair}-chain-1",
+            where="all",
+        )
+        ask(
+            "chain-3",
+            "What is its grand total?",
+            Expect(kind="number", value=invoice["totals"]["grand_total"]),
+            here,
+            follows=f"{pair}-chain-2",
+            where="all",
+        )
         ask("bank", f"What is the bank account number of {seller}?", None, ())
         ask("phone", f"What is the phone number of {invoice['buyer']['name']}?", None, ())
         ask("microbial", f"What was the total microbial count for batch {batch}?", None, ())
@@ -209,6 +245,18 @@ def score_answers(
     prompt_version: str,
 ) -> AnswerReport:
     by_id = {r.question_id: r for r in results}
+    questions_by_id = {q.id: q for q in questions}
+
+    def said_before(q: Question) -> str:
+        """The question and, for a follow-up, every earlier turn: figures named there (an
+        invoice number) may be repeated in a right answer."""
+        parts, step = [q.text], q.follows
+        while step is not None:
+            earlier = questions_by_id[step]
+            parts += [earlier.text, by_id[step].text]
+            step = earlier.follows
+        return " ".join(parts)
+
     answerable = [q for q in questions if q.expect is not None]
     unanswerable = [q for q in questions if q.expect is None]
     missed: list[str] = []
@@ -217,7 +265,7 @@ def score_answers(
         r = by_id[q.id]
         assert q.expect is not None  # noqa: S101 - filtered above
         if r.status in ANSWERED:
-            is_right = correct(r.text, q.expect, q.text)
+            is_right = correct(r.text, q.expect, said_before(q))
             right += is_right
             wrong += not is_right
             cited += any(d in q.documents for d in r.cited_documents)
@@ -233,6 +281,14 @@ def score_answers(
         else:
             answered_anyway += 1
             missed.append(q.id)
+    follow_ups = [q for q in answerable if q.follows]
+    follow_ups_right = sum(
+        1
+        for q in follow_ups
+        if by_id[q.id].status in ANSWERED
+        and q.expect
+        and correct(by_id[q.id].text, q.expect, said_before(q))
+    )
     calls = [r for r in results if r.input_tokens is not None]
     tokens = (
         (
@@ -254,6 +310,8 @@ def score_answers(
         wrong_answers=wrong,
         abstained_when_no_answer=_share(held_back, len(unanswerable)),
         answered_unanswerable=answered_anyway,
+        follow_ups=len(follow_ups),
+        follow_ups_correct=_share(follow_ups_right, len(follow_ups)),
         cross_tenant_citations=sum(r.cross_tenant for r in results),
         outside_knowledge_base=sum(r.outside_collection for r in results),
         input_tokens_per_question=tokens[0],
@@ -273,15 +331,17 @@ def run_answer_eval(
     provider: LLMProvider,
     *,
     pairs: int = 8,
+    corpus_pairs: int = 20,
     on_answer: Callable[[Question, AnswerResult], None] | None = None,
 ) -> AnswerReport:
-    questions = build_questions(synthetic, coa, pairs)
+    questions = build_questions(synthetic, coa, pairs, corpus_pairs)
     results: list[AnswerResult] = []
-    with indexed_corpus(synthetic, coa, recordings, embedder, pairs=pairs) as corpus:
+    with indexed_corpus(synthetic, coa, recordings, embedder, pairs=corpus_pairs) as corpus:
         # Big enough for every question; the limit itself is tested elsewhere.
         chat = ChatService(corpus.sessions, corpus.search, provider, daily_limit=10_000)
         ids = {(key, tenant): document_id for document_id, (key, tenant) in corpus.keys.items()}
         bases = _knowledge_bases(corpus)
+        conversations: dict[str, uuid.UUID] = {}
         for q in questions:
             scope = ids[(q.documents[0], q.tenant)] if q.scoped else None
             base = bases[(q.tenant, q.collection)] if q.collection else None
@@ -291,7 +351,9 @@ def run_answer_eval(
                 q.text,
                 document_id=scope,
                 collection_id=base.id if base else None,
+                conversation_id=conversations[q.follows] if q.follows else None,
             )
+            conversations[q.id] = answer.conversation_id
             found = [corpus.keys.get(uuid.UUID(str(c.document_id))) for c in answer.citations]
             outside = (
                 sum(1 for c in answer.citations if c.document_id not in base.members) if base else 0
@@ -350,6 +412,7 @@ def format_answer_report(report: AnswerReport) -> str:
             f"  answered the unanswerable {report.answered_unanswerable}",
             f"  cross-tenant citations    {report.cross_tenant_citations}",
             f"  outside knowledge base    {report.outside_knowledge_base}",
+            f"  follow-ups correct        {report.follow_ups_correct:.2%} of {report.follow_ups}",
             f"  tokens per question       {report.input_tokens_per_question} in, "
             f"{report.output_tokens_per_question} out",
             f"  missed: {', '.join(report.missed) or 'none'}",

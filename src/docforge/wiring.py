@@ -10,6 +10,7 @@ from docforge.auth import Authenticator
 from docforge.chat.service import ChatService
 from docforge.config import Settings
 from docforge.conversion import Converter, FileConverter, IsolatedConverter, RecordingConverter
+from docforge.conversion_service import RemoteConverter
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService, EventSink, Pipeline
 from docforge.extraction.coa import COA_SPEC, CoaExtraction
@@ -91,6 +92,12 @@ def build_converter(settings: Settings) -> Converter:
     converted file's recorded parse is keyed by the exact bytes of the PDF made from it."""
     if settings.pipeline_factory == REPLAY_FACTORY:
         return RecordingConverter(Path(settings.recordings_dir) / "renditions", None)
+    if settings.converter_url:
+        # LibreOffice runs in its own container, on a network with no route out.
+        token = settings.converter_token.get_secret_value() if settings.converter_token else ""
+        return RemoteConverter(
+            settings.converter_url, token, timeout_seconds=settings.conversion_timeout_seconds + 60
+        )
     return IsolatedConverter(
         partial(FileConverter, timeout_seconds=settings.conversion_timeout_seconds),
         timeout_seconds=settings.conversion_timeout_seconds + 30,

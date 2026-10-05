@@ -1,0 +1,14 @@
+{
+  "key": "9a1c6da659b37e8e6db4e0a8b2f9dde5f9e680dffb9df7e999e9cd9f042289b6",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-2",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"50 units of Pantoprazole Tablets IP 40mg were billed on invoice NVM/26-27/09004.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Invoice NVM/26-27/09004 dated 12 June 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Umiya Medical Store (GSTIN 24ACDPU8840L1Z3), against purchase order PO-UMS-63004. Products: Pantoprazole Tablets IP 40mg\"\n        },\n        {\n          \"passage\": 3,\n          \"quote\": \"# HSN/SAC: 1 30049099 | Description of Goods: Pantoprazole Tablets IP 40mg | Batch No.: BO893576 | Expiry: 10/28 | Mfg.: 10/25 | Packing: 10x10 | M.R.P.: 120.38 | Qty: 50\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1853,
+    "output_tokens": 302,
+    "thinking_tokens": null,
+    "latency_ms": 1858.6
+  }
+}
