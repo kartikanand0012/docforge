@@ -60,17 +60,18 @@ export type StreamEvent = { name: string; data: Record<string, unknown> };
 
 /** The complete events in `buffer` (server-sent events, blank-line separated), and what is
  * left of an event still arriving. */
-export function readEvents(buffer: string): { events: StreamEvent[]; rest: string } {
+export function readEvents(buffer: string, options: { final?: boolean } = {}): { events: StreamEvent[]; rest: string } {
   const blocks = buffer.split("\n\n");
-  const rest = blocks.pop() ?? "";
+  const rest = options.final ? "" : (blocks.pop() ?? "");
   const events: StreamEvent[] = [];
   for (const block of blocks) {
     let name = "message";
     let data = "";
     for (const line of block.split("\n")) {
-      if (line.startsWith("event: ")) name = line.slice(7);
-      else if (line.startsWith("data: ")) data += line.slice(6);
+      if (line.startsWith("event:")) name = line.slice(6).trim();
+      else if (line.startsWith("data:")) data += line.slice(5).trimStart();
     }
+    if (!data) continue;
     try {
       events.push({ name, data: JSON.parse(data) as Record<string, unknown> });
     } catch {

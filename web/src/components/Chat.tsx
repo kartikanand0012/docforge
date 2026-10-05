@@ -36,6 +36,15 @@ export default function Chat({
   const box = useRef<HTMLTextAreaElement | null>(null);
   const sending = useRef(false); // set at once, unlike `busy`, so a double Enter sends once
   const asked = useRef(false); // scroll to new answers only once the person has asked
+  const leaving = useRef<AbortController | null>(null);
+
+  // Leaving the page (or another document's chat) stops waiting for an answer.
+  useEffect(
+    () => () => {
+      leaving.current?.abort();
+    },
+    [],
+  );
 
   // An earlier conversation, when opened from the list.
   useEffect(() => {
@@ -84,11 +93,15 @@ export default function Chat({
     setTurns((current) => [...current, { question: text, answer: null, error: null }]);
     try {
       const scope = chatScope({ documentId, collectionId, conversationId });
-      const answer = await api.askStreamed(text, scope, (name, data) => setStage(STAGE_TEXT[name]?.(data) ?? null));
+      const controller = new AbortController();
+      leaving.current = controller;
+      const answer = await api.askStreamed(text, scope, (name, data) => setStage(STAGE_TEXT[name]?.(data) ?? null), controller.signal);
+      if (controller.signal.aborted) return;
       setConversationId(answer.conversation_id);
       if (!conversationId) onConversation?.(answer.conversation_id);
       setTurns((current) => current.map((t, i) => (i === index ? { ...t, answer } : t)));
     } catch (e) {
+      if (leaving.current?.signal.aborted) return; // the page is gone: nothing to show
       setTurns((current) => current.map((t, i) => (i === index ? { ...t, error: (e as Error).message } : t)));
       setQuestion((current) => current || text); // the question is not lost: ask it again
     } finally {
@@ -105,7 +118,10 @@ export default function Chat({
         {documentId ? "Ask about this document" : collectionId ? `Ask within ${collectionName ?? "this knowledge base"}` : "Ask about your documents"}
       </h2>
       {problem && <p className="error" role="alert">{problem}</p>}
-      <div className="turns" role="log" aria-busy={busy}>
+      <p className="sr-only" aria-live="polite">
+        {stage ?? ""}
+      </p>
+      <div className="turns" role="log">
         {turns.map((turn, i) => (
           <article key={i} className="turn">
             <p className="asked"><strong>You:</strong> {turn.question}</p>

@@ -247,7 +247,7 @@ class ChatService:
         question = question.strip()
         if document_id is not None and collection_id is not None:
             raise ScopeConflict("a question is about one document or one knowledge base")
-        tell = progress or (lambda stage, details: None)
+        tell = _safe(progress)
         conversation_id, message_id, scope, history = self._reserve(
             tenant_id, owner, question, Scope(document_id, collection_id), conversation_id
         )
@@ -337,12 +337,13 @@ class ChatService:
             if conversation_id is not None:
                 conversation = self._owned(session, tenant_id, owner, conversation_id)
                 scope = Scope(conversation.document_id, conversation.collection_id)
-                if asked.kind != "organisation" and asked != scope:
-                    raise ScopeConflict("a conversation keeps the scope it began with")
                 # Its document or knowledge base was deleted: continuing would widen the
-                # question to the whole organisation, so it is refused instead.
+                # question to the whole organisation, so it is refused instead. Checked
+                # first: resending the deleted id is not a conflict, it is gone.
                 if conversation.scope != scope.kind:
                     raise ScopeGone(conversation.scope)
+                if asked.kind != "organisation" and asked != scope:
+                    raise ScopeConflict("a conversation keeps the scope it began with")
                 earlier = session.scalars(
                     select(Message)
                     .where(Message.conversation_id == conversation_id, Message.status != "pending")
@@ -511,6 +512,21 @@ class ChatService:
         if conversation is None:
             raise ConversationNotFound(conversation_id)
         return conversation
+
+
+def _safe(progress: Progress | None) -> Progress:
+    """A listener whose failure (a closed stream, a stopped server) is logged, never the
+    question's: the answer is still checked, stored and counted."""
+
+    def tell(stage: str, details: dict[str, Any]) -> None:
+        if progress is None:
+            return
+        try:
+            progress(stage, details)
+        except Exception:
+            logger.warning("progress listener failed at stage %s", stage, exc_info=True)
+
+    return tell
 
 
 def _tokens(responses: Sequence[LLMResponse]) -> tuple[int | None, int | None]:

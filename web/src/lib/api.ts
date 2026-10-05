@@ -137,24 +137,27 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, { cache: "no-store", ...init });
+/** The error a failed response means; a lost session sends the page to sign in. */
+async function failure(response: Response): Promise<ApiError> {
   if (response.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
     // A full load on purpose: the session is gone, so nothing of the old page should stay.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
   }
-  if (!response.ok) {
-    let message = `Request failed (${response.status}).`;
-    try {
-      const body = (await response.json()) as { detail?: unknown };
-      if (typeof body.detail === "string") message = body.detail;
-      else if (Array.isArray(body.detail)) message = "Some of what was entered is not valid.";
-    } catch {
-      /* not JSON: keep the generic message */
-    }
-    throw new ApiError(response.status, message);
+  let message = `Request failed (${response.status}).`;
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === "string") message = body.detail;
+    else if (Array.isArray(body.detail)) message = "Some of what was entered is not valid.";
+  } catch {
+    /* not JSON: keep the generic message */
   }
+  return new ApiError(response.status, message);
+}
+
+async function call<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, { cache: "no-store", ...init });
+  if (!response.ok) throw await failure(response);
   if (response.status === 204) return null as T; // deleted: nothing to read
   return (await response.json()) as T;
 }
@@ -198,30 +201,32 @@ export const api = {
   timeline: (id: string) => call<Step[]>(`/v1/documents/${encodeURIComponent(id)}/timeline`),
   ask: (question: string, scope: ChatScope = {}) => call<Answer>("/v1/chat", json({ question, ...scope })),
   /** As `ask`, telling `onStage` each stage as it begins; the answer comes whole, checked. */
-  askStreamed: async (question: string, scope: ChatScope, onStage: (stage: string, data: Record<string, unknown>) => void): Promise<Answer> => {
-    const response = await fetch(`${API_URL}/v1/chat/stream`, { ...json({ question, ...scope }), cache: "no-store" });
-    if (!response.ok || !response.body) {
-      let message = `The request failed (${response.status}).`;
-      try {
-        const body = (await response.json()) as { detail?: unknown };
-        if (typeof body.detail === "string") message = body.detail;
-      } catch {
-        /* keep the generic message */
-      }
-      throw new ApiError(response.status, message);
-    }
+  askStreamed: async (
+    question: string,
+    scope: ChatScope,
+    onStage: (stage: string, data: Record<string, unknown>) => void,
+    signal?: AbortSignal,
+  ): Promise<Answer> => {
+    const response = await fetch(`${API_URL}/v1/chat/stream`, { ...json({ question, ...scope }), cache: "no-store", signal });
+    if (!response.ok) throw await failure(response);
+    if (!response.body) throw new ApiError(502, "The answer did not arrive. Try again.");
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
     let buffer = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      const { events, rest } = readEvents(buffer + value);
-      buffer = rest;
-      for (const event of events) {
-        if (event.name === "stage") onStage(String(event.data.stage), event.data);
-        if (event.name === "answer") return event.data as unknown as Answer;
-        if (event.name === "error") throw new ApiError(Number(event.data.status) || 500, String(event.data.detail));
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        // At the end, a last event without its blank line is still an event.
+        const { events, rest } = readEvents(buffer + (value ?? ""), { final: done });
+        buffer = rest;
+        for (const event of events) {
+          if (event.name === "stage") onStage(String(event.data.stage), event.data);
+          if (event.name === "answer") return event.data as unknown as Answer;
+          if (event.name === "error") throw new ApiError(Number(event.data.status) || 500, String(event.data.detail));
+        }
+        if (done) break;
       }
+    } finally {
+      reader.cancel().catch(() => undefined); // nothing more is read: let the connection go
     }
     throw new ApiError(502, "The answer did not arrive. Try again.");
   },

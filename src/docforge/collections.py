@@ -1,6 +1,9 @@
 """Knowledge bases: named collections of an organisation's documents, to search and ask
 within. A document can be in several; removing it from one leaves the document as it is.
 Every read and write is scoped to the organisation, as everywhere, under row-level security.
+
+Anyone who may add documents may change any of the organisation's knowledge bases; whoever
+created one is recorded, not its owner. Per-base roles are for later (roadmap section 7).
 """
 
 import builtins
@@ -52,6 +55,12 @@ class Member:
     added_at: datetime
 
 
+def _is_name_clash(error: IntegrityError) -> bool:
+    """Only a clash with another knowledge base's name is "name taken"."""
+    constraint = getattr(getattr(error.orig, "diag", None), "constraint_name", None)
+    return bool(constraint == "uq_collections_tenant_name")
+
+
 def _name(name: str) -> str:
     cleaned = " ".join(name.split())
     if not 1 <= len(cleaned) <= 100:
@@ -79,7 +88,9 @@ class CollectionService:
                 session.flush()
                 return self._summary(collection, 0)
         except IntegrityError as error:
-            raise CollectionNameTaken(name) from error
+            if _is_name_clash(error):
+                raise CollectionNameTaken(name) from error
+            raise
 
     @scoped
     def list(self, tenant_id: uuid.UUID) -> builtins.list[CollectionSummary]:
@@ -118,7 +129,9 @@ class CollectionService:
                 )
                 return self._summary(collection, n or 0)
         except IntegrityError as error:
-            raise CollectionNameTaken(name) from error
+            if _is_name_clash(error):
+                raise CollectionNameTaken(name) from error
+            raise
 
     @scoped
     def delete(self, tenant_id: uuid.UUID, collection_id: uuid.UUID) -> None:
@@ -133,7 +146,9 @@ class CollectionService:
     ) -> int:
         """All of them or none: raises `DocumentsNotFound` if any is not the organisation's.
         Returns how many were not already in it."""
-        wanted = list(dict.fromkeys(document_ids))[:MAX_DOCUMENTS_PER_CALL]
+        wanted = list(dict.fromkeys(document_ids))
+        if len(wanted) > MAX_DOCUMENTS_PER_CALL:
+            raise ValueError(f"at most {MAX_DOCUMENTS_PER_CALL} documents at a time")
         with self._sessions.begin() as session:
             self._find(session, tenant_id, collection_id)
             found = set(
@@ -147,23 +162,32 @@ class CollectionService:
                 raise DocumentsNotFound(missing)
             if not wanted:
                 return 0
-            added = session.execute(
-                insert(CollectionDocument)
-                .values(
-                    [
-                        {"collection_id": collection_id, "document_id": d, "tenant_id": tenant_id}
-                        for d in wanted
-                    ]
-                )
-                .on_conflict_do_nothing()
-                .returning(CollectionDocument.document_id)
-            ).all()
+            try:
+                added = session.execute(
+                    insert(CollectionDocument)
+                    .values(
+                        [
+                            {
+                                "collection_id": collection_id,
+                                "document_id": d,
+                                "tenant_id": tenant_id,
+                            }
+                            for d in wanted
+                        ]
+                    )
+                    .on_conflict_do_nothing()
+                    .returning(CollectionDocument.document_id)
+                ).all()
+            except IntegrityError as error:  # a document deleted since it was found
+                raise DocumentsNotFound(wanted) from error
             return len(added)
 
     @scoped
     def remove(
         self, tenant_id: uuid.UUID, collection_id: uuid.UUID, document_ids: Sequence[uuid.UUID]
     ) -> None:
+        if len(document_ids) > MAX_DOCUMENTS_PER_CALL:
+            raise ValueError(f"at most {MAX_DOCUMENTS_PER_CALL} documents at a time")
         with self._sessions.begin() as session:
             self._find(session, tenant_id, collection_id)
             session.execute(

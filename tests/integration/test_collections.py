@@ -182,7 +182,9 @@ def test_a_knowledge_base_of_another_organisation_cannot_be_asked(
 def test_resending_a_deleted_knowledge_base_is_gone_not_a_conflict(setup: Setup) -> None:
     kb = setup.create()
     setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
-    first = setup.chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id)
+    first = setup.chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id
+    )
     setup.collections.delete(DEFAULT_TENANT_ID, kb.id)
 
     with pytest.raises(ScopeGone):

@@ -5,7 +5,9 @@ import asyncio
 import json
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections import Counter
+from collections.abc import AsyncIterator, Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Annotated, Any
 
@@ -30,6 +32,8 @@ from docforge.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
 Reader = Annotated[Principal, Depends(require("documents:read"))]
+MAX_IN_FLIGHT_PER_CALLER = 2
+_running: set[asyncio.Task[None]] = set()
 _UNAVAILABLE = "The model could not answer just now. Try again shortly."
 
 
@@ -124,6 +128,20 @@ def _answer_out(answer: Any) -> "AnswerOut":
 def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
     router = APIRouter(prefix="/v1")
     limiter = PerCaller(per_minute)  # each question is a paid model call
+    in_flight: Counter[str] = Counter()  # questions being answered, per caller, here
+
+    @contextmanager
+    def slot(caller: str) -> Iterator[None]:
+        """Each question holds a thread for its model call: a few at a time per caller."""
+        if in_flight[caller] >= MAX_IN_FLIGHT_PER_CALLER:
+            raise HTTPException(429, "Wait for your other questions to be answered.")
+        in_flight[caller] += 1
+        try:
+            yield
+        finally:
+            in_flight[caller] -= 1
+            if in_flight[caller] <= 0:
+                del in_flight[caller]
 
     def call(body: QuestionIn, principal: Principal, progress: Any = None) -> Any:
         return chat.ask(
@@ -140,10 +158,11 @@ def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
     async def ask(body: QuestionIn, principal: Reader) -> AnswerOut:
         if not limiter.allow(principal.actor):
             raise HTTPException(429, "Too many questions; wait a minute.")
-        try:
-            answer = await run_in_threadpool(call, body, principal)
-        except Exception as error:
-            raise _http_error(error) from error
+        with slot(principal.actor):
+            try:
+                answer = await run_in_threadpool(call, body, principal)
+            except Exception as error:
+                raise _http_error(error) from error
         return _answer_out(answer)
 
     @router.post("/chat/stream")
@@ -153,10 +172,13 @@ def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
         answer's text is never streamed before its quotes are checked."""
         if not limiter.allow(principal.actor):
             raise HTTPException(429, "Too many questions; wait a minute.")
+        held = slot(principal.actor)
+        held.__enter__()  # released when the answer is in, whether or not anyone listens
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
 
         def tell(stage: str, details: dict[str, Any]) -> None:
+            # The service logs and ignores a failure here (a loop closed at shutdown).
             loop.call_soon_threadsafe(queue.put_nowait, ("stage", {"stage": stage, **details}))
 
         async def run() -> None:
@@ -169,9 +191,14 @@ def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
                     ("error", {"status": failure.status_code, "detail": failure.detail})
                 )
             finally:
+                held.__exit__(None, None, None)
                 await queue.put(None)
 
+        # Held here until done: the stream may be dropped by a client that leaves, and a
+        # task only weakly referenced could be collected with its answer half stored.
         task = asyncio.create_task(run())
+        _running.add(task)
+        task.add_done_callback(_running.discard)
 
         async def events() -> AsyncIterator[str]:
             while (item := await queue.get()) is not None:

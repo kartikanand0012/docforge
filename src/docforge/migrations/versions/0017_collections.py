@@ -5,6 +5,10 @@ The scope is kept on the conversation, not only implied by which id is set: when
 document or knowledge base a conversation was about is deleted, its id becomes NULL, and a
 follow-up must then be refused, not widened to the whole organisation.
 
+Conversations from before this migration take their scope from their ids. One about a
+document already deleted would read as the organisation's; none can exist, because nothing
+deletes documents yet and 0016 was never released before this.
+
 Revision ID: 0017
 Revises: 0016
 """
