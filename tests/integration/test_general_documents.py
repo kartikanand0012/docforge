@@ -388,7 +388,7 @@ def test_a_converted_pdf_deleted_while_it_is_read_is_made_again(svc: Service) ->
     svc.run()
     key = rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-1")
     exists = svc.store.exists
-    svc.store.exists = lambda k: True if k == key else exists(k)  # type: ignore[method-assign]
+    svc.store.exists = lambda k: True if k == key else exists(k)  # type: ignore[method-assign,assignment]
     svc.store.delete(key)
 
     svc.service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=document.id, actor="t")

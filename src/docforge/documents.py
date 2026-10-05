@@ -551,10 +551,12 @@ class DocumentService:
     def _rendition(self, data: bytes, fmt: Format, key: str) -> bytes:
         """The PDF made from `data`: stored the first time, read back after (reprocessing).
 
-        Runs outside any transaction; the conversion can take seconds.
+        Runs outside any transaction; the conversion can take seconds. One deleted between
+        the check and the read (a newer reading replacing it) is made again.
         """
-        if self._store.exists(key):
-            return self._store.get(key)
+        stored = self._stored(key)
+        if stored is not None:
+            return stored
         with traced("document.convert") as span:
             span.set_attribute("docforge.format", fmt)
             pdf = self._converter.to_pdf(data, fmt)
@@ -563,10 +565,19 @@ class DocumentService:
             raise DocumentTooLarge(f"document has {pages} pages; the limit is {self._max_pages}")
         # LibreOffice's output differs run to run. If another delivery stored its PDF first,
         # that one is used, so page images and cited boxes always come from the same PDF.
-        if self._store.exists(key):
-            return self._store.get(key)
+        stored = self._stored(key)
+        if stored is not None:
+            return stored
         self._store.put(key, pdf, "application/pdf")
         return pdf
+
+    def _stored(self, key: str) -> bytes | None:
+        if not self._store.exists(key):
+            return None
+        try:
+            return self._store.get(key)
+        except ObjectNotFound:
+            return None
 
     def _complete(
         self,

@@ -128,3 +128,12 @@ export function reasonNote(reason: string | null | undefined, detail: Record<str
   }
   return parts.join(" ") || null;
 }
+
+/** What a reader should know beyond an answer's text. A reason, when there is one, says more
+ * than the status and replaces it; a note that passages were held back is added to either. */
+export function answerNote(answer: Answer): string | null {
+  const why = reasonNote(answer.reason, answer.reason_detail ?? {});
+  if (answer.reason) return why;
+  const status = statusNote(answer.status, answer.dropped_citations, answer.dropped_statements);
+  return [status, why].filter(Boolean).join(" ") || null;
+}

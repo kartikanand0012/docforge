@@ -7,9 +7,9 @@ The model answers in statements, each with its citations. A statement is kept on
   the conversation so far). A figure is a number (compared as a number: "₹98,697" is
   98697.00) or a code (an invoice or batch number, a date such as 26-Jun-2026, compared whole).
 
-So one real quote can no longer carry a statement whose figure it does not hold. What this
-does not check is wording without figures ("it was approved"): such a statement still stands
-on its quote being found.
+So one real quote can no longer carry a statement whose figure it does not hold. Its wording
+must be the passages' too (most of its own words found there), and each figure must stand
+beside what the statement calls it (`_labelled`).
 """
 
 import re
@@ -205,14 +205,36 @@ _STOP = frozenset(
         "records",
     ]
 )
-_WORD = re.compile(r"[^\W\d_]{4,}")
-_SEGMENT = re.compile(r"\s*(?:\||\n|;|(?<=\.)\s+(?=[A-Z]))\s*")
+# Words a document writes short or another way, read as the word the answer would use.
+_ALIAS = {
+    "qty": "quantity",
+    "amt": "amount",
+    "dated": "date",
+    "paid": "payment",
+    "pay": "payment",
+    "pays": "payment",
+    # a count of units is a quantity: "billed 20 units" is the "Qty 20" of its row
+    "unit": "quantity",
+    "units": "quantity",
+    "pieces": "quantity",
+    "pcs": "quantity",
+    "nos": "quantity",
+}
+_WORD = re.compile(r"[^\W\d_]{3,}")
+# A segment: a table cell, a line, a clause, or a sentence. A full stop ends a sentence only
+# after a number or a whole word, so "Total Amt. Payable 500" stays one label and its value.
+_SEGMENT = re.compile(r"\s*(?:\||\n|;|(?:(?<=[a-z]{4}\.)|(?<=\d\.))\s+(?=[A-Z]))\s*")
 _MIN_WORDING = 0.6  # of a statement's own words found in its passages or the conversation
 
 
 def _words(text: str) -> set[str]:
     """Content words, compared by their first five letters ("issued" is "issue")."""
-    return {w[:5] for w in (m.casefold() for m in _WORD.findall(text)) if w not in _STOP}
+    found = set()
+    for match in _WORD.findall(text):
+        word = _ALIAS.get(match.casefold(), match.casefold())
+        if len(word) >= 4 and word not in _STOP:
+            found.add(word[:5])
+    return found
 
 
 def _wording_supported(statement: str, passages: Sequence[str], given: str) -> bool:
@@ -228,30 +250,31 @@ def _wording_supported(statement: str, passages: Sequence[str], given: str) -> b
 def _labelled(statement: str, passages: Sequence[Passage], given: str) -> bool:
     """Each figure the statement takes from its passages stands, there, beside a word the
     statement uses for it: "the discount is 98,697" cannot borrow the grand total's figure.
-    A table row's first cell (what the row is) counts as beside each of its values."""
+
+    A table row's first cell (what the row is) counts as beside each of its values, and a
+    value alone on its line is read with the line above. The question names a figure only
+    when the statement names nothing the passages label ("it comes to 500"): otherwise the
+    question's "total" would carry a statement that calls the total the discount."""
     own = _words(CODE.sub(" ", statement))
-    if not own:
+    numbers = _numbers(_plain(CODE.sub(" ", statement))) - _numbers(_plain(given))
+    if not own or not numbers:
         return True
-    named = own | _words(given)  # "what is the grand total?" names what "it comes to" is
-    from_given = _numbers(_plain(given))
-    for number in _numbers(_plain(CODE.sub(" ", statement))) - from_given:
-        beside = False
-        for passage in passages:
-            segments = _SEGMENT.split(_plain(passage.text))
-            row = segments[0] if passage.kind == "table_row" and segments else ""
-            for segment in segments:
-                if number not in _numbers(segment):
-                    continue
-                label = _words(f"{row} {segment}")
-                # A bare value ("Qty 20") has no word to weigh: it is not held against it.
-                if not label or named & label:
-                    beside = True
-                    break
-            if beside:
-                break
-        if not beside:
-            return False
-    return True
+    places: list[tuple[set[Decimal], set[str]]] = []  # the figures of a segment, its label
+    for passage in passages:
+        segments = [CODE.sub(" ", s) for s in _SEGMENT.split(_plain(passage.text))]
+        row = segments[0] if passage.kind == "table_row" and segments else ""
+        above = ""
+        for segment in segments:
+            label = _words(f"{row} {segment}") or _words(above)
+            places.append((_numbers(segment), label))
+            above = segment
+    labels = set().union(*(label for found, label in places if found))
+    named = own if own & labels else own | _words(given)
+    # A bare value ("Qty 20" once short words go) has no word to weigh: it is not held against it.
+    return all(
+        any(number in found and (not label or named & label) for found, label in places)
+        for number in numbers
+    )
 
 
 def check_statements(

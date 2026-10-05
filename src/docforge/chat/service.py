@@ -15,6 +15,7 @@ A conversation belongs to the person who started it. Questions and answers are s
 
 import logging
 import re
+import unicodedata
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -178,6 +179,7 @@ class StoredMessage:
 
 @dataclass(frozen=True)
 class UnansweredQuestion:
+    message_id: uuid.UUID
     question: str
     reason: str
     missing: str  # what the passages lacked, as the model said
@@ -314,12 +316,7 @@ class ChatService:
                 hits = self._retrieve(
                     tenant_id, _follow_up_query(question, history), scope, anchors, question
                 )
-                # A passage that reads like instructions to the model is held back: a document
-                # is data, and one that tries to direct the answer is not read as evidence.
-                held_back = sum(1 for hit in hits if _instructs(hit.text))
-                hits = SearchHits(
-                    [hit for hit in hits if not _instructs(hit.text)], words_only=hits.words_only
-                )
+                hits, held_back = self._hold_back(tenant_id, question, scope, hits)
                 span.set_attribute("docforge.chat.passages", len(hits))
                 span.set_attribute("docforge.chat.held_back", held_back)
                 span.set_attribute("docforge.chat.scope", scope.kind)
@@ -455,6 +452,38 @@ class ChatService:
         add(wide, self._passages)
         add(found, self._passages)  # any places left
         return SearchHits(merged, words_only=words_only or wide.words_only)
+
+    def _hold_back(
+        self, tenant_id: uuid.UUID, question: str, scope: "Scope", hits: SearchHits
+    ) -> tuple[SearchHits, int]:
+        """A passage that reads like instructions to the model is held back: a document is
+        data, and one that tries to direct the answer is not read as evidence. Its place goes
+        to the next passage the search finds, so a planted passage cannot crowd out the rest.
+        Held-back passages are logged, for an administrator to look at."""
+        held = [hit for hit in hits if _instructs(hit.text)]
+        if not held:
+            return hits, 0
+        logger.warning(
+            "held back %d passage(s) that read like instructions: %s",
+            len(held),
+            [f"{hit.document_id}:p{hit.page}" for hit in held],
+        )
+        kept = [hit for hit in hits if not _instructs(hit.text)]
+        seen = {(hit.document_id, hit.page, hit.text) for hit in hits}
+        more = self._search.search(
+            tenant_id,
+            question,
+            k=self._passages + len(held),
+            mode="hybrid",
+            document_id=scope.document_id,
+            collection_id=scope.collection_id,
+        )
+        for hit in more:
+            key = (hit.document_id, hit.page, hit.text)
+            if len(kept) < self._passages and key not in seen and not _instructs(hit.text):
+                seen.add(key)
+                kept.append(hit)
+        return SearchHits(kept, words_only=hits.words_only or more.words_only), len(held)
 
     def _reserve(
         self,
@@ -675,6 +704,7 @@ class ChatService:
         return Unanswered(
             questions=[
                 UnansweredQuestion(
+                    message_id=m.id,
                     question=m.question,
                     reason=str(m.reason),
                     missing=str((m.reason_detail or {}).get("missing", "")),
@@ -722,19 +752,32 @@ class ChatService:
         return conversation
 
 
+# Wording that addresses the model, not a reader: "ignore the previous instructions", "you
+# are now an assistant that...", "reveal your system prompt". Ordinary letters ("you are now
+# entitled to a refund") and documents about AI ("the system prompt was reviewed") are not it.
+# A heuristic, not a guard: the quote and statement checks are what keep an answer honest.
 _INSTRUCTIONS = re.compile(
-    r"\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|earlier)"
-    r"\s+(?:instructions|rules|prompts?)\b"
-    r"|\b(?:system\s+prompt|developer\s+message)\b"
-    r"|\byou\s+(?:are\s+now|must\s+now|will\s+now)\b"
+    r"\b(?:ignore|disregard|forget|override)\s+(?:all\s+|any\s+|the\s+|your\s+)*"
+    r"(?:previous|prior|above|earlier|preceding|system|original)\s+"
+    r"(?:instructions|rules|prompts?|guidance|directions)\b"
+    r"|\b(?:reveal|print|show|repeat|output|ignore|override)\s+(?:the\s+|your\s+)?"
+    r"(?:system\s+prompt|developer\s+message|hidden\s+instructions)\b"
+    r"|\byou\s+(?:are|will\s+be)\s+now\s+(?:an?\s+)?(?:\w+\s+){0,2}"
+    r"(?:assistant|ai|model|chatbot|bot)\b"
+    r"|\byou\s+(?:must|will|should)\s+now\s+(?:say|answer|reply|respond|tell|state|write)\b"
     r"|\b(?:as\s+an?\s+)?(?:ai|assistant|language\s+model),?\s+(?:you\s+)?(?:must|should)\b",
     re.IGNORECASE,
 )
+# Characters that do not show, used to break a phrase up so a pattern misses it.
+_INVISIBLE = re.compile("[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]")
 
 
 def _instructs(text: str) -> bool:
-    """A passage that reads like instructions to the model rather than document content."""
-    return _INSTRUCTIONS.search(text) is not None
+    """A passage that reads like instructions to the model rather than document content.
+    Read as shown: compatibility forms folded (full-width letters) and invisible
+    characters removed."""
+    shown = _INVISIBLE.sub("", unicodedata.normalize("NFKC", text))
+    return _INSTRUCTIONS.search(shown) is not None
 
 
 def _follow_up_query(question: str, history: Sequence[tuple[str, str]]) -> str:

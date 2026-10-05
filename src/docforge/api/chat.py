@@ -91,6 +91,7 @@ class ConversationOut(BaseModel):
 
 
 class UnansweredQuestionOut(BaseModel):
+    message_id: uuid.UUID
     question: str
     reason: str
     missing: str

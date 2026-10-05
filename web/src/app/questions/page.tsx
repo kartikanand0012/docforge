@@ -11,6 +11,7 @@ const REASONS: Record<string, string> = {
   figures_not_in_quotes: "Figures not in quotes",
   wording_not_in_passages: "Not what the documents say",
   model_error: "Model failed",
+  not_recorded: "Reason not recorded",
 };
 
 /** What the organisation asked that its documents could not answer, and why: the documents
@@ -35,15 +36,18 @@ export default function UnansweredPage() {
       <h1>Unanswered questions</h1>
       <p className="muted">Questions your documents could not answer, and why. &ldquo;Not in the documents&rdquo; says what was missing: often a document worth adding.</p>
       {problem && <p className="error" role="alert">{problem}</p>}
+      {!report && !problem && <p className="muted" role="status">Loading…</p>}
       {report && (
         <>
-          <ul className="row" aria-label="In the last 30 days">
+          {Object.keys(report.by_reason).length > 0 && (
+          <ul className="row" role="list" aria-label="Unanswered questions by reason, last 30 days">
             {Object.entries(report.by_reason).map(([reason, n]) => (
               <li key={reason} className="chip">
                 {REASONS[reason] ?? reason}: {n}
               </li>
             ))}
           </ul>
+          )}
           {report.questions.length === 0 ? (
             <p className="card">Every question has been answered.</p>
           ) : (
@@ -56,8 +60,8 @@ export default function UnansweredPage() {
                 </tr>
               </thead>
               <tbody>
-                {report.questions.map((q, i) => (
-                  <tr key={`${q.conversation_id}-${i}`}>
+                {report.questions.map((q) => (
+                  <tr key={q.message_id}>
                     <td>{q.question}</td>
                     <td>
                       <span className="chip">{REASONS[q.reason] ?? q.reason}</span>{" "}

@@ -3,16 +3,13 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
-import { STAGE_TEXT, chatScope, reasonNote, sendsOnEnter, statusNote, type Answer, type Citation, type Turn } from "@/lib/chat";
+import { STAGE_TEXT, answerNote, chatScope, sendsOnEnter, type Answer, type Citation, type Turn } from "@/lib/chat";
 
 /** Questions about one document (`documentId`) or every document of the organisation.
  * Each answer shows the quotes it rests on; choosing one shows it on its page (`onCite`),
  * or opens its document. Answers whose quotes are not in the documents are not shown. */
-/** What a reader should know beyond the answer's text, worked out once. */
 function StatusNote({ answer }: { answer: Answer }) {
-  const why = reasonNote(answer.reason, answer.reason_detail ?? {});
-  // A reason, when there is one, says more than the status: it replaces it.
-  const note = why ?? statusNote(answer.status, answer.dropped_citations, answer.dropped_statements);
+  const note = answerNote(answer);
   return note ? <p className="muted">{note}</p> : null;
 }
 

@@ -214,5 +214,5 @@ def test_an_abbreviation_does_not_part_a_label_from_its_value() -> None:
 
 def test_a_value_on_the_line_below_its_label_is_read_with_it() -> None:
     passage = "Grand total\n500\nDiscount 50"
-    assert said("The grand total is 500.", passage, "500")
-    assert not said("The discount is 500.", passage, "500")
+    assert said("The grand total is 500.", passage, "Grand total 500")
+    assert not said("The discount is 500.", passage, "Grand total 500")

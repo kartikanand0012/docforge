@@ -121,7 +121,7 @@ export type KnowledgeBase = { id: string; name: string; description: string; doc
 export type KnowledgeBaseMember = { id: string; filename: string; doc_type: string; stage: string; added_at: string };
 
 export type UnansweredReport = {
-  questions: { question: string; reason: string; missing: string; documents: string[]; owner: string; conversation_id: string; created_at: string }[];
+  questions: { message_id: string; question: string; reason: string; missing: string; documents: string[]; owner: string; conversation_id: string; created_at: string }[];
   by_reason: Record<string, number>;
 };
 

@@ -26,19 +26,19 @@ def upgrade() -> None:
             "reason_detail", postgresql.JSONB, nullable=False, server_default=sa.text("'{}'")
         ),
     )
-    # Earlier messages: the reason their status already tells.
-    op.execute(
-        "UPDATE messages SET reason = CASE status WHEN 'not_found' THEN 'not_in_passages' "
-        "WHEN 'unsupported' THEN 'quotes_not_found' WHEN 'error' THEN 'model_error' END "
-        "WHERE status IN ('not_found', 'unsupported', 'error')"
-    )
-    # The organisation's unanswered questions, newest first.
-    op.create_index(
-        "ix_messages_unanswered",
-        "messages",
-        ["tenant_id", "created_at"],
-        postgresql_where=sa.text("reason IS NOT NULL"),
-    )
+    with op.get_context().autocommit_block():
+        # Earlier messages: the reason their status tells. Why an older answer was withheld
+        # was not recorded, so it is said to be unknown rather than guessed.
+        op.execute(
+            "UPDATE messages SET reason = CASE status WHEN 'not_found' THEN 'not_in_passages' "
+            "WHEN 'unsupported' THEN 'not_recorded' WHEN 'error' THEN 'model_error' END "
+            "WHERE status IN ('not_found', 'unsupported', 'error') AND reason IS NULL"
+        )
+        # The organisation's unanswered questions, newest first; built without blocking writes.
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_messages_unanswered "
+            "ON messages (tenant_id, created_at) WHERE reason IS NOT NULL"
+        )
 
 
 def downgrade() -> None:

@@ -64,7 +64,7 @@ class DatabaseLimits:
             count = float(count) + float(before)
         if random.random() < 0.01:  # noqa: S311 - housekeeping, not security
             self.sweep()
-        return int(count) <= per_minute
+        return count <= per_minute
 
     @contextmanager
     def hold(self, key: str, at_most: int, seconds: int) -> Iterator[None]:

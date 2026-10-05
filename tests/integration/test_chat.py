@@ -565,20 +565,15 @@ def test_a_passage_that_reads_like_instructions_is_held_back(
 def planted(setup: Setup, texts: list[str]) -> Any:
     from docforge.search.service import SearchHit, SearchHits
 
-    class Planted:
-        calls: list[int] = []
+    def hit(text: str) -> SearchHit:
+        return SearchHit(
+            document_id=setup.invoice_id, doc_type="general", filename="note.pdf",
+            kind="text", page=1, text=text, score=1.0, boxes=(),
+        )  # fmt: skip
 
+    class Planted:
         def search(self, tenant_id: uuid.UUID, query: str, **kwargs: Any) -> SearchHits:
-            self.calls.append(kwargs["k"])
-            return SearchHits(
-                [
-                    SearchHit(
-                        document_id=setup.invoice_id, doc_type="general", filename="note.pdf",
-                        kind="text", page=1, text=text, score=1.0, boxes=(),
-                    )  # fmt: skip
-                    for text in texts[: kwargs["k"]]
-                ]
-            )
+            return SearchHits([hit(text) for text in texts[: kwargs["k"]]])
 
     return Planted()
 
