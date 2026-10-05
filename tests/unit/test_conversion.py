@@ -110,6 +110,8 @@ def test_libreoffice_gets_no_secrets_from_the_environment(
 
 
 class Counting:
+    version = "counting-1"
+
     def __init__(self) -> None:
         self.calls = 0
 
