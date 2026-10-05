@@ -1,0 +1,14 @@
+{
+  "key": "ac31abfdf9eb1d2308bfcfb6733dc0da44c1f6342ddd9f167d1fcd9556f336f4",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Navjivan Medical Agencies issued the invoice.\",\n  \"citations\": [\n    {\n      \"passage\": 2,\n      \"quote\": \"Invoice NVM/26-27/32001 dated 2 September 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Jalaram Pharmacy (GSTIN 24AAHFJ1196Q1ZU), against purchase order PO-JPH-12001.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1908,
+    "output_tokens": 139,
+    "thinking_tokens": null,
+    "latency_ms": 2469.0
+  }
+}

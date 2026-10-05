@@ -393,3 +393,20 @@ def test_a_follow_up_stays_within_its_scope_when_searching_cited_documents(
     assert spy.calls and all(
         kwargs.get("document_id") == setup.invoice_id for _, kwargs in spy.calls
     )
+
+
+def test_a_question_naming_a_document_reads_that_documents_other_passages(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    """A line row does not print its invoice's number: a question naming the number must still
+    reach the row, by searching within the document that prints it."""
+    spy = Spy(setup.search)
+    chat = ChatService(sessions, spy, setup.model)
+
+    chat.ask(
+        DEFAULT_TENANT_ID,
+        "reviewer:a",
+        f"How many units were billed on invoice {setup.invoice_no}?",
+    )
+
+    assert any(kwargs.get("document_id") == setup.invoice_id for _, kwargs in spy.calls)

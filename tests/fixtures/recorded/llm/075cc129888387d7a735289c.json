@@ -1,0 +1,14 @@
+{
+  "key": "075cc129888387d7a735289c59318316dedd905cf9a04747f3dd5fc1c233a8bb",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Navjivan Medical Agencies issued the invoice.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Invoice NVM/26-27/27003 dated 18 September 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Yamuna Medicine House (GSTIN 07ACFPY6639G1Z3), against purchase order PO-YMH-46003.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1859,
+    "output_tokens": 141,
+    "thinking_tokens": null,
+    "latency_ms": 1454.2
+  }
+}
