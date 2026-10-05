@@ -161,10 +161,7 @@ def _checked(
             page=int(blocks[0]["page"]) if blocks else hit.page,
             quote=cited.quote,
             # Where the quote is; failing that, where the passage is.
-            boxes=tuple(
-                {k: block[k] for k in _BOX_KEYS if k in block}
-                for block in blocks
-            )
+            boxes=tuple({k: block[k] for k in _BOX_KEYS if k in block} for block in blocks)
             or hit.boxes,
         )
         if citation not in citations:
