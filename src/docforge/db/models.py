@@ -97,6 +97,8 @@ class DocumentVersion(Base):
     schema_version: Mapped[str | None] = mapped_column(Text)
     prompt_version: Mapped[str | None] = mapped_column(Text)
     model_id: Mapped[str | None] = mapped_column(Text)
+    # The PDF made from an upload that was not one, that this version was read from.
+    rendition_key: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
