@@ -200,3 +200,41 @@ def test_recording_chat_is_refused_in_production(monkeypatch: pytest.MonkeyPatch
 
     with pytest.raises(ValueError, match="CHAT_RECORD"):
         make_settings()
+
+
+SERVICE_ACCOUNT = (
+    '{"type": "service_account", "client_email": "docforge-sync@proj.iam.gserviceaccount.com",'
+    ' "private_key": "-----BEGIN PRIVATE KEY-----\\nabc\\n-----END PRIVATE KEY-----\\n"}'
+)
+
+
+def test_a_service_account_key_is_read_for_its_email(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", SERVICE_ACCOUNT)
+    assert (
+        make_settings().drive_service_account_email == "docforge-sync@proj.iam.gserviceaccount.com"
+    )
+
+
+@pytest.mark.parametrize(
+    "value", ["not json", '{"type": "authorized_user"}', '{"type": "service_account"}']
+)
+def test_anything_but_a_service_account_key_is_refused_without_echoing_it(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("GOOGLE_SERVICE_ACCOUNT_JSON", value)
+    with pytest.raises(ValueError) as caught:
+        make_settings()
+    assert "service account" in str(caught.value) and value not in str(caught.value)
+
+
+def test_the_fake_drive_is_refused_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
+    monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("DRIVE_CLIENT", "fake")
+    with pytest.raises(ValueError, match="DRIVE_CLIENT"):
+        make_settings()
