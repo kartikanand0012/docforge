@@ -72,3 +72,25 @@ describe("reasonNote", () => {
     expect(reasonNote(null, { held_back: 1 })).toBe("1 passage was held back because it reads like instructions to the AI, not document content.");
   });
 });
+
+import { answerNote, type Answer } from "@/lib/chat";
+
+describe("answerNote", () => {
+  const base: Answer = {
+    conversation_id: "c", message_id: "m", status: "partly_supported", text: "t", citations: [],
+    dropped_citations: 1, dropped_statements: 0, words_only: false,
+  };
+
+  it("keeps the status note beside a held-back note", () => {
+    expect(answerNote({ ...base, reason: null, reason_detail: { held_back: 1 } })).toBe(
+      "1 quote could not be found in the documents and was left out. " +
+        "1 passage was held back because it reads like instructions to the AI, not document content.",
+    );
+  });
+
+  it("lets a reason replace the status note", () => {
+    expect(answerNote({ ...base, status: "unsupported", reason: "quotes_not_found", reason_detail: {} })).toBe(
+      "The answer drafted quoted text that is not in the documents.",
+    );
+  });
+});

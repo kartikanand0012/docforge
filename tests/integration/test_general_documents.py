@@ -380,3 +380,17 @@ def test_a_converted_pdf_replaced_by_a_newer_one_is_deleted(
     assert not svc.store.exists(rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-1"))
     assert svc.store.exists(rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-2"))
     assert svc.store.exists(document.storage_key)  # the original, always
+
+
+def test_a_converted_pdf_deleted_while_it_is_read_is_made_again(svc: Service) -> None:
+    """Another delivery of the document can delete it between the check and the read."""
+    document = svc.ingest(DOCX).document
+    svc.run()
+    key = rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-1")
+    exists = svc.store.exists
+    svc.store.exists = lambda k: True if k == key else exists(k)  # type: ignore[method-assign]
+    svc.store.delete(key)
+
+    svc.service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=document.id, actor="t")
+    assert svc.run() == ["succeeded"]
+    assert svc.converter.calls == ["docx", "docx"]
