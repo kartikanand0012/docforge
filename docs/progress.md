@@ -2,6 +2,36 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C12 Knowledge bases (2026-10-05): gate passed
+
+Branch `c12-knowledge`, stacked on C11. Evidence: `docs/tdd/c12-knowledge.tdd.md`.
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Retrieval and answer evals across 2+ knowledge bases | Pass | Two knowledge bases in each of two organisations ("invoices" with invoices and orders, "certificates"). The assay of each batch, asked within the certificates, answered 8 of 8; asked within the invoices, which print the same batches, declined 8 of 8. Overall 80 questions: 97.9% correct, 0 wrong, 0 citations from outside the knowledge base asked, 0 cross-tenant; gate 47/47 |
+| Isolation tests | Pass | Knowledge bases and their members under row-level security with tenant-consistent keys; another organisation cannot list, read, change, fill or ask one; searches within one read only its documents |
+
+### What was built
+
+- **Knowledge bases** (migration 0017): named sets of an organisation's documents, a document in several; added all or nothing (500 a call), removed, renamed, deleted with their documents kept. `/v1/collections`; reviewers read and ask, those who may add documents change them.
+- **Questions within a knowledge base**, and a scope kept on every conversation: a follow-up whose knowledge base or document has been deleted is refused (409) rather than widened to the organisation. This closes a gap left in C11.
+- **Streamed stages**: `POST /v1/chat/stream` sends each stage as it begins (searching, reading N passages, checking quotes) and then the checked answer. Decision: the answer's text is not streamed word by word, because it is shown only after its quotes are checked; answers take a few seconds.
+- **Web**: Knowledge bases pages (create, add and remove documents, delete, ask within); the chat shows each stage; cited quotes are outlined on review pages too.
+- **Limits**: two questions in flight per person, as well as the daily limits.
+
+### Review (ECC security-reviewer, python-reviewer, react-reviewer)
+
+No critical or high security finding: isolation, scope, authorization, CSRF on the new PATCH and rendering held. Fixed, with failing tests first: a resent deleted knowledge base reported as a conflict, not gone; a failing progress listener could strand a question as pending; streams could hold every thread (now two in flight per person) and their tasks could be collected mid-answer; every integrity error read as "name taken"; more than 500 documents were cut silently. Web: a missing knowledge base loaded forever; leaving a chat did not cancel its stream; a last event without its blank line was lost; a lost session mid-chat did not sign in again; only the first page of documents could be added; stages, additions and removals were not announced.
+
+### Honest limits
+
+- **Anyone who may add documents may change any knowledge base**; per-base roles are on the roadmap.
+- **Caps are per API process**; the daily limits are in the database.
+- **A disconnected stream's question is still answered and counted** (the model call is under way); it can be read in the conversation afterwards.
+- **No streaming of the answer's words**, by decision (above).
+
 ## C11 Chat with documents (2026-10-05): gate passed
 
 Branch `c11-chat`, stacked on C10. Evidence: `docs/tdd/c11-chat.tdd.md`.
