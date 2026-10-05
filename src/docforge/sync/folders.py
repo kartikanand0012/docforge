@@ -25,7 +25,8 @@ def parse_folder(reference: str) -> str:
     found = _PATH.match(parts.path)
     candidate = found.group(1) if found else None
     if candidate is None and parts.path == "/open":
-        candidate = (parse_qs(parts.query).get("id") or [None])[0]
+        ids = parse_qs(parts.query).get("id") or []
+        candidate = ids[0] if ids else None
     if candidate is None or not _ID.match(candidate):
         raise InvalidFolder("not a Google Drive folder link")
     return candidate
