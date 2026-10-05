@@ -13,14 +13,15 @@ A conversation belongs to the person who started it. Questions and answers are s
 `messages`, never in the audit log or a trace: a question may name a patient or a price.
 """
 
+import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passage, build_prompt
@@ -32,6 +33,7 @@ from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
 from docforge.search.service import Mode, SearchHit, SearchHits
 from docforge.telemetry import traced
 
+logger = logging.getLogger(__name__)
 Status = Literal["supported", "partly_supported", "unsupported", "not_found"]
 
 NOT_FOUND = "The documents do not say."
@@ -42,6 +44,7 @@ WITHHELD = (
 DEFAULT_PASSAGES = 8
 DEFAULT_DAILY_LIMIT = 500
 _HISTORY = 3  # earlier turns given with a follow-up
+_ANSWERED = ("supported", "partly_supported")
 _BOX_KEYS = ("page", "x0", "y0", "x1", "y1", "page_width", "page_height")
 
 
@@ -53,12 +56,20 @@ class ConversationNotFound(LookupError):
     """No conversation with that id belongs to this person in this organisation."""
 
 
+class ScopeConflict(ValueError):
+    """A follow-up named a different document from the one its conversation is about."""
+
+
 class DocumentNotFound(LookupError):
     """The document a question is about does not exist in this organisation."""
 
 
 class AnswerInvalid(LLMError):
     """The model's reply did not fit the answer's shape, twice."""
+
+    def __init__(self, message: str, responses: tuple[LLMResponse, ...]) -> None:
+        super().__init__(message)
+        self.responses = responses  # the calls made, so what they cost is recorded
 
 
 class Search(Protocol):
@@ -181,12 +192,14 @@ class ChatService:
         *,
         passages: int = DEFAULT_PASSAGES,
         daily_limit: int = DEFAULT_DAILY_LIMIT,
+        daily_limit_per_person: int | None = None,
     ) -> None:
         self._sessions = sessions
         self._search = search
         self._provider = provider
         self._passages = passages
         self._daily_limit = daily_limit
+        self._per_person = daily_limit_per_person if daily_limit_per_person else daily_limit
 
     @scoped
     def ask(
@@ -198,94 +211,46 @@ class ChatService:
         document_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
     ) -> Answer:
-        """Raises `QuestionLimitReached`, `ConversationNotFound`, `DocumentNotFound`, or
-        `LLMError` when the model cannot answer."""
+        """Raises `QuestionLimitReached`, `ConversationNotFound`, `DocumentNotFound`,
+        `ScopeConflict`, or `LLMError` when the model cannot answer.
+
+        The question takes its place for the day before the model is asked, so the limit
+        holds when questions arrive together and counts those that fail. It is completed
+        with the answer, or marked an error with what it cost.
+        """
         question = question.strip()
-        with self._sessions() as session:
-            asked_today = session.scalar(
-                select(func.count())
-                .select_from(Message)
-                .where(Message.tenant_id == tenant_id, Message.created_at >= _midnight())
-            )
-            if (asked_today or 0) >= self._daily_limit:
-                raise QuestionLimitReached(f"{self._daily_limit} questions a day")
-            history: list[tuple[str, str]] = []
-            if conversation_id is not None:
-                conversation = self._owned(session, tenant_id, owner, conversation_id)
-                document_id = conversation.document_id
-                earlier = session.scalars(
-                    select(Message)
-                    .where(Message.conversation_id == conversation_id)
-                    .order_by(Message.created_at.desc(), Message.id.desc())
-                    .limit(_HISTORY)
-                ).all()
-                history = [(m.question, m.answer) for m in reversed(earlier)]
-            elif document_id is not None:
-                exists = session.scalar(
-                    select(Document.id).where(
-                        Document.tenant_id == tenant_id, Document.id == document_id
-                    )
-                )
-                if exists is None:
-                    raise DocumentNotFound(document_id)
-
-        with traced("chat.answer") as span:
-            # A follow-up such as "and its batch?" is searched with the question before it.
-            query = f"{history[-1][0]} {question}" if history else question
-            hits = self._search.search(
-                tenant_id, query, k=self._passages, mode="hybrid", document_id=document_id
-            )
-            span.set_attribute("docforge.chat.passages", len(hits))
-            span.set_attribute("docforge.chat.scoped", document_id is not None)
-            passages = [
-                Passage(n=n, filename=hit.filename, page=hit.page, text=hit.text)
-                for n, hit in enumerate(hits, start=1)
-            ]
-            responses: tuple[LLMResponse, ...] = ()
-            citations: tuple[Citation, ...] = ()
-            if not passages:
-                status: Status = "not_found"
-                text, dropped = NOT_FOUND, 0
-            else:
-                raw, responses = self._ask(build_prompt(passages, question, history))
-                status, text, citations, dropped = _checked(raw, passages, hits)
-            span.set_attribute("docforge.chat.status", status)
-            span.set_attribute("docforge.chat.dropped_citations", dropped)
-
-        input_tokens = sum(r.input_tokens or 0 for r in responses) if responses else None
-        output_tokens = (
-            sum((r.output_tokens or 0) + (r.thinking_tokens or 0) for r in responses)
-            if responses
-            else None
+        conversation_id, message_id, document_id, history = self._reserve(
+            tenant_id, owner, question, document_id, conversation_id
         )
-        model = responses[-1].model if responses else None
-        with self._sessions.begin() as session:
-            if conversation_id is None:
-                conversation = Conversation(
-                    tenant_id=tenant_id,
-                    owner=owner,
-                    document_id=document_id,
-                    title=question[:200],
+        responses: tuple[LLMResponse, ...] = ()
+        try:
+            with traced("chat.answer") as span:
+                # A follow-up such as "and its batch?" is searched with the question before.
+                query = f"{history[-1][0]} {question}" if history else question
+                hits = self._search.search(
+                    tenant_id, query, k=self._passages, mode="hybrid", document_id=document_id
                 )
-                session.add(conversation)
-                session.flush()
-                conversation_id = conversation.id
-            message = Message(
-                tenant_id=tenant_id,
-                conversation_id=conversation_id,
-                question=question,
-                answer=text,
-                status=status,
-                citations=[c.as_json() for c in citations],
-                dropped_citations=dropped,
-                model=model,
-                prompt_version=CHAT_PROMPT_VERSION,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-            )
-            session.add(message)
-            session.flush()
-            message_id = message.id
+                span.set_attribute("docforge.chat.passages", len(hits))
+                span.set_attribute("docforge.chat.scoped", document_id is not None)
+                passages = [
+                    Passage(n=n, filename=hit.filename, page=hit.page, text=hit.text)
+                    for n, hit in enumerate(hits, start=1)
+                ]
+                citations: tuple[Citation, ...] = ()
+                if not passages:
+                    status: Status = "not_found"
+                    text, dropped = NOT_FOUND, 0
+                else:
+                    raw, responses = self._ask(build_prompt(passages, question, history))
+                    status, text, citations, dropped = _checked(raw, passages, hits)
+                span.set_attribute("docforge.chat.status", status)
+                span.set_attribute("docforge.chat.dropped_citations", dropped)
+        except Exception as error:
+            spent = getattr(error, "responses", responses)
+            self._complete(message_id, "error", "The model could not answer.", (), 0, spent)
+            raise
+        self._complete(message_id, status, text, citations, dropped, responses)
+        input_tokens, output_tokens = _tokens(responses)
         return Answer(
             conversation_id=conversation_id,
             message_id=message_id,
@@ -294,10 +259,120 @@ class ChatService:
             citations=citations,
             dropped_citations=dropped,
             words_only=hits.words_only,
-            model=model,
+            model=responses[-1].model if responses else None,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
         )
+
+    def _reserve(
+        self,
+        tenant_id: uuid.UUID,
+        owner: str,
+        question: str,
+        document_id: uuid.UUID | None,
+        conversation_id: uuid.UUID | None,
+    ) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID | None, list[tuple[str, str]]]:
+        """Check the limits and take the question's place, in one transaction under a lock
+        per organisation, so two questions cannot both take the last place."""
+        with self._sessions.begin() as session:
+            session.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"chat:{tenant_id}"))))
+            today = Message.created_at >= func.date_trunc("day", func.now(), "UTC")
+            asked = session.scalar(
+                select(func.count())
+                .select_from(Message)
+                .where(Message.tenant_id == tenant_id, today)
+            )
+            if (asked or 0) >= self._daily_limit:
+                raise QuestionLimitReached(f"{self._daily_limit} questions a day")
+            mine = session.scalar(
+                select(func.count())
+                .select_from(Message)
+                .join(Conversation, Conversation.id == Message.conversation_id)
+                .where(Message.tenant_id == tenant_id, Conversation.owner == owner, today)
+            )
+            if (mine or 0) >= self._per_person:
+                raise QuestionLimitReached(f"{self._per_person} questions a day per person")
+
+            history: list[tuple[str, str]] = []
+            if conversation_id is not None:
+                conversation = self._owned(session, tenant_id, owner, conversation_id)
+                if document_id is not None and document_id != conversation.document_id:
+                    raise ScopeConflict("a conversation keeps the document it began with")
+                document_id = conversation.document_id
+                earlier = session.scalars(
+                    select(Message)
+                    .where(Message.conversation_id == conversation_id)
+                    .order_by(Message.created_at.desc(), Message.id.desc())
+                    .limit(_HISTORY)
+                ).all()
+                # What was asked, and what was answered: a non-answer is not an answer to
+                # build on.
+                history = [
+                    (m.question, m.answer if m.status in _ANSWERED else "(no answer found)")
+                    for m in reversed(earlier)
+                ]
+            else:
+                if document_id is not None:
+                    exists = session.scalar(
+                        select(Document.id).where(
+                            Document.tenant_id == tenant_id, Document.id == document_id
+                        )
+                    )
+                    if exists is None:
+                        raise DocumentNotFound(document_id)
+                conversation = Conversation(
+                    tenant_id=tenant_id, owner=owner, document_id=document_id, title=question[:200]
+                )
+                session.add(conversation)
+                session.flush()
+            message = Message(
+                tenant_id=tenant_id,
+                conversation_id=conversation.id,
+                question=question,
+                answer="",
+                status="pending",
+                citations=[],
+                prompt_version=CHAT_PROMPT_VERSION,
+            )
+            session.add(message)
+            session.flush()
+            return conversation.id, message.id, document_id, history
+
+    def _complete(
+        self,
+        message_id: uuid.UUID,
+        status: str,
+        text: str,
+        citations: tuple[Citation, ...],
+        dropped: int,
+        responses: tuple[LLMResponse, ...],
+    ) -> None:
+        input_tokens, output_tokens = _tokens(responses)
+        try:
+            with self._sessions.begin() as session:
+                message = session.get_one(Message, message_id)
+                message.status = status
+                message.answer = text
+                message.citations = [c.as_json() for c in citations]
+                message.dropped_citations = dropped
+                message.model = responses[-1].model if responses else None
+                message.input_tokens = input_tokens
+                message.output_tokens = output_tokens
+        except Exception:
+            # The answer was paid for: say what it cost even if it could not be stored.
+            logger.exception(
+                "could not store message %s (%s; %s tokens in, %s out)",
+                message_id, status, input_tokens, output_tokens,
+            )  # fmt: skip
+            raise
+
+    @scoped
+    def delete(self, tenant_id: uuid.UUID, owner: str, conversation_id: uuid.UUID) -> None:
+        """A person's conversation, and every question and answer in it, deleted."""
+        with self._sessions.begin() as session:
+            conversation = self._owned(session, tenant_id, owner, conversation_id)
+            session.execute(delete(Message).where(Message.conversation_id == conversation.id))
+            session.delete(conversation)
 
     def _ask(self, prompt: str) -> tuple[RawAnswer, tuple[LLMResponse, ...]]:
         """One request, asked again once with what was wrong if the reply does not fit."""
@@ -320,7 +395,9 @@ class ChatService:
         try:
             return RawAnswer.model_validate_json(second.text), (first, second)
         except ValidationError as error:
-            raise AnswerInvalid("the model's reply did not fit the answer's shape") from error
+            raise AnswerInvalid(
+                "the model's reply did not fit the answer's shape", (first, second)
+            ) from error
 
     @scoped
     def conversation(
@@ -330,7 +407,7 @@ class ChatService:
             self._owned(session, tenant_id, owner, conversation_id)
             rows = session.scalars(
                 select(Message)
-                .where(Message.conversation_id == conversation_id)
+                .where(Message.conversation_id == conversation_id, Message.status != "pending")
                 .order_by(Message.created_at, Message.id)
             ).all()
             return [
@@ -382,5 +459,12 @@ class ChatService:
         return conversation
 
 
-def _midnight() -> datetime:
-    return datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+def _tokens(responses: Sequence[LLMResponse]) -> tuple[int | None, int | None]:
+    """Input and output tokens of every call; thinking is billed, and counted, as output.
+    None when no call reported them."""
+    if not responses or all(r.input_tokens is None for r in responses):
+        return None, None
+    return (
+        sum(r.input_tokens or 0 for r in responses),
+        sum((r.output_tokens or 0) + (r.thinking_tokens or 0) for r in responses),
+    )

@@ -23,7 +23,8 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
         ("The grand total is ₹98,697.00.", Expect(kind="number", value="98697.00"), True),
         ("It comes to 98697 rupees.", Expect(kind="number", value="98697.00"), True),
         ("The total is 98,696.77.", Expect(kind="number", value="98697.00"), False),
-        ("Invoice 2026 has a total of 98,697.", Expect(kind="number", value="98697.00"), True),
+        # A second number the question did not name makes the answer ambiguous.
+        ("Invoice 2026 has a total of 98,697.", Expect(kind="number", value="98697.00"), False),
         (
             "Navjivan Medical Agencies issued it.",
             Expect(kind="text", value="Navjivan Medical Agencies"),
@@ -32,7 +33,11 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
         ("The assay was 96.3%.", Expect(kind="text", value="96.3 %"), True),
         ("The assay was 96.8 %.", Expect(kind="text", value="96.3 %"), False),
         # Review findings: another number beside the right one, a number inside a code.
-        ("The total is 98,697.00, or 99,999.00 with freight.", Expect(kind="number", value="98697.00"), False),
+        (
+            "The total is 98,697.00, or 99,999.00 with freight.",
+            Expect(kind="number", value="98697.00"),
+            False,
+        ),
         ("Invoice NVM/26-12 billed 120 units.", Expect(kind="number", value="12"), False),
         ("The assay was 99.5 %.", Expect(kind="text", value="99"), False),
     ],
@@ -44,7 +49,9 @@ def test_an_answer_is_right_when_it_states_the_expected_value(
 
 
 def test_numbers_repeated_from_the_question_do_not_count_against_an_answer() -> None:
-    question = "How many units of Amoxicillin Capsules IP 250mg were billed on invoice NVM/26-27/32001?"
+    question = (
+        "How many units of Amoxicillin Capsules IP 250mg were billed on invoice NVM/26-27/32001?"
+    )
     answer = "20 units of Amoxicillin Capsules IP 250mg were billed on invoice NVM/26-27/32001."
     assert correct(answer, Expect(kind="number", value="20"), question)
 

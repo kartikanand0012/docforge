@@ -36,3 +36,9 @@ export function citationMarks(boxes: CitationBox[], page: number): Overlay[] {
     .filter((box) => box.page === page && (box.page_width ?? 0) > 0 && (box.page_height ?? 0) > 0)
     .map((box) => toOverlay(box, { width: box.page_width ?? 0, height: box.page_height ?? 0 }));
 }
+
+/** Enter sends; Shift+Enter is a new line; Enter that ends an input method's composition
+ * (Hindi, Japanese, Chinese keyboards) only finishes the word. */
+export function sendsOnEnter(event: { key: string; shiftKey: boolean; isComposing: boolean; keyCode: number }): boolean {
+  return event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229;
+}

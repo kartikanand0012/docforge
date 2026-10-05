@@ -176,6 +176,7 @@ def build_chat(settings: Settings, search: SearchService) -> ChatService:
         search,
         provider,
         daily_limit=settings.chat_daily_limit,
+        daily_limit_per_person=settings.chat_daily_limit_per_person,
     )
 
 

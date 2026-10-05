@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
-import { statusNote, type Citation, type Turn } from "@/lib/chat";
+import { sendsOnEnter, statusNote, type Citation, type Turn } from "@/lib/chat";
 
 /** Questions about one document (`documentId`) or every document of the organisation.
  * Each answer shows the quotes it rests on; choosing one shows it on its page (`onCite`),
@@ -19,12 +19,17 @@ export default function Chat({
   onCite?: (citation: Citation) => void;
   onConversation?: (id: string) => void;
 }) {
+  const headingId = useId();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>(initial);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [historyFailed, setHistoryFailed] = useState(false);
   const end = useRef<HTMLDivElement | null>(null);
+  const box = useRef<HTMLTextAreaElement | null>(null);
+  const sending = useRef(false); // set at once, unlike `busy`, so a double Enter sends once
+  const asked = useRef(false); // scroll to new answers only once the person has asked
 
   // An earlier conversation, when opened from the list.
   useEffect(() => {
@@ -44,7 +49,11 @@ export default function Chat({
           })),
         );
       },
-      (e: Error) => !stopped && setProblem(e.message),
+      (e: Error) => {
+        if (stopped) return;
+        setProblem(`This conversation could not be loaded: ${e.message}`);
+        setHistoryFailed(true);
+      },
     );
     return () => {
       stopped = true;
@@ -52,40 +61,46 @@ export default function Chat({
   }, [initial]);
 
   useEffect(() => {
+    if (!asked.current) return; // never on opening the page or an earlier conversation
     end.current?.scrollIntoView?.({ block: "nearest" });
-  }, [turns.length]);
+  }, [turns]);
 
   async function ask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const asked = question.trim();
-    if (!asked || busy) return;
+    const text = question.trim();
+    if (!text || sending.current || historyFailed) return;
+    sending.current = true;
+    asked.current = true;
     setBusy(true);
     setProblem(null);
     setQuestion("");
     const index = turns.length;
-    setTurns((current) => [...current, { question: asked, answer: null, error: null }]);
+    setTurns((current) => [...current, { question: text, answer: null, error: null }]);
     try {
-      const answer = await api.ask(asked, conversationId ? { conversation_id: conversationId } : documentId ? { document_id: documentId } : {});
+      const answer = await api.ask(text, conversationId ? { conversation_id: conversationId } : documentId ? { document_id: documentId } : {});
       setConversationId(answer.conversation_id);
       if (!conversationId) onConversation?.(answer.conversation_id);
       setTurns((current) => current.map((t, i) => (i === index ? { ...t, answer } : t)));
     } catch (e) {
       setTurns((current) => current.map((t, i) => (i === index ? { ...t, error: (e as Error).message } : t)));
+      setQuestion((current) => current || text); // the question is not lost: ask it again
     } finally {
+      sending.current = false;
       setBusy(false);
+      box.current?.focus();
     }
   }
 
   return (
-    <section className="card chat" aria-label={documentId ? "Ask about this document" : "Ask about your documents"}>
-      <h2>{documentId ? "Ask about this document" : "Ask about your documents"}</h2>
+    <section className="card chat" aria-labelledby={headingId}>
+      <h2 id={headingId}>{documentId ? "Ask about this document" : "Ask about your documents"}</h2>
       {problem && <p className="error" role="alert">{problem}</p>}
-      <div className="turns" aria-live="polite">
+      <div className="turns" role="log" aria-busy={busy}>
         {turns.map((turn, i) => (
           <article key={i} className="turn">
             <p className="asked"><strong>You:</strong> {turn.question}</p>
             {turn.error ? (
-              <p className="error" role="alert">{turn.error}</p>
+              <p className="error">{turn.error}</p>
             ) : turn.answer === null ? (
               <p className="muted">Reading the documents…</p>
             ) : (
@@ -96,20 +111,23 @@ export default function Chat({
                 )}
                 {turn.answer.citations.length > 0 && (
                   <ol className="citations" aria-label="Sources">
-                    {turn.answer.citations.map((c, n) => (
-                      <li key={n}>
-                        {onCite ? (
-                          <button type="button" className="citation" onClick={() => onCite(c)}>
-                            {c.filename}, page {c.page}
-                          </button>
-                        ) : (
-                          <Link className="citation" href={`/documents/${c.document_id}`}>
-                            {c.filename}, page {c.page}
-                          </Link>
-                        )}{" "}
-                        <q>{c.quote}</q>
-                      </li>
-                    ))}
+                    {turn.answer.citations.map((c, n) => {
+                      const quoteId = `${headingId}-q${i}-${n}`;
+                      return (
+                        <li key={n}>
+                          {onCite ? (
+                            <button type="button" className="citation" onClick={() => onCite(c)} aria-describedby={quoteId} title="Show it on the page">
+                              {c.filename}, page {c.page}
+                            </button>
+                          ) : (
+                            <Link className="citation" href={`/documents/${c.document_id}`} aria-describedby={quoteId}>
+                              {c.filename}, page {c.page}
+                            </Link>
+                          )}{" "}
+                          <q id={quoteId}>{c.quote}</q>
+                        </li>
+                      );
+                    })}
                   </ol>
                 )}
               </div>
@@ -121,19 +139,21 @@ export default function Chat({
       <form onSubmit={ask} className="ask">
         <label htmlFor={documentId ? `question-${documentId}` : "question"}>Question</label>
         <textarea
+          ref={box}
           id={documentId ? `question-${documentId}` : "question"}
           value={question}
+          disabled={historyFailed}
           maxLength={2000}
           rows={2}
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            if (sendsOnEnter({ key: e.key, shiftKey: e.shiftKey, isComposing: e.nativeEvent.isComposing, keyCode: e.keyCode })) {
               e.preventDefault();
               e.currentTarget.form?.requestSubmit();
             }
           }}
         />
-        <button className="primary" type="submit" disabled={busy || !question.trim()}>
+        <button className="primary" type="submit" aria-disabled={busy || !question.trim() || historyFailed}>
           {busy ? "Asking…" : "Ask"}
         </button>
       </form>

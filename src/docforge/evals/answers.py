@@ -45,6 +45,7 @@ class Question(_Model):
     tenant: str  # a or b
     expect: Expect | None  # None: the documents do not answer it
     documents: tuple[str, ...]  # where the answer is, e.g. pair_001/invoice, coa_001
+    scoped: bool = False  # asked about its document alone, not the whole organisation
 
 
 class AnswerResult(_Model):
@@ -68,6 +69,7 @@ class AnswerReport(_Model):
     false_abstention: float  # answerable questions it said it could not answer
     wrong_answers: int  # answered, cited, and wrong
     abstained_when_no_answer: float
+    answered_unanswerable: int  # answered, with checked quotes, what the documents do not say
     cross_tenant_citations: int
     input_tokens_per_question: int  # mean, over questions the model was asked
     output_tokens_per_question: int
@@ -101,6 +103,7 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question
             *,
             pair: str = pair,
             tenant: str = tenant,
+            scoped: bool = False,
         ) -> None:
             questions.append(
                 Question(
@@ -109,6 +112,7 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question
                     tenant=tenant,
                     expect=expect,
                     documents=documents,
+                    scoped=scoped,
                 )
             )
 
@@ -117,6 +121,13 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question
             f"What is the grand total of invoice {number}?",
             Expect(kind="number", value=invoice["totals"]["grand_total"]),
             here,
+        )
+        ask(
+            "total-in-document",
+            "What is the grand total of this invoice?",
+            Expect(kind="number", value=invoice["totals"]["grand_total"]),
+            here,
+            scoped=True,
         )
         ask("seller", f"Who issued invoice {number}?", Expect(kind="text", value=seller), here)
         ask(
@@ -138,6 +149,7 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question
 
 
 def _numbers(text: str) -> list[Decimal]:
+    """Each number written in `text`, read with Indian or Western digit grouping."""
     found = []
     for token in _NUMBER.findall(text):
         try:
@@ -147,14 +159,19 @@ def _numbers(text: str) -> list[Decimal]:
     return found
 
 
-def _squash(value: str) -> str:
-    return re.sub(r"\s+", "", normalise(value))
-
-
-def correct(text: str, expect: Expect) -> bool:
+def correct(text: str, expect: Expect, question: str = "") -> bool:
+    """A number answer is right when the expected number is stated and every other number
+    in it was in the question (an invoice number, a strength repeated back): a second,
+    different figure makes it wrong. A text answer contains the expected text, whole."""
     if expect.kind == "number":
-        return Decimal(expect.value) in _numbers(text)
-    return _squash(expect.value) in _squash(text)
+        asked = set(_numbers(question))
+        stated = {n for n in _numbers(text) if n not in asked}
+        return stated == {Decimal(expect.value)}
+    # The expected words in order, spacing optional ("96.3 %" is "96.3%"), not inside a
+    # longer word or number ("99" is not in "99.5" or "1999").
+    words = normalise(expect.value).split()
+    pattern = r"\s*".join(re.escape(word) for word in words)
+    return re.search(rf"(?<![\w.]){pattern}(?![\w]|\.\d)", normalise(text)) is not None
 
 
 def _share(n: int, d: int) -> float:
@@ -177,7 +194,7 @@ def score_answers(
         r = by_id[q.id]
         assert q.expect is not None  # noqa: S101 - filtered above
         if r.status in ANSWERED:
-            is_right = correct(r.text, q.expect)
+            is_right = correct(r.text, q.expect, q.text)
             right += is_right
             wrong += not is_right
             cited += any(d in q.documents for d in r.cited_documents)
@@ -186,11 +203,12 @@ def score_answers(
         else:
             abstained += 1
             missed.append(q.id)
-    held_back = 0
+    held_back = answered_anyway = 0
     for q in unanswerable:
         if by_id[q.id].status in ABSTAINED:
             held_back += 1
         else:
+            answered_anyway += 1
             missed.append(q.id)
     calls = [r for r in results if r.input_tokens is not None]
     tokens = (
@@ -212,6 +230,7 @@ def score_answers(
         false_abstention=_share(abstained, len(answerable)),
         wrong_answers=wrong,
         abstained_when_no_answer=_share(held_back, len(unanswerable)),
+        answered_unanswerable=answered_anyway,
         cross_tenant_citations=sum(r.cross_tenant for r in results),
         input_tokens_per_question=tokens[0],
         output_tokens_per_question=tokens[1],
@@ -237,8 +256,10 @@ def run_answer_eval(
     with indexed_corpus(synthetic, coa, recordings, embedder, pairs=pairs) as corpus:
         # Big enough for every question; the limit itself is tested elsewhere.
         chat = ChatService(corpus.sessions, corpus.search, provider, daily_limit=10_000)
+        ids = {(key, tenant): document_id for document_id, (key, tenant) in corpus.keys.items()}
         for q in questions:
-            answer = chat.ask(corpus.tenants[q.tenant], "eval", q.text)
+            scope = ids[(q.documents[0], q.tenant)] if q.scoped else None
+            answer = chat.ask(corpus.tenants[q.tenant], "eval", q.text, document_id=scope)
             found = [corpus.keys.get(uuid.UUID(str(c.document_id))) for c in answer.citations]
             result = AnswerResult(
                 question_id=q.id,
@@ -267,6 +288,7 @@ def format_answer_report(report: AnswerReport) -> str:
             f"  said it could not answer  {report.false_abstention:.2%} (should be low)",
             f"  wrong answers             {report.wrong_answers}",
             f"  abstained when no answer  {report.abstained_when_no_answer:.2%}",
+            f"  answered the unanswerable {report.answered_unanswerable}",
             f"  cross-tenant citations    {report.cross_tenant_citations}",
             f"  tokens per question       {report.input_tokens_per_question} in, "
             f"{report.output_tokens_per_question} out",

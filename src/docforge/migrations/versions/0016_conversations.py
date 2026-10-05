@@ -55,7 +55,8 @@ def upgrade() -> None:
             ["document_id", "tenant_id"],
             ["documents.id", "documents.tenant_id"],
             name="fk_conversations_document_tenant",
-            ondelete="RESTRICT",
+            # A deleted document leaves its conversations, no longer tied to it.
+            ondelete="SET NULL (document_id)",
         ),
         sa.UniqueConstraint("id", "tenant_id", name="uq_conversations_id_tenant"),
         sa.CheckConstraint("length(title) <= 200", name="ck_conversations_title"),
@@ -83,7 +84,10 @@ def upgrade() -> None:
             ondelete="CASCADE",
         ),
         sa.CheckConstraint(
-            "status IN ('supported', 'partly_supported', 'unsupported', 'not_found')",
+            # pending: the question's place for the day is taken and the model is being asked;
+            # error: the model could not answer (what it cost is still recorded).
+            "status IN ('pending', 'supported', 'partly_supported', 'unsupported', "
+            "'not_found', 'error')",
             name="ck_messages_status",
         ),
         sa.CheckConstraint("length(question) <= 2000", name="ck_messages_question"),
@@ -92,7 +96,9 @@ def upgrade() -> None:
     # The daily question limit counts an organisation's messages since midnight.
     op.create_index("ix_messages_tenant_created", "messages", ["tenant_id", "created_at"])
     # Conversations can be deleted with their messages (a person's questions are theirs).
-    op.execute(f"GRANT SELECT, INSERT, DELETE ON conversations, messages TO {_APP_ROLE}")
+    op.execute(f"GRANT SELECT, INSERT, DELETE ON conversations TO {_APP_ROLE}")
+    # A message is written when the question is asked and completed with its answer.
+    op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON messages TO {_APP_ROLE}")
     _protect("conversations")
     _protect("messages")
 

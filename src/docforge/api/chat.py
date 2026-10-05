@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field, field_validator
 
@@ -17,6 +17,7 @@ from docforge.chat.service import (
     ConversationNotFound,
     DocumentNotFound,
     QuestionLimitReached,
+    ScopeConflict,
 )
 from docforge.llm.base import LLMError
 
@@ -101,6 +102,9 @@ def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
             ) from error
         except (ConversationNotFound, DocumentNotFound) as error:
             raise HTTPException(404, "Not found.") from error
+        except ScopeConflict as error:
+            message = "A conversation keeps the document it began with; start a new one."
+            raise HTTPException(422, message) from error
         except LLMError as error:
             raise HTTPException(503, _UNAVAILABLE) from error
         return AnswerOut(
@@ -140,5 +144,14 @@ def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
                 for m in messages
             ],
         )
+
+    @router.delete("/conversations/{conversation_id}", status_code=204)
+    def delete_conversation(conversation_id: uuid.UUID, principal: Reader) -> Response:
+        """The conversation and every question and answer in it, deleted for good."""
+        try:
+            chat.delete(principal.tenant_id, principal.actor, conversation_id)
+        except ConversationNotFound as error:
+            raise HTTPException(404, "Not found.") from error
+        return Response(status_code=204)
 
     return router

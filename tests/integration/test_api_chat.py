@@ -123,5 +123,9 @@ def test_a_follow_up_naming_another_document_is_refused(sessions: SessionFactory
     api = client(sessions, role="reviewer", reviewer_id=uuid.uuid4())
     conversation_id = api.post("/v1/chat", json={"question": "Total?"}).json()["conversation_id"]
 
-    follow_up = {"question": "More?", "conversation_id": conversation_id, "document_id": str(uuid.uuid4())}
+    follow_up = {
+        "question": "More?",
+        "conversation_id": conversation_id,
+        "document_id": str(uuid.uuid4()),
+    }
     assert api.post("/v1/chat", json=follow_up).status_code == 422

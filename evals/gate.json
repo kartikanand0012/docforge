@@ -249,7 +249,7 @@
     "path": "answered_correctly",
     "op": ">=",
     "value": 0.93,
-    "why": "answerable questions answered with the right value (31 of 32 measured)"
+    "why": "answerable questions answered with the right value and no other figure (39 of 40 measured)"
   },
   {
     "report": "answers",
@@ -297,7 +297,7 @@
     "report": "answers",
     "path": "questions",
     "op": "==",
-    "value": 56,
+    "value": 64,
     "why": "the question set the floors were set on"
   },
   {
@@ -313,5 +313,12 @@
     "op": "==",
     "value": "chat-1",
     "why": "a prompt change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "answers",
+    "path": "answered_unanswerable",
+    "op": "<=",
+    "value": 0,
+    "why": "never an answer, with quotes, to what the documents do not say"
   }
 ]

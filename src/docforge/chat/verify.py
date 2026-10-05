@@ -32,9 +32,31 @@ def normalise(text: str) -> str:
     return re.sub(r"\s+", " ", folded).strip()
 
 
+def _found(wanted: str, text: str) -> bool:
+    """`wanted` in `text`, starting and ending on a boundary: "5,000.00" is not in
+    "15,000.00", nor "release" in "released"."""
+    start = text.find(wanted)
+    while start != -1:
+        end = start + len(wanted)
+        before_ok = not wanted[0].isalnum() or start == 0 or not text[start - 1].isalnum()
+        after_ok = not wanted[-1].isalnum() or end == len(text) or not text[end].isalnum()
+        if before_ok and after_ok:
+            return True
+        start = text.find(wanted, start + 1)
+    return False
+
+
+def _meaningful(wanted: str) -> bool:
+    """Enough to show something: a value (with a digit), a phrase, or a long word. A lone
+    common word such as "page" or "Date" is in too many passages to show anything."""
+    if len(wanted) < _MIN_QUOTE:
+        return False
+    return any(c.isdigit() for c in wanted) or len(wanted.split()) >= 2 or len(wanted) >= 12
+
+
 def quote_in(quote: str, passage: str) -> bool:
     wanted = normalise(quote)
-    return len(wanted) >= _MIN_QUOTE and wanted in normalise(passage)
+    return _meaningful(wanted) and _found(wanted, normalise(passage))
 
 
 def cited_blocks(quote: str, blocks: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
@@ -48,9 +70,11 @@ def cited_blocks(quote: str, blocks: Sequence[Mapping[str, Any]]) -> list[Mappin
         text = normalise(str(block.get("text", "")))
         if not text:
             continue
-        # A label such as "Batch" is in many quotes; a value or a phrase places the quote.
-        meaningful = len(text) >= _MIN_INSIDE or any(c.isdigit() for c in text)
-        inside = meaningful and text in wanted
-        if inside or wanted in text or any(run in text for run in runs):
+        # A label such as "Batch" is in many quotes, and a line number "1" in any amount;
+        # a value or a phrase places the quote.
+        has_digit = any(c.isdigit() for c in text)
+        meaningful = len(text) >= _MIN_INSIDE or (has_digit and len(text) >= 2)
+        inside = meaningful and _found(text, wanted)
+        if inside or _found(wanted, text) or any(_found(run, text) for run in runs):
             found.append(block)
     return found

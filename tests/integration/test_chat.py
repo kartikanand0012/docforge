@@ -276,7 +276,9 @@ def test_the_limit_holds_when_questions_arrive_together(setup: Setup) -> None:
 def test_one_person_cannot_use_up_the_organisations_day(
     sessions: SessionFactory, setup: Setup
 ) -> None:
-    chat = ChatService(sessions, setup.search, setup.model, daily_limit=10, daily_limit_per_person=2)
+    chat = ChatService(
+        sessions, setup.search, setup.model, daily_limit=10, daily_limit_per_person=2
+    )
     for _ in range(2):
         chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Bank account?")
     with pytest.raises(QuestionLimitReached):
@@ -301,7 +303,9 @@ def test_a_follow_up_cannot_switch_to_another_document(setup: Setup) -> None:
     first = setup.ask("What is the invoice number?", document_id=setup.invoice_id)
 
     with pytest.raises(ScopeConflict):
-        setup.ask("And this one?", conversation_id=first.conversation_id, document_id=setup.order_id)
+        setup.ask(
+            "And this one?", conversation_id=first.conversation_id, document_id=setup.order_id
+        )
 
 
 def test_a_person_can_delete_their_conversation(setup: Setup) -> None:

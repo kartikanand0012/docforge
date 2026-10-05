@@ -16,11 +16,18 @@ export default function GeneralDocument({ summary }: { summary: DocumentSummary 
 
   const [problem, setProblem] = useState<string | null>(null);
   const [cited, setCited] = useState<Citation | null>(null);
+  const [said, setSaid] = useState("");
   const latest = useRef(0);
 
   // A source chosen in the chat: its page is brought into view with the quote outlined.
   const cite = useCallback((citation: Citation) => {
     setCited(citation);
+    const placed = citationMarks(citation.boxes, citation.page).length > 0;
+    // Set in the handler, into a live region that is always there, so it is announced
+    // each time, the same source twice included.
+    setSaid(
+      `${placed ? "The quote is outlined" : "The quote is"} on page ${citation.page}${placed ? "" : "; its place on the page is not known"}. ${new Date().toLocaleTimeString()}`,
+    );
     document.getElementById(`page-${citation.page}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
@@ -56,18 +63,17 @@ export default function GeneralDocument({ summary }: { summary: DocumentSummary 
         )}
         {d.ready_for_chat && <p className="notice ok">Read and indexed: it can be searched and asked about.</p>}
       </div>
-      {d.ready_for_chat && <Chat documentId={d.id} onCite={cite} />}
-      {cited && (
-        <p className="sr-only" aria-live="polite">
-          The quote is outlined on page {cited.page}.
-        </p>
-      )}
+      {d.ready_for_chat && <Chat key={d.id} documentId={d.id} onCite={cite} />}
+      <p className="sr-only" aria-live="polite">
+        {said}
+      </p>
       {(d.page_count ?? 0) > 0 && (
         <section aria-label="Pages of the document">
           {Array.from({ length: d.page_count ?? 0 }, (_, n) => n + 1).map((page) => (
             <figure key={page} id={`page-${page}`} className="page">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={api.pageUrl(d.id, page)} alt={`Page ${page} of ${d.filename}`} loading="lazy" />
+              {/* Not lazy: a cited page is scrolled to, and must be where it will stay. */}
+              {/* eslint-disable-next-line @next/next/no-img-element -- served by the API */}
+              <img src={api.pageUrl(d.id, page)} alt={`Page ${page} of ${d.filename}`} />
               {cited &&
                 citationMarks(cited.boxes, page).map((style, i) => (
                   <span key={i} className="mark selected cited" style={style} data-quote={cited.quote} aria-hidden="true" />
