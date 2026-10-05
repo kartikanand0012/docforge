@@ -5,7 +5,8 @@ from importlib import import_module
 from docforge.config import Settings
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService, Pipeline
-from docforge.extraction.pipeline import InvoicePipeline
+from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
+from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.llm.gemini import GeminiProvider
 from docforge.parsing.docling_parser import DoclingParser
 from docforge.queue import JobQueue
@@ -21,7 +22,12 @@ def build_pipeline(settings: Settings) -> InvoicePipeline:
 
 def build_pipelines(settings: Settings) -> dict[str, Pipeline]:
     """One pipeline per document type. A new type is added by registering it here."""
-    return {"invoice": build_pipeline(settings)}
+    invoice = build_pipeline(settings)
+    # The parser and the provider are shared: the parser's models are loaded once.
+    order = ExtractionPipeline(
+        invoice.parser, invoice.provider, PURCHASE_ORDER_SPEC, max_pages=settings.max_pages
+    )
+    return {"invoice": invoice, "purchase_order": order}
 
 
 def load_pipelines(settings: Settings) -> dict[str, Pipeline]:

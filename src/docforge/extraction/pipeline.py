@@ -1,8 +1,15 @@
-"""Parse, extract, normalise: one invoice PDF to one typed record."""
+"""Parse, extract, normalise: one PDF to one typed record.
 
+The pipeline is the same for every document type. What differs is the `DocumentSpec`:
+the shape the model must reply in, the instruction it is given, and the code that turns
+its printed strings into typed values.
+"""
+
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
+from typing import Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from docforge.extraction.normalize import normalize_invoice
 from docforge.extraction.prompt import PROMPT_VERSION, SYSTEM_INSTRUCTION, build_prompt
@@ -10,6 +17,9 @@ from docforge.extraction.schema import InvoiceExtraction, RawInvoice
 from docforge.llm.base import LLMProvider, LLMRequest, LLMResponse
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, Parser
 from docforge.parsing.pdf import pdf_page_count
+from docforge.trust.assess import Assessment, assess
+from docforge.trust.invoice_rules import INVOICE_RULES
+from docforge.trust.rules import RuleResult
 
 DEFAULT_MAX_PAGES = 20
 DEFAULT_MAX_PROMPT_CHARS = 200_000  # far above any invoice; bounds model cost per request
@@ -24,11 +34,26 @@ class ExtractionError(Exception):
 
 
 @dataclass(frozen=True)
-class PipelineResult:
+class DocumentSpec[E: BaseModel]:
+    """Everything that is specific to one document type."""
+
+    doc_type: str
+    raw_schema: type[BaseModel]  # what the model returns: printed strings and block ids
+    system_instruction: str
+    prompt_version: str  # change whenever the instruction changes
+    schema_version: str
+    normalize: Callable[[Any, ParsedDocument], E]  # printed strings to typed values, in code
+    rules: tuple[Callable[[E], Iterable[RuleResult]], ...] = ()  # deterministic checks
+
+
+@dataclass(frozen=True)
+class PipelineResult[E: BaseModel]:
     parsed: ParsedDocument
-    extraction: InvoiceExtraction
+    extraction: E
     responses: tuple[LLMResponse, ...]  # one per model call, in order
-    prompt_version: str = PROMPT_VERSION
+    prompt_version: str
+    schema_version: str
+    assessment: Assessment  # what was checked and whether a person must look
 
 
 def _describe(error: ValidationError) -> str:
@@ -39,27 +64,29 @@ def _describe(error: ValidationError) -> str:
     )
 
 
-class InvoicePipeline:
+class ExtractionPipeline[E: BaseModel]:
     def __init__(
         self,
         parser: Parser,
         provider: LLMProvider,
+        spec: DocumentSpec[E],
         max_pages: int = DEFAULT_MAX_PAGES,
         max_prompt_chars: int = DEFAULT_MAX_PROMPT_CHARS,
     ) -> None:
         self.parser = parser
         self.provider = provider
+        self.spec = spec
         self.max_pages = max_pages
         self.max_prompt_chars = max_prompt_chars
 
-    def run(self, pdf: bytes) -> PipelineResult:
+    def run(self, pdf: bytes) -> PipelineResult[E]:
         """Raises `ParseError`, `LLMError` or `ExtractionError`."""
         pages = pdf_page_count(pdf)
         if pages > self.max_pages:
             raise DocumentTooLarge(f"document has {pages} pages; the limit is {self.max_pages}")
         return self.extract(self.parser.parse(pdf))
 
-    def extract(self, parsed: ParsedDocument) -> PipelineResult:
+    def extract(self, parsed: ParsedDocument) -> PipelineResult[E]:
         """Extraction from an already parsed document. One retry if the reply is malformed.
 
         Raises `NoTextLayer`, `DocumentTooLarge`, `LLMError` or `ExtractionError`.
@@ -72,15 +99,16 @@ class InvoicePipeline:
             raise DocumentTooLarge(
                 f"document text is {len(prompt)} characters; the limit is {self.max_prompt_chars}"
             )
+        spec = self.spec
         request = LLMRequest(
-            system=SYSTEM_INSTRUCTION,
+            system=spec.system_instruction,
             prompt=prompt,
-            schema=RawInvoice,
-            prompt_version=PROMPT_VERSION,
+            schema=spec.raw_schema,
+            prompt_version=spec.prompt_version,
         )
         first = self.provider.generate(request)
         try:
-            raw = RawInvoice.model_validate_json(first.text)
+            raw = spec.raw_schema.model_validate_json(first.text)
             responses: tuple[LLMResponse, ...] = (first,)
         except ValidationError as error:
             retry = replace(
@@ -91,11 +119,41 @@ class InvoicePipeline:
             second = self.provider.generate(retry)
             responses = (first, second)
             try:
-                raw = RawInvoice.model_validate_json(second.text)
+                raw = spec.raw_schema.model_validate_json(second.text)
             except ValidationError as second_error:
                 raise ExtractionError(
                     "model reply did not fit the schema after one retry", responses
                 ) from second_error
+        extraction = spec.normalize(raw, parsed)
         return PipelineResult(
-            parsed=parsed, extraction=normalize_invoice(raw, parsed), responses=responses
+            parsed=parsed,
+            extraction=extraction,
+            responses=responses,
+            prompt_version=spec.prompt_version,
+            schema_version=spec.schema_version,
+            assessment=assess(extraction, parsed, spec.rules),
         )
+
+
+INVOICE_SPEC = DocumentSpec(
+    doc_type="invoice",
+    raw_schema=RawInvoice,
+    system_instruction=SYSTEM_INSTRUCTION,
+    prompt_version=PROMPT_VERSION,
+    schema_version="invoice-1",
+    normalize=normalize_invoice,
+    rules=INVOICE_RULES,
+)
+
+
+class InvoicePipeline(ExtractionPipeline[InvoiceExtraction]):
+    """The pipeline with the invoice spec."""
+
+    def __init__(
+        self,
+        parser: Parser,
+        provider: LLMProvider,
+        max_pages: int = DEFAULT_MAX_PAGES,
+        max_prompt_chars: int = DEFAULT_MAX_PROMPT_CHARS,
+    ) -> None:
+        super().__init__(parser, provider, INVOICE_SPEC, max_pages, max_prompt_chars)

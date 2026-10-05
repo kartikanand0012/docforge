@@ -12,6 +12,7 @@ from pathlib import Path
 from docforge.config import get_settings
 from docforge.evals.run import format_report, record_pipeline, replay_pipeline, run_eval
 from docforge.evals.scoring import DocumentScore
+from docforge.evals.trust import format_trust_report, run_trust_eval, trust_pipelines
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import ParseError
 
@@ -25,16 +26,26 @@ def _progress(score: DocumentScore) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     settings = get_settings()
     parser = argparse.ArgumentParser(prog="python -m docforge.evals", description=__doc__)
+    parser.add_argument("--suite", choices=("extraction", "trust"), default="extraction")
     parser.add_argument("--mode", choices=("replay", "record"), default="replay")
     parser.add_argument("--fixtures", type=Path, default=Path("tests/fixtures/synthetic"))
     parser.add_argument("--recordings", type=Path, default=Path("tests/fixtures/recorded"))
-    parser.add_argument("--out", type=Path, default=Path("evals/baselines/invoice.json"))
+    parser.add_argument("--seeded", type=Path, default=Path("tests/fixtures/seeded"))
+    parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--model", default=settings.gemini_model)
     args = parser.parse_args(argv)
 
+    out = args.out or Path(
+        "evals/baselines/trust.json" if args.suite == "trust" else "evals/baselines/invoice.json"
+    )
+    if args.mode == "record" and settings.gemini_api_key is None:
+        parser.error("record mode needs GEMINI_API_KEY")
+    if args.suite == "trust":
+        secret = settings.gemini_api_key if args.mode == "record" else None
+        key = secret.get_secret_value() if secret is not None else None
+        return _trust(args, out, key)
     if args.mode == "record":
-        if settings.gemini_api_key is None:
-            parser.error("record mode needs GEMINI_API_KEY")
+        assert settings.gemini_api_key is not None  # noqa: S101 - checked above
         pipeline = record_pipeline(
             args.recordings, args.model, settings.gemini_api_key.get_secret_value()
         )
@@ -53,10 +64,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("Recordings are missing or stale; run `make eval-record`.", file=sys.stderr)
         return 1
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
     print(format_report(report))
-    print(f"Report written to {args.out}")
+    print(f"Report written to {out}")
+    return 0
+
+
+def _trust(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
+    invoices, orders = trust_pipelines(args.recordings, args.model, api_key)
+    try:
+        report = run_trust_eval(args.fixtures, args.seeded, invoices, orders)
+    except LLMQuotaExhausted as error:
+        print(f"Stopped: {error}", file=sys.stderr)
+        print("Replies so far are recorded; run `make eval-record` again later.", file=sys.stderr)
+        return 2
+    except (ParseError, LLMError) as error:
+        print(f"Eval failed: {error}", file=sys.stderr)
+        if api_key is None:
+            print("Recordings are missing or stale; run `make eval-record`.", file=sys.stderr)
+        return 1
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    print(format_trust_report(report))
+    print(f"Report written to {out}")
     return 0
 
 

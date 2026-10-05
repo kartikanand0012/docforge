@@ -109,7 +109,27 @@ def parse_place_of_supply(raw: str) -> tuple[str | None, str | None]:
     return text, None
 
 
-class _Normalizer:
+def product_name(position: int) -> Callable[[str], str | None]:
+    """Parser for the product of line `position` (1-based).
+
+    Parsers often merge the serial-number column into the product cell ("3 Cetirizine
+    Tablets"), and the model may copy both. A leading number equal to the line's own
+    position is dropped; any other leading number is part of the name.
+    """
+    prefix = f"{position} "
+
+    def parse(raw: str) -> str | None:
+        text = clean_text(raw)
+        if text and text.startswith(prefix) and len(text) > len(prefix):
+            return text[len(prefix) :]
+        return text
+
+    return parse
+
+
+class Normalizer:
+    """Converts raw fields for one document, collecting issues as it goes."""
+
     def __init__(self, parsed: ParsedDocument) -> None:
         self._known = {block.id for block in parsed.blocks}
         self.issues: list[Issue] = []
@@ -149,9 +169,11 @@ class _Normalizer:
             ),
         )
 
-    def line(self, path: str, raw: RawLine) -> LineExtraction:
+    def line(self, path: str, raw: RawLine, position: int) -> LineExtraction:
         return LineExtraction(
-            product_name=self.field(f"{path}.product_name", raw.product_name, clean_text),
+            product_name=self.field(
+                f"{path}.product_name", raw.product_name, product_name(position)
+            ),
             pack=self.field(f"{path}.pack", raw.pack, clean_text),
             hsn=self.field(f"{path}.hsn", raw.hsn, clean_text),
             batch_no=self.field(f"{path}.batch_no", raw.batch_no, clean_text),
@@ -180,7 +202,7 @@ class _Normalizer:
 
 def normalize_invoice(raw: RawInvoice, parsed: ParsedDocument) -> InvoiceExtraction:
     """Convert the model's printed strings to typed values and check its citations exist."""
-    normalizer = _Normalizer(parsed)
+    normalizer = Normalizer(parsed)
     if not raw.lines:
         normalizer.issues.append(
             Issue(path="lines", code="no_line_items", message="no line items were extracted")
@@ -197,7 +219,8 @@ def normalize_invoice(raw: RawInvoice, parsed: ParsedDocument) -> InvoiceExtract
         seller=normalizer.party("seller", raw.seller),
         buyer=normalizer.party("buyer", raw.buyer),
         lines=tuple(
-            normalizer.line(f"lines[{index}]", line) for index, line in enumerate(raw.lines)
+            normalizer.line(f"lines[{index}]", line, index + 1)
+            for index, line in enumerate(raw.lines)
         ),
         totals=normalizer.totals(raw.totals),
         issues=tuple(normalizer.issues),

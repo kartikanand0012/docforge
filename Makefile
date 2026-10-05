@@ -44,9 +44,12 @@ format: ## Auto-format and fix lint
 
 generate: ## Regenerate the synthetic invoice/PO pairs with ground truth
 	uv run python -m docforge.synth --count $(SYNTH_COUNT) --seed $(SYNTH_SEED) --out $(SYNTH_DIR)
+	uv run python -m docforge.synth --seeded --out tests/fixtures/seeded
 
 eval: ## Re-run the invoice eval offline from recordings and rewrite the baseline report
 	uv run python -m docforge.evals --mode replay
+	uv run python -m docforge.evals --suite trust --mode replay
 
 eval-record: ## Run the eval live for anything not yet recorded (needs GEMINI_API_KEY; resumable)
 	uv run python -m docforge.evals --mode record
+	uv run python -m docforge.evals --suite trust --mode record

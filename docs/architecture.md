@@ -103,6 +103,13 @@ All tenant tables carry `tenant_id` and are protected by row-level security.
 | `chunks` | Text, embedding, `tsvector`, block references |
 | `webhook_deliveries` | Outbound events with retry state |
 
+As built in C3: verification, rule results and the accept/review decision are stored as one JSON
+document per version in `assessments`, and each invoice-to-order comparison as one row in `matches`
+holding its discrepancies. Both are immutable. The per-field `fields`, `validations` and
+`discrepancies` tables above arrive with review (C5), when a field needs its own status and
+history. The decision has two levels with reasons; there is no numeric confidence until there are
+reviewer outcomes to calibrate one against.
+
 `audit_log` is append-only and hash-chained per tenant. As built in C2: database triggers reject
 UPDATE, DELETE and TRUNCATE, each entry may have only one successor, and each entry stores the hash
 of the one before it, so an entry edited or removed from the middle is evident when the chain is

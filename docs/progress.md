@@ -2,6 +2,139 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C3 Trust layer (2026-10-03): gate passed
+
+Branch `c3-trust-layer`, PR #4.
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Every field links to a page box | Pass | Each extracted value carries the blocks it cites, and the stored assessment gives each one its page and box. `GET /v1/documents/{id}/assessment` serves them (`tests/integration/test_assessment.py`). On the 20 invoices, 99.15% of values cite a block that covers the labelled position (unchanged from C1) |
+| Seeded errors (wrong batch, bad arithmetic, expired stock) are all caught | Pass | 9 seeded cases, each a correct pair with one defect and a stated list of findings it must produce. Run through the real parser and the live model, then replayed offline in CI: 9 of 9 cases caught, 12 of 12 expected findings (`evals/baselines/trust.json`, `tests/unit/test_eval_trust.py`) |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Seeded cases caught | 9 of 9 (bad line amount, bad grand total, expired stock, PTR above MRP, bad GSTIN, quantity over order, rate over order, short free quantity, wrong batch) |
+| Expected findings produced | 12 of 12 |
+| Findings beyond those expected on seeded cases | 4, all citations of a neighbouring cell for the grand total or round-off |
+| Correct pairs accepted with no review | 12 of 20 |
+| Values flagged on correct documents | 21 of about 2,470; every one is a correct value whose citation points at a neighbouring block |
+| Invoice extraction baseline | Unchanged: 2472 of 2472 printed fields correct |
+| Model calls for the trust eval | 58 (40 clean documents, 18 seeded), recorded once, replayed in CI |
+| Tests | 1,084 passed (909 unit, 149 integration, 26 Docling) |
+| Coverage | 95% |
+
+The 12 of 20 figure is the important limit. No correct document had a wrong value, but 8 of 20
+would have gone to a person because the model cited the cell next to the right one. On this data
+the review rate for correct documents is therefore 40%, which is too high to sell as
+"straight-through". Two ways to bring it down, neither applied yet: accept a value found in a
+block adjacent to the cited one in the same table row (weaker evidence, needs a decision), or
+improve the citations themselves (prompt, or table-by-table extraction in C4).
+
+These numbers are from 20 synthetic, born-digital, single-page pairs in two layouts. They say
+nothing yet about scans or real documents.
+
+### What was built
+
+- `trust/verify.py`: each value's printed string must appear in the text of the blocks it cites,
+  as a whole token. Statuses: verified, not in cited blocks (with where it was found instead), no
+  citation.
+- `trust/rules.py`, `trust/invoice_rules.py`: 13 deterministic rules with an id, a version and a
+  severity. A rule with a missing input reports "not evaluated", not "failed".
+- `trust/match.py`: invoice against purchase order: order number, parties, dates, and per line
+  quantity, rate, pack and free quantity against the ordered scheme.
+- `trust/assess.py`: one assessment per version: accept or review, with reasons.
+- A second document type, the purchase order, through the same generic pipeline
+  (`DocumentSpec`). Adding a type is a schema, a prompt, a normaliser and its rules.
+- Stored `assessments` and `matches` (migration 0004), immutable like extractions, each written
+  to the audit log. Migration 0005 ties every record's tenant to its version's tenant. Matching runs automatically whichever of the two documents arrives second.
+- `synth/seeded.py` and `tests/fixtures/seeded/`: the seeded-defect set. `evals/trust.py`: the
+  trust eval. `make eval` replays both evals offline.
+
+### What "accept" means
+
+`accept` means every value was found in the text it cites and no rule failed. It does not mean
+the document is genuine: a forged but self-consistent invoice passes its own checks. For that
+reason an invoice with no order on file is `review`, and the API reports `match_status`
+(`match`, `mismatch`, `no_counterpart`) next to the decision.
+
+### Departures from the plan
+
+- No numeric field confidence. The plan said "field confidence"; what is built is two levels
+  (accept, review) with reasons. A number would not be calibrated against anything until there
+  are reviewer outcomes to calibrate it on (C5 onward).
+- Results are stored as one JSON document per version (`assessments.data`, `matches.data`), not
+  as the `fields`, `validations` and `discrepancies` tables in the architecture. Per-field rows
+  come with review in C5, when a field needs its own status and history.
+- Only the invoice-to-order match. The certificate of analysis is C7.
+
+### Review (ECC python-reviewer and security-reviewer, two rounds; database-reviewer)
+
+No secret exposure and no path across tenants was found. The first round found that "accept"
+could be earned too easily. Fixed, tests first:
+
+- A short number such as "5" verified against any block containing a 5. It must now be the whole
+  cited block, or one of the numbers in a block that holds only numbers (the parser sometimes
+  merges two numeric cells).
+- A number verified against its negative or bracketed form, and could be assembled from pieces
+  of two cited blocks. An empty value could verify.
+- Two lines of the same product (two batches) were paired through a dictionary, so one was lost.
+  Names differing only in case or spacing did not pair.
+- An ordered line missing from the invoice, and a value that could not be compared, were
+  warnings. Both now need review.
+- A blank free quantity against an ordered scheme was not reported.
+- A missing batch number on a line was not an error. A blank discount stopped the line
+  arithmetic from being checked.
+- The counterpart was found by order number alone, so another supplier's order with the same
+  number matched, and a superseded version could be the counterpart.
+- Page text that looks like a block id (`[b9]`) could pass for one in the prompt.
+
+The second round, on the fixes, found four more, each reproduced with a failing test first:
+
+- "05/29" verified inside "05/29/2028".
+- With two lines of one product at the same quantity, pairing took the first, so a pair listed
+  in the opposite order produced two false rate discrepancies.
+- An order line with no readable product was silently skipped.
+- After an order was read again and no longer matched, the invoice still showed the comparison
+  with the old reading.
+
+The database review (run on migration 0004 and the new queries) found that nothing made a
+record's `tenant_id` agree with the tenant of the version it points at, in the C2 tables as well
+as the new ones. Reproduced with a failing test, then fixed in migration 0005: composite foreign
+keys from every record to its version and from every version to its document; a match must pair
+an invoice version with a purchase-order version; an expression index for the order-number
+lookup and an index on documents by type. The first spelling of the lookup in code would not
+have used the new index (SQLAlchemy wrote it as a subscript, the index used `->`); the
+expression is now defined once and a test checks the plan. The review found no race in matching
+and no fault in the migration's upgrade or downgrade.
+
+Recorded, not fixed:
+
+- The application still connects as the database owner, so it could disable the immutability
+  triggers. A restricted role is C6, as already planned.
+- If the matching step fails after the extraction has committed (a database error, say), the
+  error is logged and the match is not retried. Reprocessing either document repeats it. A
+  reconcile job belongs with operations in C8.
+- Documents extracted before C3 have no assessment until they are reprocessed; the API answers
+  that there is none yet.
+
+- A short number sharing its cell with a label ("Qty: 1") is not verified. It goes to review,
+  which is the safe direction, at the cost of review load on layouts that print labels in cells.
+- Within a block of merged numeric cells, verification cannot tell which number is which. A
+  swapped discount and tax rate would be caught by the arithmetic rules, not by verification.
+- The counterpart search looks at the 20 newest documents with the same order number and filters
+  by party in code. More than 20 would hide the real one; the result is review.
+- Line pairing is greedy, not an optimal assignment.
+
+### Not verified
+
+- Scanned or real documents (C4 and later).
+- That the 40% review rate on correct documents holds beyond these two layouts.
+- Behaviour with many documents sharing an order number.
+
 ## C2 Async and durable (2026-10-02): gate passed
 
 Branch `c2-async-durable`, PR #3.

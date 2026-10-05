@@ -19,31 +19,41 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal, Protocol
+from typing import Any, Literal, Protocol
 
-from sqlalchemy import func, select
+from pydantic import BaseModel
+from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from docforge import audit
 from docforge.db.models import (
+    ORDER_NUMBER,
+    AssessmentRecord,
     AuditEntry,
     Document,
     DocumentVersion,
     Extraction,
+    MatchRecord,
     ModelRun,
     ParseOutput,
 )
 from docforge.db.session import SessionFactory
 from docforge.extraction.pipeline import ExtractionError, PipelineResult
+from docforge.extraction.purchase_order import PurchaseOrderExtraction
+from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParseError
 from docforge.storage import ObjectNotFound, ObjectStore, StorageUnavailable, original_key
+from docforge.trust.match import match_invoice_to_order
 
 logger = logging.getLogger(__name__)
 
 WORKER = "system:worker"
 IN_FLIGHT = ("queued", "running")
+# Document types that are compared with each other once both are extracted, joined on the
+# order number each carries.
+_COUNTERPART = {"invoice": "purchase_order", "purchase_order": "invoice"}
 Outcome = Literal["succeeded", "failed", "skipped"]
 
 
@@ -72,7 +82,7 @@ class TransientProcessingError(Exception):
 
 
 class Pipeline(Protocol):
-    def run(self, pdf: bytes) -> PipelineResult: ...
+    def run(self, pdf: bytes) -> PipelineResult[BaseModel]: ...
 
 
 # Called inside the transaction that creates the version, so the job exists only if the
@@ -94,10 +104,46 @@ class DocumentDetail:
 
 
 @dataclass(frozen=True)
+class AssessmentDetail:
+    version: DocumentVersion
+    record: AssessmentRecord
+    match: MatchRecord | None  # the newest comparison involving this version, if any
+    counterpart_document_id: uuid.UUID | None
+    doc_type: str
+
+    @property
+    def match_status(self) -> str:
+        """`match`, `mismatch`, or `no_counterpart` when nothing is on file to compare with."""
+        return "no_counterpart" if self.match is None else self.match.decision
+
+    @property
+    def decision(self) -> str:
+        """`review` if the document's own checks or its match say so.
+
+        An invoice with no order on file is also `review`: its own checks can pass on a
+        forged but self-consistent document, so nothing independent supports it yet.
+        """
+        unsupported = self.doc_type == "invoice" and self.match is None
+        mismatch = self.match_status == "mismatch"
+        own = self.record.decision == "review"
+        return "review" if own or mismatch or unsupported else "accept"
+
+
+@dataclass(frozen=True)
 class ExtractionDetail:
     version: DocumentVersion
     extraction: Extraction
     model_runs: list[ModelRun]
+
+
+_MATCH_CANDIDATES = 20
+
+
+def _parties(data: Mapping[str, Any], *, invoice: bool) -> tuple[object, object]:
+    """(supplier GSTIN, buyer GSTIN) from a stored invoice or purchase-order extraction."""
+    supplier = (data.get("seller") or {}).get("gstin") if invoice else data.get("supplier_gstin")
+    buyer = (data.get("buyer") or {}).get("gstin")
+    return (supplier or {}).get("value") or None, (buyer or {}).get("value") or None
 
 
 def _now() -> datetime:
@@ -287,9 +333,18 @@ class DocumentService:
         except Exception as error:
             logger.exception("unexpected error processing version %s", version_id)
             return self._retry_or_fail(version_id, turn, "Internal error.", error, final)
-        return self._complete(version_id, turn, result)
+        outcome = self._complete(version_id, turn, result)
+        if outcome == "succeeded":
+            try:
+                self._match(version_id)
+            except Exception:
+                # The extraction is stored; a failed comparison must not fail the job.
+                logger.exception("could not match version %s with its counterpart", version_id)
+        return outcome
 
-    def _complete(self, version_id: uuid.UUID, turn: int, result: PipelineResult) -> Outcome:
+    def _complete(
+        self, version_id: uuid.UUID, turn: int, result: PipelineResult[BaseModel]
+    ) -> Outcome:
         data = result.extraction.model_dump(mode="json")
         sha256 = hashlib.sha256(audit.canonical_json(data).encode("utf-8")).hexdigest()
         with self._sessions.begin() as session:
@@ -308,7 +363,7 @@ class DocumentService:
                 Extraction(
                     tenant_id=version.tenant_id,
                     document_version_id=version.id,
-                    schema_version=result.extraction.schema_version,
+                    schema_version=result.schema_version,
                     data=data,
                     sha256=sha256,
                 )
@@ -328,11 +383,20 @@ class DocumentService:
                         latency_ms=response.latency_ms,
                     )
                 )
+            assessment = result.assessment
+            session.add(
+                AssessmentRecord(
+                    tenant_id=version.tenant_id,
+                    document_version_id=version.id,
+                    decision=assessment.decision,
+                    data=assessment.model_dump(mode="json"),
+                )
+            )
             model = result.responses[-1].model
             version.status = "succeeded"
             version.finished_at = _now()
             version.parser_version = f"{result.parsed.parser} {result.parsed.parser_version}"
-            version.schema_version = result.extraction.schema_version
+            version.schema_version = result.schema_version
             version.prompt_version = result.prompt_version
             version.model_id = model
             document.status = "extracted"
@@ -347,7 +411,107 @@ class DocumentService:
                 model=model,
                 model_calls=len(result.responses),
             )
+            self._audit(
+                session,
+                document,
+                WORKER,
+                "assessment.created",
+                version_no=version.version_no,
+                decision=assessment.decision,
+                values_flagged=sum(field.needs_review for field in assessment.fields),
+                checks_failed=sum(
+                    rule.outcome == "failed" and rule.severity == "error"
+                    for rule in assessment.rules
+                ),
+            )
         return "succeeded"
+
+    def _match(self, version_id: uuid.UUID) -> None:
+        """Compare a newly extracted invoice or order with its counterpart, if one is stored.
+
+        Runs after the extraction has committed, so whichever of the two finishes second
+        sees the other. If both run at once, the unique pair keeps a single record.
+        """
+        with self._sessions.begin() as session:
+            version = session.get_one(DocumentVersion, version_id)
+            document = session.get_one(Document, version.document_id)
+            other_type = _COUNTERPART.get(document.doc_type)
+            mine = session.scalar(
+                select(Extraction).where(Extraction.document_version_id == version.id)
+            )
+            if other_type is None or mine is None:
+                return
+            order_number = (mine.data.get("po_no") or {}).get("value")
+            if order_number is None:
+                return
+            # Only a document's newest version is a candidate, never a superseded one.
+            newer = aliased(DocumentVersion)
+            newest = (
+                select(func.max(newer.version_no))
+                .where(newer.document_id == Document.id)
+                .correlate(Document)
+                .scalar_subquery()
+            )
+            candidates = session.execute(
+                select(DocumentVersion, Extraction, Document)
+                .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
+                .join(Document, Document.id == DocumentVersion.document_id)
+                .where(
+                    Document.tenant_id == document.tenant_id,
+                    Document.doc_type == other_type,
+                    DocumentVersion.version_no == newest,
+                    order_number == ORDER_NUMBER,
+                )
+                .order_by(DocumentVersion.created_at.desc())
+                .limit(_MATCH_CANDIDATES)
+            ).all()
+            is_invoice = document.doc_type == "invoice"
+            # The order number alone is whatever the document says. The two must also name
+            # the same supplier and buyer before they are treated as a pair.
+            parties = _parties(mine.data, invoice=is_invoice)
+            found = next(
+                (
+                    row
+                    for row in candidates
+                    if None not in parties
+                    and _parties(row[1].data, invoice=not is_invoice) == parties
+                ),
+                None,
+            )
+            if found is None:
+                return
+            other_version, theirs, other_document = found
+            invoice_side = (version, mine) if is_invoice else (other_version, theirs)
+            order_side = (other_version, theirs) if is_invoice else (version, mine)
+            discrepancies = match_invoice_to_order(
+                InvoiceExtraction.model_validate(invoice_side[1].data),
+                PurchaseOrderExtraction.model_validate(order_side[1].data),
+            )
+            decision = "mismatch" if any(d.severity == "error" for d in discrepancies) else "match"
+            inserted = session.execute(
+                insert(MatchRecord)
+                .values(
+                    tenant_id=document.tenant_id,
+                    invoice_version_id=invoice_side[0].id,
+                    order_version_id=order_side[0].id,
+                    decision=decision,
+                    data={"discrepancies": [d.model_dump(mode="json") for d in discrepancies]},
+                )
+                .on_conflict_do_nothing(index_elements=["invoice_version_id", "order_version_id"])
+                .returning(MatchRecord.id)
+            ).scalar_one_or_none()
+            if inserted is None:
+                return
+            for subject, counterpart in ((document, other_document), (other_document, document)):
+                self._audit(
+                    session,
+                    subject,
+                    WORKER,
+                    "match.created",
+                    counterpart_document_id=str(counterpart.id),
+                    decision=decision,
+                    discrepancies=len(discrepancies),
+                )
 
     def _fail(self, version_id: uuid.UUID, turn: int, message: str) -> Outcome:
         """A failure that retrying will not fix. `message` is safe to show to a client."""
@@ -436,6 +600,55 @@ class DocumentService:
                 .order_by(ModelRun.call_no)
             )
             return ExtractionDetail(version, extraction, list(runs))
+
+    def assessment(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> AssessmentDetail | None:
+        """The checks on the newest version that succeeded, with its match if there is one."""
+        with self._sessions() as session:
+            document = self._document(session, tenant_id, document_id)
+            row = session.execute(
+                select(DocumentVersion, AssessmentRecord)
+                .join(AssessmentRecord, AssessmentRecord.document_version_id == DocumentVersion.id)
+                .where(
+                    DocumentVersion.document_id == document.id,
+                    AssessmentRecord.tenant_id == tenant_id,
+                )
+                .order_by(DocumentVersion.version_no.desc())
+                .limit(1)
+            ).first()
+            if row is None:
+                return None
+            version, record = row
+            # A comparison counts only while the other side is still that document's newest
+            # version: once the counterpart is read again, the old comparison is history.
+            other = aliased(DocumentVersion)
+            newer = aliased(DocumentVersion)
+            found = session.execute(
+                select(MatchRecord, other.document_id)
+                .join(
+                    other,
+                    other.id
+                    == case(
+                        (
+                            MatchRecord.invoice_version_id == version.id,
+                            MatchRecord.order_version_id,
+                        ),
+                        else_=MatchRecord.invoice_version_id,
+                    ),
+                )
+                .where(
+                    MatchRecord.tenant_id == tenant_id,
+                    (MatchRecord.invoice_version_id == version.id)
+                    | (MatchRecord.order_version_id == version.id),
+                    other.version_no
+                    == select(func.max(newer.version_no))
+                    .where(newer.document_id == other.document_id)
+                    .scalar_subquery(),
+                )
+                .order_by(MatchRecord.created_at.desc())
+                .limit(1)
+            ).first()
+            match, counterpart = found if found is not None else (None, None)
+            return AssessmentDetail(version, record, match, counterpart, document.doc_type)
 
     def audit_trail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> list[AuditEntry]:
         with self._sessions() as session:

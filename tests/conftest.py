@@ -83,6 +83,43 @@ def raw_invoice_from_label() -> Callable[[dict[str, Any]], dict[str, Any]]:
     return build
 
 
+@pytest.fixture(scope="session")
+def raw_order_from_label() -> Callable[[dict[str, Any]], dict[str, Any]]:
+    """What a perfect model would reply for a fixture purchase order."""
+
+    def build(label: dict[str, Any]) -> dict[str, Any]:
+        document = label["documents"]["purchase_order"]
+        printed = {box["path"]: box["text"] for box in document["boxes"]}
+
+        def field(path: str) -> dict[str, Any]:
+            return {"text": printed.get(path), "block_ids": []}
+
+        licences = len(label["purchase_order"]["buyer"]["drug_licence_nos"])
+        return {
+            "po_no": field("po_no"),
+            "po_date": field("po_date"),
+            "buyer": {
+                "name": field("buyer.name"),
+                "address": field("buyer.address"),
+                "gstin": field("buyer.gstin"),
+                "drug_licence_nos": [
+                    field(f"buyer.drug_licence_nos[{index}]") for index in range(licences)
+                ],
+            },
+            "supplier_name": field("supplier_name"),
+            "supplier_gstin": field("supplier_gstin"),
+            "lines": [
+                {
+                    name: field(f"lines[{index}].{name}")
+                    for name in ("product_name", "pack", "qty", "scheme", "rate")
+                }
+                for index in range(len(label["purchase_order"]["lines"]))
+            ],
+        }
+
+    return build
+
+
 @pytest.fixture
 def empty_database_url(settings: Settings) -> Iterator[URL]:
     """A freshly created, empty database on the Compose Postgres, dropped afterwards."""

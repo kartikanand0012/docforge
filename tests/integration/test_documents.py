@@ -34,6 +34,7 @@ from docforge.documents import (
     UnknownDocumentType,
 )
 from docforge.extraction.pipeline import InvoicePipeline, PipelineResult
+from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError
 from docforge.parsing.base import ParsedDocument
 from docforge.storage import MemoryObjectStore, StorageUnavailable, original_key
@@ -61,7 +62,7 @@ class HookedPipeline:
         self.inner = inner
         self.during_run = during_run
 
-    def run(self, pdf: bytes) -> PipelineResult:
+    def run(self, pdf: bytes) -> PipelineResult[InvoiceExtraction]:
         if self.during_run is not None:
             hook, self.during_run = self.during_run, None  # only the first run is interrupted
             hook()
@@ -261,11 +262,18 @@ def test_processing_writes_an_audit_trail_that_verifies(
 
     harness.service.process(ingested.version.id)
 
-    assert harness.actions() == ["document.received", "processing.started", "extraction.created"]
+    assert harness.actions() == [
+        "document.received",
+        "processing.started",
+        "extraction.created",
+        "assessment.created",
+    ]
     trail = harness.service.audit_trail(DEFAULT_TENANT_ID, ingested.document.id)
     assert [entry.action for entry in trail] == harness.actions()
     with sessions() as session:
-        created = session.scalars(select(AuditEntry).order_by(AuditEntry.id.desc())).first()
+        created = session.scalars(
+            select(AuditEntry).where(AuditEntry.action == "extraction.created")
+        ).first()
         extraction = session.scalars(select(Extraction)).one()
         assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
     assert created is not None
@@ -550,7 +558,7 @@ def test_a_late_failure_cannot_undo_a_version_another_delivery_finished(
     assert (version.status, version.error) == ("succeeded", None)
     assert harness.document(ingested.document.id).status == "extracted"
     assert harness.count(Extraction) == 1
-    assert harness.actions()[-1] == "extraction.created"
+    assert harness.actions()[-1] == "assessment.created"
 
 
 def test_a_late_success_does_not_write_a_second_extraction(
@@ -606,7 +614,7 @@ def test_many_documents_processed_at_once_all_finish_and_the_chain_holds(
     assert harness.count(Extraction) == len(pairs)
     with sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
-    assert (report.consistent, report.entries) == (True, 3 * len(pairs))
+    assert (report.consistent, report.entries) == (True, 4 * len(pairs))
 
 
 # --- verification pass before merging C2 ----------------------------------------------------
@@ -621,7 +629,9 @@ def test_a_worker_killed_after_the_model_call_but_before_the_write_loses_nothing
     write_result = harness.service._complete
     deaths: list[int] = []
 
-    def die_once(version_id: uuid.UUID, turn: int, result: PipelineResult) -> Any:
+    def die_once(
+        version_id: uuid.UUID, turn: int, result: PipelineResult[InvoiceExtraction]
+    ) -> Any:
         if not deaths:
             deaths.append(turn)
             raise Killed()

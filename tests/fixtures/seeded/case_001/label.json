@@ -1,0 +1,1028 @@
+{
+  "schema_version": "1",
+  "pair_id": "case_001",
+  "seed": 20261002,
+  "layout": "A",
+  "invoice": {
+    "invoice_no": "CPA/26-27/13101",
+    "invoice_date": "2026-08-10",
+    "po_no": "PO-MMS-60101",
+    "po_date": "2026-08-08",
+    "seller": {
+      "name": "Coromandel Pharma Agency",
+      "address": "52 Nyniappa Street, Chennai 600003",
+      "state": "Tamil Nadu",
+      "state_code": "33",
+      "gstin": "33AADFC9047H1ZJ",
+      "drug_licence_nos": [
+        "TN-20B-527318",
+        "TN-21B-527319"
+      ]
+    },
+    "buyer": {
+      "name": "Marina Medical Stores",
+      "address": "71 Pondy Bazaar, Chennai 600017",
+      "state": "Tamil Nadu",
+      "state_code": "33",
+      "gstin": "33AAUFM5873T1Z1",
+      "drug_licence_nos": [
+        "TN-20-701264",
+        "TN-21-701265"
+      ]
+    },
+    "place_of_supply": "Tamil Nadu",
+    "place_of_supply_code": "33",
+    "supply_type": "intra_state",
+    "lines": [
+      {
+        "sl_no": 1,
+        "product_name": "Pantoprazole Tablets IP 40mg",
+        "pack": "10x10",
+        "hsn": "30049099",
+        "batch_no": "DTR5841",
+        "mfg": "2025-09",
+        "expiry": "2027-09",
+        "qty": 100,
+        "free_qty": 10,
+        "mrp": "120.38",
+        "ptr": "91.49",
+        "discount_pct": "0",
+        "taxable_value": "9149.00",
+        "gst_rate": "12",
+        "cgst": "548.94",
+        "sgst": "548.94",
+        "igst": "0.00",
+        "amount": "10256.88"
+      },
+      {
+        "sl_no": 2,
+        "product_name": "ORS Powder WHO Formula 21g",
+        "pack": "1x25",
+        "hsn": "30049099",
+        "batch_no": "KKW9586",
+        "mfg": "2025-11",
+        "expiry": "2027-05",
+        "qty": 20,
+        "free_qty": 1,
+        "mrp": "24.49",
+        "ptr": "17.88",
+        "discount_pct": "2",
+        "taxable_value": "350.45",
+        "gst_rate": "5",
+        "cgst": "8.76",
+        "sgst": "8.76",
+        "igst": "0.00",
+        "amount": "367.97"
+      },
+      {
+        "sl_no": 3,
+        "product_name": "Amlodipine Tablets IP 5mg",
+        "pack": "10x10",
+        "hsn": "30049099",
+        "batch_no": "IBX79610",
+        "mfg": "2026-02",
+        "expiry": "2027-08",
+        "qty": 100,
+        "free_qty": 10,
+        "mrp": "38.90",
+        "ptr": "27.62",
+        "discount_pct": "2.5",
+        "taxable_value": "2692.95",
+        "gst_rate": "5",
+        "cgst": "67.32",
+        "sgst": "67.32",
+        "igst": "0.00",
+        "amount": "2827.59"
+      }
+    ],
+    "totals": {
+      "taxable_value": "12192.40",
+      "cgst": "625.02",
+      "sgst": "625.02",
+      "igst": "0.00",
+      "round_off": "-0.44",
+      "grand_total": "13442.00"
+    }
+  },
+  "purchase_order": {
+    "po_no": "PO-MMS-60101",
+    "po_date": "2026-08-08",
+    "buyer": {
+      "name": "Marina Medical Stores",
+      "address": "71 Pondy Bazaar, Chennai 600017",
+      "state": "Tamil Nadu",
+      "state_code": "33",
+      "gstin": "33AAUFM5873T1Z1",
+      "drug_licence_nos": [
+        "TN-20-701264",
+        "TN-21-701265"
+      ]
+    },
+    "supplier_name": "Coromandel Pharma Agency",
+    "supplier_gstin": "33AADFC9047H1ZJ",
+    "lines": [
+      {
+        "sl_no": 1,
+        "product_name": "Pantoprazole Tablets IP 40mg",
+        "pack": "10x10",
+        "qty": 100,
+        "scheme": "10+1",
+        "rate": "91.49"
+      },
+      {
+        "sl_no": 2,
+        "product_name": "ORS Powder WHO Formula 21g",
+        "pack": "1x25",
+        "qty": 20,
+        "scheme": "12+1",
+        "rate": "17.88"
+      },
+      {
+        "sl_no": 3,
+        "product_name": "Amlodipine Tablets IP 5mg",
+        "pack": "10x10",
+        "qty": 100,
+        "scheme": "10+1",
+        "rate": "27.62"
+      }
+    ]
+  },
+  "documents": {
+    "invoice": {
+      "file": "invoice.pdf",
+      "page_width": 841.8897637795277,
+      "page_height": 595.2755905511812,
+      "boxes": [
+        {
+          "path": "seller.name",
+          "text": "Coromandel Pharma Agency",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 541.21,
+          "x1": 166.7,
+          "y1": 550.46
+        },
+        {
+          "path": "seller.address",
+          "text": "52 Nyniappa Street, Chennai 600003",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 529.72,
+          "x1": 153.41,
+          "y1": 536.66
+        },
+        {
+          "path": "seller.gstin",
+          "text": "33AADFC9047H1ZJ",
+          "page": 1,
+          "x0": 58.0,
+          "y0": 517.72,
+          "x1": 126.36,
+          "y1": 524.66
+        },
+        {
+          "path": "seller.drug_licence_nos[0]",
+          "text": "TN-20B-527318",
+          "page": 1,
+          "x0": 62.59,
+          "y0": 505.72,
+          "x1": 115.95,
+          "y1": 512.66
+        },
+        {
+          "path": "seller.drug_licence_nos[1]",
+          "text": "TN-21B-527319",
+          "page": 1,
+          "x0": 121.03,
+          "y0": 505.72,
+          "x1": 174.39,
+          "y1": 512.66
+        },
+        {
+          "path": "invoice_no",
+          "text": "CPA/26-27/13101",
+          "page": 1,
+          "x0": 634.49,
+          "y0": 541.72,
+          "x1": 694.11,
+          "y1": 548.66
+        },
+        {
+          "path": "invoice_date",
+          "text": "10-Aug-2026",
+          "page": 1,
+          "x0": 612.81,
+          "y0": 529.72,
+          "x1": 656.17,
+          "y1": 536.66
+        },
+        {
+          "path": "po_no",
+          "text": "PO-MMS-60101",
+          "page": 1,
+          "x0": 621.57,
+          "y0": 517.72,
+          "x1": 675.75,
+          "y1": 524.66
+        },
+        {
+          "path": "po_date",
+          "text": "08-Aug-2026",
+          "page": 1,
+          "x0": 625.74,
+          "y0": 505.72,
+          "x1": 669.09,
+          "y1": 512.66
+        },
+        {
+          "path": "place_of_supply",
+          "text": "Tamil Nadu (33)",
+          "page": 1,
+          "x0": 649.08,
+          "y0": 493.72,
+          "x1": 702.84,
+          "y1": 500.66
+        },
+        {
+          "path": "buyer.name",
+          "text": "Marina Medical Stores",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 475.21,
+          "x1": 135.59,
+          "y1": 484.46
+        },
+        {
+          "path": "buyer.address",
+          "text": "71 Pondy Bazaar, Chennai 600017",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 463.72,
+          "x1": 146.74,
+          "y1": 470.66
+        },
+        {
+          "path": "buyer.gstin",
+          "text": "33AAUFM5873T1Z1",
+          "page": 1,
+          "x0": 58.0,
+          "y0": 451.72,
+          "x1": 126.78,
+          "y1": 458.66
+        },
+        {
+          "path": "buyer.drug_licence_nos[0]",
+          "text": "TN-20-701264",
+          "page": 1,
+          "x0": 62.59,
+          "y0": 439.72,
+          "x1": 110.95,
+          "y1": 446.66
+        },
+        {
+          "path": "buyer.drug_licence_nos[1]",
+          "text": "TN-21-701265",
+          "page": 1,
+          "x0": 116.03,
+          "y0": 439.72,
+          "x1": 164.38,
+          "y1": 446.66
+        },
+        {
+          "path": "lines[0].sl_no",
+          "text": "1",
+          "page": 1,
+          "x0": 43.14,
+          "y0": 399.72,
+          "x1": 47.31,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].product_name",
+          "text": "Pantoprazole Tablets IP 40mg",
+          "page": 1,
+          "x0": 51.31,
+          "y0": 399.72,
+          "x1": 152.19,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 208.17,
+          "y0": 399.72,
+          "x1": 228.6,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 249.19,
+          "y0": 399.72,
+          "x1": 282.55,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].batch_no",
+          "text": "DTR5841",
+          "page": 1,
+          "x0": 299.87,
+          "y0": 399.72,
+          "x1": 331.96,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].mfg",
+          "text": "09/25",
+          "page": 1,
+          "x0": 362.61,
+          "y0": 399.72,
+          "x1": 381.38,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].expiry",
+          "text": "09/27",
+          "page": 1,
+          "x0": 398.81,
+          "y0": 399.72,
+          "x1": 417.58,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].qty",
+          "text": "100",
+          "page": 1,
+          "x0": 452.29,
+          "y0": 399.72,
+          "x1": 464.8,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].free_qty",
+          "text": "10",
+          "page": 1,
+          "x0": 487.83,
+          "y0": 399.72,
+          "x1": 496.17,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].mrp",
+          "text": "120.38",
+          "page": 1,
+          "x0": 526.32,
+          "y0": 399.72,
+          "x1": 549.26,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].ptr",
+          "text": "91.49",
+          "page": 1,
+          "x0": 583.59,
+          "y0": 399.72,
+          "x1": 602.35,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].discount_pct",
+          "text": "0",
+          "page": 1,
+          "x0": 634.38,
+          "y0": 399.72,
+          "x1": 638.55,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].taxable_value",
+          "text": "9149.00",
+          "page": 1,
+          "x0": 679.02,
+          "y0": 399.72,
+          "x1": 706.12,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].gst_rate",
+          "text": "12",
+          "page": 1,
+          "x0": 731.57,
+          "y0": 399.72,
+          "x1": 739.91,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[0].amount",
+          "text": "10256.88",
+          "page": 1,
+          "x0": 778.61,
+          "y0": 399.72,
+          "x1": 809.89,
+          "y1": 406.66
+        },
+        {
+          "path": "lines[1].sl_no",
+          "text": "2",
+          "page": 1,
+          "x0": 43.14,
+          "y0": 385.72,
+          "x1": 47.31,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].product_name",
+          "text": "ORS Powder WHO Formula 21g",
+          "page": 1,
+          "x0": 51.31,
+          "y0": 385.72,
+          "x1": 159.67,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].pack",
+          "text": "1x25",
+          "page": 1,
+          "x0": 208.17,
+          "y0": 385.72,
+          "x1": 224.43,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 249.19,
+          "y0": 385.72,
+          "x1": 282.55,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].batch_no",
+          "text": "KKW9586",
+          "page": 1,
+          "x0": 299.87,
+          "y0": 385.72,
+          "x1": 333.63,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].mfg",
+          "text": "11/25",
+          "page": 1,
+          "x0": 362.61,
+          "y0": 385.72,
+          "x1": 381.38,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].expiry",
+          "text": "05/27",
+          "page": 1,
+          "x0": 398.81,
+          "y0": 385.72,
+          "x1": 417.58,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].qty",
+          "text": "20",
+          "page": 1,
+          "x0": 456.46,
+          "y0": 385.72,
+          "x1": 464.8,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].free_qty",
+          "text": "1",
+          "page": 1,
+          "x0": 492.0,
+          "y0": 385.72,
+          "x1": 496.17,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].mrp",
+          "text": "24.49",
+          "page": 1,
+          "x0": 530.49,
+          "y0": 385.72,
+          "x1": 549.26,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].ptr",
+          "text": "17.88",
+          "page": 1,
+          "x0": 583.59,
+          "y0": 385.72,
+          "x1": 602.35,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].discount_pct",
+          "text": "2",
+          "page": 1,
+          "x0": 634.38,
+          "y0": 385.72,
+          "x1": 638.55,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].taxable_value",
+          "text": "350.45",
+          "page": 1,
+          "x0": 683.19,
+          "y0": 385.72,
+          "x1": 706.12,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].gst_rate",
+          "text": "5",
+          "page": 1,
+          "x0": 735.74,
+          "y0": 385.72,
+          "x1": 739.91,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[1].amount",
+          "text": "367.97",
+          "page": 1,
+          "x0": 786.95,
+          "y0": 385.72,
+          "x1": 809.89,
+          "y1": 392.66
+        },
+        {
+          "path": "lines[2].sl_no",
+          "text": "3",
+          "page": 1,
+          "x0": 43.14,
+          "y0": 371.72,
+          "x1": 47.31,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].product_name",
+          "text": "Amlodipine Tablets IP 5mg",
+          "page": 1,
+          "x0": 51.31,
+          "y0": 371.72,
+          "x1": 140.92,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 208.17,
+          "y0": 371.72,
+          "x1": 228.6,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 249.19,
+          "y0": 371.72,
+          "x1": 282.55,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].batch_no",
+          "text": "IBX79610",
+          "page": 1,
+          "x0": 299.87,
+          "y0": 371.72,
+          "x1": 332.81,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].mfg",
+          "text": "02/26",
+          "page": 1,
+          "x0": 362.61,
+          "y0": 371.72,
+          "x1": 381.38,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].expiry",
+          "text": "08/27",
+          "page": 1,
+          "x0": 398.81,
+          "y0": 371.72,
+          "x1": 417.58,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].qty",
+          "text": "100",
+          "page": 1,
+          "x0": 452.29,
+          "y0": 371.72,
+          "x1": 464.8,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].free_qty",
+          "text": "10",
+          "page": 1,
+          "x0": 487.83,
+          "y0": 371.72,
+          "x1": 496.17,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].mrp",
+          "text": "38.90",
+          "page": 1,
+          "x0": 530.49,
+          "y0": 371.72,
+          "x1": 549.26,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].ptr",
+          "text": "27.62",
+          "page": 1,
+          "x0": 583.59,
+          "y0": 371.72,
+          "x1": 602.35,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].discount_pct",
+          "text": "2.5",
+          "page": 1,
+          "x0": 628.12,
+          "y0": 371.72,
+          "x1": 638.55,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].taxable_value",
+          "text": "2692.95",
+          "page": 1,
+          "x0": 679.02,
+          "y0": 371.72,
+          "x1": 706.12,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].gst_rate",
+          "text": "5",
+          "page": 1,
+          "x0": 735.74,
+          "y0": 371.72,
+          "x1": 739.91,
+          "y1": 378.66
+        },
+        {
+          "path": "lines[2].amount",
+          "text": "2827.59",
+          "page": 1,
+          "x0": 782.78,
+          "y0": 371.72,
+          "x1": 809.89,
+          "y1": 378.66
+        },
+        {
+          "path": "totals.taxable_value",
+          "text": "12192.40",
+          "page": 1,
+          "x0": 778.61,
+          "y0": 350.82,
+          "x1": 809.89,
+          "y1": 357.76
+        },
+        {
+          "path": "totals.cgst",
+          "text": "625.02",
+          "page": 1,
+          "x0": 786.95,
+          "y0": 338.82,
+          "x1": 809.89,
+          "y1": 345.76
+        },
+        {
+          "path": "totals.sgst",
+          "text": "625.02",
+          "page": 1,
+          "x0": 786.95,
+          "y0": 326.82,
+          "x1": 809.89,
+          "y1": 333.76
+        },
+        {
+          "path": "totals.round_off",
+          "text": "-0.44",
+          "page": 1,
+          "x0": 792.8,
+          "y0": 314.82,
+          "x1": 809.89,
+          "y1": 321.76
+        },
+        {
+          "path": "totals.grand_total",
+          "text": "13442.00",
+          "page": 1,
+          "x0": 778.61,
+          "y0": 302.82,
+          "x1": 809.89,
+          "y1": 309.76
+        }
+      ],
+      "unprinted": [
+        "buyer.state",
+        "buyer.state_code",
+        "lines[0].cgst",
+        "lines[0].igst",
+        "lines[0].sgst",
+        "lines[1].cgst",
+        "lines[1].igst",
+        "lines[1].sgst",
+        "lines[2].cgst",
+        "lines[2].igst",
+        "lines[2].sgst",
+        "place_of_supply_code",
+        "seller.state",
+        "seller.state_code",
+        "supply_type",
+        "totals.igst"
+      ]
+    },
+    "purchase_order": {
+      "file": "purchase_order.pdf",
+      "page_width": 595.2755905511812,
+      "page_height": 841.8897637795277,
+      "boxes": [
+        {
+          "path": "buyer.name",
+          "text": "Marina Medical Stores",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 783.61,
+          "x1": 146.15,
+          "y1": 793.79
+        },
+        {
+          "path": "buyer.address",
+          "text": "71 Pondy Bazaar, Chennai 600017",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 771.13,
+          "x1": 162.3,
+          "y1": 778.99
+        },
+        {
+          "path": "buyer.gstin",
+          "text": "33AAUFM5873T1Z1",
+          "page": 1,
+          "x0": 61.34,
+          "y0": 758.13,
+          "x1": 139.28,
+          "y1": 765.99
+        },
+        {
+          "path": "buyer.drug_licence_nos[0]",
+          "text": "TN-20-701264",
+          "page": 1,
+          "x0": 66.54,
+          "y0": 745.13,
+          "x1": 121.34,
+          "y1": 752.99
+        },
+        {
+          "path": "buyer.drug_licence_nos[1]",
+          "text": "TN-21-701265",
+          "page": 1,
+          "x0": 126.7,
+          "y0": 745.13,
+          "x1": 181.5,
+          "y1": 752.99
+        },
+        {
+          "path": "po_no",
+          "text": "PO-MMS-60101",
+          "page": 1,
+          "x0": 408.51,
+          "y0": 784.13,
+          "x1": 469.91,
+          "y1": 791.99
+        },
+        {
+          "path": "po_date",
+          "text": "08-Aug-2026",
+          "page": 1,
+          "x0": 413.24,
+          "y0": 771.13,
+          "x1": 462.37,
+          "y1": 778.99
+        },
+        {
+          "path": "supplier_name",
+          "text": "Coromandel Pharma Agency",
+          "page": 1,
+          "x0": 80.0,
+          "y0": 724.13,
+          "x1": 196.19,
+          "y1": 731.99
+        },
+        {
+          "path": "supplier_gstin",
+          "text": "33AADFC9047H1ZJ",
+          "page": 1,
+          "x0": 111.34,
+          "y0": 711.13,
+          "x1": 188.81,
+          "y1": 718.99
+        },
+        {
+          "path": "lines[0].sl_no",
+          "text": "1",
+          "page": 1,
+          "x0": 45.12,
+          "y0": 668.13,
+          "x1": 49.85,
+          "y1": 675.99
+        },
+        {
+          "path": "lines[0].product_name",
+          "text": "Pantoprazole Tablets IP 40mg",
+          "page": 1,
+          "x0": 53.85,
+          "y0": 668.13,
+          "x1": 168.18,
+          "y1": 675.99
+        },
+        {
+          "path": "lines[0].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 294.18,
+          "y0": 668.13,
+          "x1": 317.33,
+          "y1": 675.99
+        },
+        {
+          "path": "lines[0].qty",
+          "text": "100",
+          "page": 1,
+          "x0": 396.16,
+          "y0": 668.13,
+          "x1": 410.34,
+          "y1": 675.99
+        },
+        {
+          "path": "lines[0].scheme",
+          "text": "10+1",
+          "page": 1,
+          "x0": 456.74,
+          "y0": 668.13,
+          "x1": 475.88,
+          "y1": 675.99
+        },
+        {
+          "path": "lines[0].rate",
+          "text": "91.49",
+          "page": 1,
+          "x0": 542.01,
+          "y0": 668.13,
+          "x1": 563.28,
+          "y1": 675.99
+        },
+        {
+          "path": "lines[1].sl_no",
+          "text": "2",
+          "page": 1,
+          "x0": 45.12,
+          "y0": 653.13,
+          "x1": 49.85,
+          "y1": 660.99
+        },
+        {
+          "path": "lines[1].product_name",
+          "text": "ORS Powder WHO Formula 21g",
+          "page": 1,
+          "x0": 53.85,
+          "y0": 653.13,
+          "x1": 176.66,
+          "y1": 660.99
+        },
+        {
+          "path": "lines[1].pack",
+          "text": "1x25",
+          "page": 1,
+          "x0": 294.18,
+          "y0": 653.13,
+          "x1": 312.6,
+          "y1": 660.99
+        },
+        {
+          "path": "lines[1].qty",
+          "text": "20",
+          "page": 1,
+          "x0": 400.89,
+          "y0": 653.13,
+          "x1": 410.34,
+          "y1": 660.99
+        },
+        {
+          "path": "lines[1].scheme",
+          "text": "12+1",
+          "page": 1,
+          "x0": 456.74,
+          "y0": 653.13,
+          "x1": 475.88,
+          "y1": 660.99
+        },
+        {
+          "path": "lines[1].rate",
+          "text": "17.88",
+          "page": 1,
+          "x0": 542.01,
+          "y0": 653.13,
+          "x1": 563.28,
+          "y1": 660.99
+        },
+        {
+          "path": "lines[2].sl_no",
+          "text": "3",
+          "page": 1,
+          "x0": 45.12,
+          "y0": 638.13,
+          "x1": 49.85,
+          "y1": 645.99
+        },
+        {
+          "path": "lines[2].product_name",
+          "text": "Amlodipine Tablets IP 5mg",
+          "page": 1,
+          "x0": 53.85,
+          "y0": 638.13,
+          "x1": 155.41,
+          "y1": 645.99
+        },
+        {
+          "path": "lines[2].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 294.18,
+          "y0": 638.13,
+          "x1": 317.33,
+          "y1": 645.99
+        },
+        {
+          "path": "lines[2].qty",
+          "text": "100",
+          "page": 1,
+          "x0": 396.16,
+          "y0": 638.13,
+          "x1": 410.34,
+          "y1": 645.99
+        },
+        {
+          "path": "lines[2].scheme",
+          "text": "10+1",
+          "page": 1,
+          "x0": 456.74,
+          "y0": 638.13,
+          "x1": 475.88,
+          "y1": 645.99
+        },
+        {
+          "path": "lines[2].rate",
+          "text": "27.62",
+          "page": 1,
+          "x0": 542.01,
+          "y0": 638.13,
+          "x1": 563.28,
+          "y1": 645.99
+        }
+      ],
+      "unprinted": [
+        "buyer.state",
+        "buyer.state_code"
+      ]
+    }
+  },
+  "defect": "bad_line_amount",
+  "expected": [
+    {
+      "kind": "rule",
+      "code": "line.amount"
+    },
+    {
+      "kind": "rule",
+      "code": "totals.tax"
+    }
+  ],
+  "corrupt_reply": null
+}

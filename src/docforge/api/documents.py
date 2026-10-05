@@ -88,6 +88,21 @@ class ExtractionOut(BaseModel):
     model_runs: list[ModelRunOut]
 
 
+class MatchOut(BaseModel):
+    decision: str  # match or mismatch
+    counterpart_document_id: uuid.UUID | None
+    discrepancies: list[dict[str, Any]]
+
+
+class AssessmentOut(BaseModel):
+    document_id: uuid.UUID
+    version_no: int
+    decision: str  # accept or review, taking the match into account
+    match_status: str  # match, mismatch or no_counterpart
+    assessment: dict[str, Any]  # fields with their page boxes, rule results, unreadable values
+    match: MatchOut | None
+
+
 class AuditEntryOut(_Out):
     id: int
     occurred_at: datetime
@@ -184,6 +199,31 @@ def documents_router(
             sha256=latest.extraction.sha256,
             extraction=latest.extraction.data,
             model_runs=[ModelRunOut.model_validate(run) for run in latest.model_runs],
+        )
+
+    @router.get("/documents/{document_id}/assessment", response_model=AssessmentOut)
+    def get_assessment(document_id: uuid.UUID) -> AssessmentOut:
+        """What was checked on the newest extracted version, and whether a person must look."""
+        try:
+            detail = service.assessment(TENANT, document_id)
+        except DocumentNotFound:
+            raise _NOT_FOUND from None
+        if detail is None:
+            raise HTTPException(404, "This document has no assessment yet.")
+        match = detail.match
+        return AssessmentOut(
+            document_id=document_id,
+            version_no=detail.version.version_no,
+            decision=detail.decision,
+            match_status=detail.match_status,
+            assessment=detail.record.data,
+            match=None
+            if match is None
+            else MatchOut(
+                decision=match.decision,
+                counterpart_document_id=detail.counterpart_document_id,
+                discrepancies=match.data["discrepancies"],
+            ),
         )
 
     @router.post("/documents/{document_id}/reprocess", status_code=202, response_model=VersionOut)
