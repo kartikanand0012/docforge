@@ -25,15 +25,17 @@ def test_requests_per_minute_are_counted_across_processes(sessions: SessionFacto
 
 def test_what_is_held_at_once_is_capped_across_processes(sessions: SessionFactory) -> None:
     first, second = DatabaseLimits(sessions), DatabaseLimits(sessions)
+    key = "chat:t:a"
 
+    # Two places held, one in each process: a third is refused.
     with (
-        first.hold("chat:t:a", at_most=2, seconds=60),
-        second.hold("chat:t:a", at_most=2, seconds=60),
+        first.hold(key, at_most=2, seconds=60),
+        second.hold(key, at_most=2, seconds=60),
         pytest.raises(LimitReached),
+        first.hold(key, at_most=2, seconds=60),
     ):
-        with first.hold("chat:t:a", at_most=2, seconds=60):
-            pass
-    with second.hold("chat:t:a", at_most=2, seconds=60):  # released on leaving
+        pass
+    with second.hold(key, at_most=2, seconds=60):  # given back on leaving
         pass
 
 
