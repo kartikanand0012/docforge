@@ -113,6 +113,8 @@ def test_production_accepts_explicit_credentials(monkeypatch: pytest.MonkeyPatch
     )
     monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
     monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("CONVERTER_URL", "http://converter:8090")
+    monkeypatch.setenv("CONVERTER_TOKEN", "c" * 32)
 
     assert make_settings().environment == "production"
 
@@ -237,4 +239,22 @@ def test_the_fake_drive_is_refused_in_production(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
     monkeypatch.setenv("DRIVE_CLIENT", "fake")
     with pytest.raises(ValueError, match="DRIVE_CLIENT"):
+        make_settings()
+
+
+def test_production_converts_in_the_isolated_service(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
+    monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.delenv("CONVERTER_URL", raising=False)
+    with pytest.raises(ValueError, match="CONVERTER_URL"):
+        make_settings()
+
+    monkeypatch.setenv("CONVERTER_URL", "http://converter:8090")
+    monkeypatch.setenv("CONVERTER_TOKEN", "short")
+    with pytest.raises(ValueError, match="CONVERTER_TOKEN"):
         make_settings()
