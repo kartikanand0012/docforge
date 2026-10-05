@@ -118,3 +118,15 @@ def test_a_stream_that_cannot_be_answered_ends_with_an_error_event(
     assert last.startswith("event: error")
     assert "The model could not answer just now" in last
     assert search is not None
+
+
+def test_one_person_has_a_few_questions_in_flight_at_most(
+    sessions: SessionFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from docforge.api import chat as chat_api
+
+    monkeypatch.setattr(chat_api, "MAX_IN_FLIGHT_PER_CALLER", 0)
+    api = client(sessions, role="admin")
+
+    assert api.post("/v1/chat", json={"question": "Total?"}).status_code == 429
+    assert api.post("/v1/chat/stream", json={"question": "Total?"}).status_code == 429

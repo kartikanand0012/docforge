@@ -174,3 +174,43 @@ def test_a_knowledge_base_of_another_organisation_cannot_be_asked(
 
     with pytest.raises((DocumentNotFound, CollectionNotFound, ConversationNotFound)):
         setup.chat.ask(other_tenant, "reviewer:x", "Total?", collection_id=kb.id)
+
+
+# --- review findings (C12) ---------------------------------------------------------------
+
+
+def test_resending_a_deleted_knowledge_base_is_gone_not_a_conflict(setup: Setup) -> None:
+    kb = setup.create()
+    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
+    first = setup.chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id)
+    setup.collections.delete(DEFAULT_TENANT_ID, kb.id)
+
+    with pytest.raises(ScopeGone):
+        setup.chat.ask(
+            DEFAULT_TENANT_ID, "reviewer:a", "More?",
+            conversation_id=first.conversation_id, collection_id=kb.id,
+        )  # fmt: skip
+
+
+def test_a_progress_listener_that_fails_does_not_fail_the_question(setup: Setup) -> None:
+    def broken(stage: str, details: dict[str, Any]) -> None:
+        raise RuntimeError("the listener went away")
+
+    answer = setup.chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Bank account?", progress=broken)
+
+    assert answer.status == "not_found"
+    (message,) = setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", answer.conversation_id)
+    assert message.status == "not_found"
+
+
+def test_more_documents_than_one_call_takes_are_refused_not_cut(setup: Setup) -> None:
+    kb = setup.create()
+    with pytest.raises(ValueError, match="500"):
+        setup.collections.add(DEFAULT_TENANT_ID, kb.id, [uuid.uuid4() for _ in range(501)])
+
+
+def test_renaming_to_a_name_taken_in_another_case_is_refused(setup: Setup) -> None:
+    setup.create("Invoices")
+    other = setup.create("Orders")
+    with pytest.raises(CollectionNameTaken):
+        setup.collections.rename(DEFAULT_TENANT_ID, other.id, "INVOICES")

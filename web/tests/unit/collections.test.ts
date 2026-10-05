@@ -28,3 +28,10 @@ describe("readEvents", () => {
     expect(readEvents("event: stage\ndata: nope\n\n").events).toEqual([]);
   });
 });
+
+describe("readEvents at the end of a stream", () => {
+  it("reads a last event that has no blank line after it", () => {
+    const { events } = readEvents('event: answer\ndata: {"status":"supported"}\n', { final: true });
+    expect(events).toEqual([{ name: "answer", data: { status: "supported" } }]);
+  });
+});
