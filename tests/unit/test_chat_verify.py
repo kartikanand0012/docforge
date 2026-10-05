@@ -50,3 +50,29 @@ def test_a_quote_across_two_blocks_shows_both() -> None:
 def test_a_short_block_is_not_cited_just_because_its_word_appears() -> None:
     blocks = [block("b1", "Batch"), block("b2", "The batch B-2041 was released on 3 June.")]
     assert [b["id"] for b in cited_blocks("batch B-2041 was released", blocks)] == ["b2"]
+
+
+# --- review findings (C11) ---------------------------------------------------------------
+
+
+def test_a_number_is_not_found_inside_a_longer_number() -> None:
+    assert not quote_in("5,000.00", "Grand total 15,000.00")
+    assert not quote_in("1234", "Invoice 21234 dated today")
+    assert quote_in("15,000.00", "Grand total 15,000.00.")
+
+
+def test_a_word_is_not_found_inside_a_longer_word() -> None:
+    assert not quote_in("release", "The batch was released by QA.")
+
+
+def test_a_lone_common_word_is_not_a_citation() -> None:
+    assert not quote_in("page", "See page 2 of the procedure.")
+    assert not quote_in("Date", "Date of analysis: 26-Jun-2026")
+    assert quote_in("26-Jun-2026", "Date of analysis: 26-Jun-2026")
+    assert quote_in("96.3 %", "Assay 95.0 - 105.0 % 96.3 %")
+    assert quote_in("goods are counted", "All goods are counted on arrival.")
+
+
+def test_a_short_number_cell_is_not_outlined_inside_a_longer_number() -> None:
+    blocks = [block("b1", "1"), block("b2", "Grand total"), block("b3", "1,100.00")]
+    assert [b["id"] for b in cited_blocks("Grand total 1,100.00", blocks)] == ["b2", "b3"]

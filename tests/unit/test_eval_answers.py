@@ -31,6 +31,10 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
         ),
         ("The assay was 96.3%.", Expect(kind="text", value="96.3 %"), True),
         ("The assay was 96.8 %.", Expect(kind="text", value="96.3 %"), False),
+        # Review findings: another number beside the right one, a number inside a code.
+        ("The total is 98,697.00, or 99,999.00 with freight.", Expect(kind="number", value="98697.00"), False),
+        ("Invoice NVM/26-12 billed 120 units.", Expect(kind="number", value="12"), False),
+        ("The assay was 99.5 %.", Expect(kind="text", value="99"), False),
     ],
 )
 def test_an_answer_is_right_when_it_states_the_expected_value(
@@ -39,13 +43,21 @@ def test_an_answer_is_right_when_it_states_the_expected_value(
     assert correct(text, expect) is right
 
 
+def test_numbers_repeated_from_the_question_do_not_count_against_an_answer() -> None:
+    question = "How many units of Amoxicillin Capsules IP 250mg were billed on invoice NVM/26-27/32001?"
+    answer = "20 units of Amoxicillin Capsules IP 250mg were billed on invoice NVM/26-27/32001."
+    assert correct(answer, Expect(kind="number", value="20"), question)
+
+
 def test_questions_come_from_the_labels_with_answers_and_unanswerables() -> None:
     questions = build_questions(FIXTURES / "synthetic", FIXTURES / "coa", pairs=2)
 
     assert len({q.id for q in questions}) == len(questions)
     answerable = [q for q in questions if q.expect is not None]
     unanswerable = [q for q in questions if q.expect is None]
-    assert len(answerable) == 8 and len(unanswerable) == 6
+    assert len(answerable) == 10 and len(unanswerable) == 6
+    scoped = [q for q in questions if q.scoped]
+    assert [q.id for q in scoped] == ["pair_001-total-in-document", "pair_002-total-in-document"]
     total = next(q for q in questions if q.id == "pair_001-total")
     assert total.expect == Expect(kind="number", value="98697.00")
     assert total.documents == ("pair_001/invoice",)
@@ -81,11 +93,12 @@ def test_the_report_counts_right_answers_citations_abstention_and_leaks() -> Non
     report = score_answers(questions, results, model="m", prompt_version="chat-1")
 
     assert report.questions == len(questions) == len(by_id)
-    assert report.answered_correctly == pytest.approx(1 / 4)
-    assert report.cited_expected_document == pytest.approx(2 / 4)
-    assert report.false_abstention == pytest.approx(2 / 4)
+    assert report.answered_correctly == pytest.approx(1 / 5)
+    assert report.cited_expected_document == pytest.approx(2 / 5)
+    assert report.false_abstention == pytest.approx(3 / 5)
     assert report.wrong_answers == 1
     assert report.abstained_when_no_answer == pytest.approx(2 / 3, abs=1e-4)  # rounded to 4 places
+    assert report.answered_unanswerable == 1  # the bank question, answered when it cannot be
     assert report.cross_tenant_citations == 1
     assert (report.input_tokens_per_question, report.output_tokens_per_question) == (1000, 100)
     assert "pair_001-seller" in report.missed

@@ -30,3 +30,17 @@ describe("citationMarks", () => {
     expect(citationMarks([{ ...box, page_width: 0 }], 1)).toEqual([]);
   });
 });
+
+import { sendsOnEnter } from "@/lib/chat";
+
+describe("sendsOnEnter", () => {
+  it("sends on Enter, not on Shift+Enter", () => {
+    expect(sendsOnEnter({ key: "Enter", shiftKey: false, isComposing: false, keyCode: 13 })).toBe(true);
+    expect(sendsOnEnter({ key: "Enter", shiftKey: true, isComposing: false, keyCode: 13 })).toBe(false);
+  });
+
+  it("does not send while an input method is composing a word", () => {
+    expect(sendsOnEnter({ key: "Enter", shiftKey: false, isComposing: true, keyCode: 13 })).toBe(false);
+    expect(sendsOnEnter({ key: "Enter", shiftKey: false, isComposing: false, keyCode: 229 })).toBe(false);
+  });
+});

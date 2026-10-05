@@ -109,3 +109,19 @@ def test_the_daily_limit_is_429_and_a_failed_model_is_503(sessions: SessionFacto
 def test_chat_is_absent_without_a_chat_service(sessions: SessionFactory) -> None:
     api = TestClient(signed_in(create_app(None)))
     assert api.post("/v1/chat", json={"question": "Hi?"}).status_code == 404
+
+
+def test_a_conversation_can_be_deleted_by_its_owner(sessions: SessionFactory) -> None:
+    api = client(sessions, role="reviewer", reviewer_id=uuid.uuid4())
+    conversation_id = api.post("/v1/chat", json={"question": "Total?"}).json()["conversation_id"]
+
+    assert api.delete(f"/v1/conversations/{conversation_id}").status_code == 204
+    assert api.get(f"/v1/conversations/{conversation_id}").status_code == 404
+
+
+def test_a_follow_up_naming_another_document_is_refused(sessions: SessionFactory) -> None:
+    api = client(sessions, role="reviewer", reviewer_id=uuid.uuid4())
+    conversation_id = api.post("/v1/chat", json={"question": "Total?"}).json()["conversation_id"]
+
+    follow_up = {"question": "More?", "conversation_id": conversation_id, "document_id": str(uuid.uuid4())}
+    assert api.post("/v1/chat", json=follow_up).status_code == 422

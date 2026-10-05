@@ -228,3 +228,88 @@ def test_a_malformed_reply_is_asked_again_once_then_fails(setup: Setup) -> None:
     setup.model.reply = lambda passages: "still not json"
     with pytest.raises(LLMError):
         setup.ask("What is the invoice number?")
+
+
+# --- review findings (C11) ---------------------------------------------------------------
+
+
+def test_questions_that_fail_still_count_toward_the_daily_limit(setup: Setup) -> None:
+    def down(passages: dict[int, str]) -> str:
+        raise LLMError("provider down")
+
+    setup.model.reply = down
+    for _ in range(5):
+        with pytest.raises(LLMError):
+            setup.ask("What is the invoice number?")
+
+    with pytest.raises(QuestionLimitReached):
+        setup.ask("And now?")
+
+
+def test_a_malformed_answer_keeps_the_tokens_it_cost(setup: Setup) -> None:
+    setup.model.reply = lambda passages: "not json"
+    with pytest.raises(LLMError):
+        setup.ask("What is the invoice number?")
+
+    (conversation,) = setup.chat.conversations(DEFAULT_TENANT_ID, "reviewer:a")
+    (message,) = setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", conversation.id)
+    assert message.status == "error"
+    assert (message.input_tokens, message.output_tokens) == (2000, 200)  # both calls
+
+
+def test_the_limit_holds_when_questions_arrive_together(setup: Setup) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    def ask(_: int) -> str:
+        try:
+            setup.ask("What is the supplier's bank account number?")
+            return "answered"
+        except QuestionLimitReached:
+            return "refused"
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(ask, range(8)))
+
+    assert outcomes.count("answered") == 5 and outcomes.count("refused") == 3
+
+
+def test_one_person_cannot_use_up_the_organisations_day(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    chat = ChatService(sessions, setup.search, setup.model, daily_limit=10, daily_limit_per_person=2)
+    for _ in range(2):
+        chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Bank account?")
+    with pytest.raises(QuestionLimitReached):
+        chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Bank account?")
+
+    assert chat.ask(DEFAULT_TENANT_ID, "reviewer:b", "Bank account?").status == "not_found"
+
+
+def test_answers_that_were_not_answers_are_not_given_as_history(setup: Setup) -> None:
+    first = setup.ask("What is the supplier's bank account number?")  # not found
+    setup.ask("And the account holder?", conversation_id=first.conversation_id)
+
+    prompt = setup.model.requests[-1].prompt
+    assert "The documents do not say." not in prompt
+    assert "What is the supplier's bank account number?" in prompt
+
+
+def test_a_follow_up_cannot_switch_to_another_document(setup: Setup) -> None:
+    from docforge.chat.service import ScopeConflict
+
+    setup.model.reply = quoting(setup.invoice_no, "Yes.")
+    first = setup.ask("What is the invoice number?", document_id=setup.invoice_id)
+
+    with pytest.raises(ScopeConflict):
+        setup.ask("And this one?", conversation_id=first.conversation_id, document_id=setup.order_id)
+
+
+def test_a_person_can_delete_their_conversation(setup: Setup) -> None:
+    first = setup.ask("What is the supplier's bank account number?")
+
+    with pytest.raises(ConversationNotFound):
+        setup.chat.delete(DEFAULT_TENANT_ID, "reviewer:b", first.conversation_id)
+    setup.chat.delete(DEFAULT_TENANT_ID, "reviewer:a", first.conversation_id)
+
+    with pytest.raises(ConversationNotFound):
+        setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", first.conversation_id)
