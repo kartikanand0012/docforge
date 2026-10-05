@@ -35,6 +35,11 @@ jobs:
           key: docling-models-${{ hashFiles('uv.lock') }}
           restore-keys: docling-models-
 
+      - name: LibreOffice, for the office-file conversion tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libreoffice-writer-nogui libreoffice-impress-nogui libreoffice-calc-nogui
+
       # Same entry points a developer uses, so CI proves the clean-machine gate.
       - name: Start services and migrate
         run: make up

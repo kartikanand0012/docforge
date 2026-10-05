@@ -64,10 +64,19 @@ class Document(Base):
     doc_type: Mapped[str] = mapped_column(Text)
     sha256: Mapped[str] = mapped_column(CHAR(64))
     storage_key: Mapped[str] = mapped_column(Text)
+    # As uploaded. Anything but a PDF is read from the PDF made of it (`rendition_key`).
+    media_type: Mapped[str] = mapped_column(Text, server_default="application/pdf")
     filename: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     page_count: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(Text, server_default="received")
+    # Where it is now (docforge.stages); the audit trail has how it got there.
+    stage: Mapped[str] = mapped_column(Text, server_default="stored")
+
+    @property
+    def ready_for_chat(self) -> bool:
+        return self.stage == "ready"
+
     # The version whose chunks search shows: the newest one indexed.
     indexed_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = _created_at()

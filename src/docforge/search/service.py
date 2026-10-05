@@ -23,6 +23,7 @@ from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
 from docforge.documents import DocumentNotFound
 from docforge.extraction.coa import CoaExtraction
+from docforge.extraction.general import GeneralExtraction
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.parsing.base import ParsedDocument
@@ -35,6 +36,7 @@ _SCHEMAS: dict[str, type[BaseModel]] = {
     "invoice": InvoiceExtraction,
     "purchase_order": PurchaseOrderExtraction,
     "coa": CoaExtraction,
+    "general": GeneralExtraction,
 }
 _CANDIDATES = 50
 logger = logging.getLogger(__name__)

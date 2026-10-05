@@ -1,9 +1,11 @@
-"""Reading and checking an uploaded PDF. Shared by every endpoint that accepts a file."""
+"""Reading and checking an uploaded file. Shared by every endpoint that accepts one."""
 
 import unicodedata
 from pathlib import PurePosixPath, PureWindowsPath
 
 from fastapi import HTTPException, UploadFile
+
+from docforge.formats import ACCEPTED, Format, sniff
 
 DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MULTIPART_OVERHEAD = 64 * 1024  # boundaries and part headers around the file
@@ -36,3 +38,14 @@ async def read_pdf_upload(file: UploadFile, max_upload_bytes: int) -> bytes:
     if not data.startswith(_PDF_MAGIC):
         raise HTTPException(415, "Only PDF files are accepted.")
     return data
+
+
+async def read_upload(file: UploadFile, max_upload_bytes: int) -> tuple[bytes, Format]:
+    """The uploaded bytes and their format, or 413 if too large and 415 if not accepted."""
+    data = await file.read(max_upload_bytes + 1)
+    if len(data) > max_upload_bytes:
+        raise HTTPException(413, too_large_message(max_upload_bytes))
+    fmt = sniff(data)
+    if fmt is None:
+        raise HTTPException(415, f"This file type is not accepted. Accepted: {ACCEPTED}.")
+    return data, fmt

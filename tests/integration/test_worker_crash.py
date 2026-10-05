@@ -134,8 +134,11 @@ def test_killing_a_worker_mid_job_loses_nothing(
         "document.received",
         "processing.started",
         "processing.started",
+        "processing.stage",  # extracting
+        "processing.stage",  # checking
         "extraction.created",
         "assessment.created",
+        "processing.stage",  # processed (or indexing, where search is wired in)
     ]
 
     with engine.connect() as conn:

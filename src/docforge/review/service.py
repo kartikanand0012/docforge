@@ -55,7 +55,7 @@ from docforge.review.signing import (
     record_hash,
     verify_pin,
 )
-from docforge.storage import ObjectStore
+from docforge.storage import ObjectStore, rendition_key
 from docforge.trust.assess import Assessment
 from docforge.trust.match import Discrepancy, match_invoice_to_order
 from docforge.trust.rules import run_rules
@@ -359,6 +359,8 @@ class ReviewService:
                 .where(
                     Document.tenant_id == tenant_id,
                     Document.status == "extracted",
+                    # Only types with something to review; a general document has nothing.
+                    Document.doc_type.in_(list(self._specs)),
                     ~exists(signed),
                 )
                 .order_by(Document.created_at, Document.id)
@@ -395,7 +397,13 @@ class ReviewService:
         """Page `page` of the original as uploaded, as PNG: what the reviewer compares with."""
         with self._sessions() as session:
             document = self._find(session, tenant_id, document_id)
-            key, pages = document.storage_key, document.page_count or 0
+            pages = document.page_count or 0
+            # A file that was not a PDF is shown from the PDF made of it.
+            key = (
+                document.storage_key
+                if document.media_type == "application/pdf"
+                else rendition_key(document.tenant_id, document.sha256)
+            )
         if not 1 <= page <= pages:
             raise PageNotFound(f"the document has no page {page}")
         with self._renders:  # rendering holds the PDF library's lock; keep a queue short

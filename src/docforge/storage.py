@@ -8,6 +8,7 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from docforge.config import Settings
+from docforge.formats import Format, extension
 
 _MISSING = {"404", "NoSuchKey", "NotFound"}
 
@@ -30,9 +31,14 @@ class ObjectStore(Protocol):
     def exists(self, key: str) -> bool: ...
 
 
-def original_key(tenant_id: uuid.UUID, sha256: str) -> str:
+def original_key(tenant_id: uuid.UUID, sha256: str, fmt: Format = "pdf") -> str:
     """Where an uploaded file lives. Content-addressed, so the same bytes map to one object."""
-    return f"originals/{tenant_id}/{sha256}.pdf"
+    return f"originals/{tenant_id}/{sha256}.{extension(fmt)}"
+
+
+def rendition_key(tenant_id: uuid.UUID, sha256: str) -> str:
+    """Where the PDF made from an upload that was not a PDF lives (`docforge.conversion`)."""
+    return f"renditions/{tenant_id}/{sha256}.pdf"
 
 
 class S3ObjectStore:

@@ -1,6 +1,6 @@
-import Review from "@/components/Review";
+import DocumentView from "@/components/DocumentView";
 
 export default async function DocumentPage(props: PageProps<"/documents/[id]">) {
   const { id } = await props.params;
-  return <Review key={id} id={id} />;
+  return <DocumentView key={id} id={id} />;
 }

@@ -8,9 +8,11 @@ from pathlib import Path
 from docforge.anchors import AnchorStore
 from docforge.auth import Authenticator
 from docforge.config import Settings
+from docforge.conversion import Converter, FileConverter, IsolatedConverter, RecordingConverter
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService, EventSink, Pipeline
 from docforge.extraction.coa import COA_SPEC, CoaExtraction
+from docforge.extraction.general import GeneralPipeline
 from docforge.extraction.pipeline import INVOICE_SPEC, ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
 from docforge.llm.gemini import GeminiProvider
@@ -52,7 +54,8 @@ def build_pipelines(settings: Settings) -> dict[str, Pipeline]:
     coa: ExtractionPipeline[CoaExtraction] = ExtractionPipeline(
         invoice.parser, invoice.provider, COA_SPEC, max_pages=settings.max_pages
     )
-    return {"invoice": invoice, "purchase_order": order, "coa": coa}
+    general = GeneralPipeline(invoice.parser, max_pages=settings.max_pages)
+    return {"invoice": invoice, "purchase_order": order, "coa": coa, "general": general}
 
 
 def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
@@ -74,7 +77,23 @@ def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
         "invoice": InvoicePipeline(parser, provider, max_pages=settings.max_pages),
         "purchase_order": order,
         "coa": coa,
+        "general": GeneralPipeline(parser, max_pages=settings.max_pages),
     }
+
+
+REPLAY_FACTORY = "docforge.wiring:build_replay_pipelines"
+
+
+def build_converter(settings: Settings) -> Converter:
+    """LibreOffice and Pillow; with replayed pipelines, replayed conversions too, because a
+    converted file's recorded parse is keyed by the exact bytes of the PDF made from it."""
+    if settings.pipeline_factory == REPLAY_FACTORY:
+        return RecordingConverter(Path(settings.recordings_dir) / "renditions", None)
+    return IsolatedConverter(
+        partial(FileConverter, timeout_seconds=settings.conversion_timeout_seconds),
+        timeout_seconds=settings.conversion_timeout_seconds + 30,
+        max_rss_bytes=settings.conversion_max_rss_mb * 1024 * 1024,
+    )
 
 
 def load_pipelines(settings: Settings) -> dict[str, Pipeline]:
@@ -148,6 +167,8 @@ def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
         events=webhooks,
         anchors=AnchorStore(S3ObjectStore.from_settings(settings)),
         index=queue.defer_index,
+        converter=build_converter(settings),
+        max_pages=settings.max_pages,
     )
     queue.bind(service)
     queue.bind_search(build_search(settings))

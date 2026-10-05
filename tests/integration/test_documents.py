@@ -265,8 +265,11 @@ def test_processing_writes_an_audit_trail_that_verifies(
     assert harness.actions() == [
         "document.received",
         "processing.started",
+        "processing.stage",  # extracting
+        "processing.stage",  # checking
         "extraction.created",
         "assessment.created",
+        "processing.stage",  # processed (or indexing, where search is wired in)
     ]
     trail = harness.service.audit_trail(DEFAULT_TENANT_ID, ingested.document.id)
     assert [entry.action for entry in trail] == harness.actions()
@@ -464,7 +467,7 @@ def test_the_audit_log_does_not_record_the_filename(sessions: SessionFactory) ->
 
     with sessions() as session:
         details = session.scalars(select(AuditEntry.details)).one()
-    assert set(details) == {"sha256", "size_bytes", "doc_type"}
+    assert set(details) == {"sha256", "size_bytes", "doc_type", "media_type"}
 
 
 def test_a_duplicate_upload_restores_a_lost_original(sessions: SessionFactory) -> None:
@@ -558,7 +561,7 @@ def test_a_late_failure_cannot_undo_a_version_another_delivery_finished(
     assert (version.status, version.error) == ("succeeded", None)
     assert harness.document(ingested.document.id).status == "extracted"
     assert harness.count(Extraction) == 1
-    assert harness.actions()[-1] == "assessment.created"
+    assert harness.actions()[-2] == "assessment.created"  # then the stage it reached
 
 
 def test_a_late_success_does_not_write_a_second_extraction(
@@ -614,7 +617,8 @@ def test_many_documents_processed_at_once_all_finish_and_the_chain_holds(
     assert harness.count(Extraction) == len(pairs)
     with sessions() as session:
         report = audit.verify_chain(session, DEFAULT_TENANT_ID)
-    assert (report.consistent, report.entries) == (True, 4 * len(pairs))
+    # received, started, extracting, checking, extraction, assessment, processed: 7 a document
+    assert (report.consistent, report.entries) == (True, 7 * len(pairs))
 
 
 # --- verification pass before merging C2 ----------------------------------------------------

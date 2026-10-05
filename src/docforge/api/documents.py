@@ -1,16 +1,23 @@
 """Document endpoints: upload returns at once, a worker does the extraction."""
 
+import asyncio
+import base64
+import json
 import logging
+import time
 import uuid
-from datetime import datetime
+from collections import Counter
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 
 from docforge.api.auth import require
-from docforge.api.uploads import read_pdf_upload, safe_filename
+from docforge.api.uploads import read_upload, safe_filename
 from docforge.auth import Principal
 from docforge.documents import (
     DocumentNotFound,
@@ -19,7 +26,9 @@ from docforge.documents import (
     QueueFull,
     ReprocessInProgress,
     UnknownDocumentType,
+    UnsupportedFormat,
 )
+from docforge.formats import ACCEPTED, extension
 from docforge.parsing.base import ParseError
 from docforge.parsing.pdf import pdf_page_count
 from docforge.storage import StorageUnavailable
@@ -28,6 +37,11 @@ logger = logging.getLogger(__name__)
 
 Reader = Annotated[Principal, Depends(require("documents:read"))]
 Writer = Annotated[Principal, Depends(require("documents:write"))]
+_FINAL_STAGES = ("ready", "processed", "failed")
+# Each open stream reads the timeline every second; a cap per caller (per API process)
+# keeps one caller from taking every thread and connection.
+MAX_STREAMS_PER_CALLER = 5
+_open_streams: Counter[tuple[uuid.UUID, str]] = Counter()
 
 
 class _Out(BaseModel):
@@ -39,9 +53,12 @@ class DocumentOut(_Out):
     doc_type: str
     filename: str
     sha256: str
+    media_type: str
     size_bytes: int
     page_count: int | None
     status: str
+    stage: str  # stored, parsing, extracting, checking, indexing, processed, ready, ...
+    ready_for_chat: bool
     created_at: datetime
 
 
@@ -62,6 +79,34 @@ class UploadOut(BaseModel):
     created: bool  # false when this file was already known
     document: DocumentOut
     version: VersionOut | None
+
+
+class DocumentPage(BaseModel):
+    items: list[DocumentOut]
+    next_before: str | None  # pass as `before` for the next page; None at the end
+
+
+def _cursor(document: DocumentOut) -> str:
+    raw = f"{document.created_at.isoformat()}|{document.id}"
+    return base64.urlsafe_b64encode(raw.encode()).decode()
+
+
+def _parse_cursor(value: str) -> tuple[datetime, uuid.UUID]:
+    """Only what `_cursor` makes: an aware time the database can compare, and an id."""
+    try:
+        at, _, ident = base64.urlsafe_b64decode(value.encode()).decode().partition("|")
+        when = datetime.fromisoformat(at)
+        if when.tzinfo is None or not 2000 <= when.astimezone(UTC).year <= 9000:
+            raise ValueError("not a time this list gives")
+        return when, uuid.UUID(ident)
+    except (ValueError, OverflowError) as error:
+        raise HTTPException(422, "Not a page cursor from this list.") from error
+
+
+class StepOut(BaseModel):
+    stage: str
+    at: datetime
+    detail: str | None
 
 
 class DocumentDetailOut(BaseModel):
@@ -136,29 +181,40 @@ def documents_router(
         principal: Writer,
         doc_type: Annotated[str, Form()] = "invoice",
     ) -> UploadOut:
-        """Store a PDF and queue it for extraction. The same file twice is one document."""
+        """Store a file and queue it for processing. The same file twice is one document.
+
+        PDFs, office files and images are accepted. A PDF's pages are counted here; any other
+        file is made into a PDF in the worker, and its pages are counted there.
+        """
         if doc_type not in service.document_types:
             supported = ", ".join(service.document_types)
             raise HTTPException(422, f"Unknown document type. Supported: {supported}.")
-        data = await read_pdf_upload(file, max_upload_bytes)
-        try:
-            pages = await run_in_threadpool(pdf_page_count, data)
-        except ParseError as error:
-            raise HTTPException(422, "The file could not be read as a PDF.") from error
-        if pages > max_pages:
-            raise HTTPException(413, f"The document has {pages} pages; the limit is {max_pages}.")
+        data, fmt = await read_upload(file, max_upload_bytes)
+        if fmt == "pdf":
+            try:
+                pages = await run_in_threadpool(pdf_page_count, data)
+            except ParseError as error:
+                raise HTTPException(422, "The file could not be read as a PDF.") from error
+            if pages > max_pages:
+                raise HTTPException(
+                    413, f"The document has {pages} pages; the limit is {max_pages}."
+                )
 
         try:
             result = await run_in_threadpool(
                 service.ingest,
                 tenant_id=principal.tenant_id,
                 doc_type=doc_type,
-                filename=safe_filename(file.filename) or "upload.pdf",
+                filename=safe_filename(file.filename) or f"upload.{extension(fmt)}",
                 data=data,
                 actor=principal.actor,
             )
         except UnknownDocumentType as error:
             raise HTTPException(422, "Unknown document type.") from error
+        except UnsupportedFormat as error:
+            raise HTTPException(
+                415, f"This file type is not accepted. Accepted: {ACCEPTED}."
+            ) from error
         except DocumentTypeConflict as error:
             raise HTTPException(409, f"{str(error).capitalize()}.") from error
         except QueueFull as error:
@@ -242,6 +298,75 @@ def documents_router(
         except ReprocessInProgress:
             raise HTTPException(409, "This document is still being processed.") from None
         return VersionOut.model_validate(version)
+
+    @router.get("/documents", response_model=DocumentPage)
+    def list_documents(
+        principal: Reader,
+        limit: Annotated[int, Query(ge=1, le=500)] = 50,
+        before: str | None = None,
+        doc_type: str | None = None,
+        stage: str | None = None,
+    ) -> DocumentPage:
+        """The organisation's documents, newest first, each with its stage."""
+        cursor = _parse_cursor(before) if before else None
+        rows = service.list_documents(
+            principal.tenant_id, limit=limit + 1, before=cursor, doc_type=doc_type, stage=stage
+        )
+        items = [DocumentOut.model_validate(row) for row in rows[:limit]]
+        return DocumentPage(
+            items=items, next_before=_cursor(items[-1]) if len(rows) > limit else None
+        )
+
+    @router.get("/documents/{document_id}/timeline", response_model=list[StepOut])
+    def get_timeline(document_id: uuid.UUID, principal: Reader) -> list[StepOut]:
+        """Every stage the document has reached, with when, and the reason if it failed."""
+        try:
+            steps = service.timeline(principal.tenant_id, document_id)
+        except DocumentNotFound:
+            raise _NOT_FOUND from None
+        return [StepOut(stage=s.stage, at=s.at, detail=s.detail) for s in steps]
+
+    @router.get("/documents/{document_id}/events")
+    async def stream_events(document_id: uuid.UUID, principal: Reader) -> StreamingResponse:
+        """Server-sent events: each new stage as it is reached, ending once the document is
+        ready, processed or failed (or after ten minutes; reconnect to continue)."""
+        try:
+            await run_in_threadpool(service.timeline, principal.tenant_id, document_id)
+        except DocumentNotFound:
+            raise _NOT_FOUND from None
+
+        caller = (principal.tenant_id, principal.actor)
+        if _open_streams[caller] >= MAX_STREAMS_PER_CALLER:
+            raise HTTPException(429, "Too many open streams; close one or poll the timeline.")
+        _open_streams[caller] += 1
+
+        async def events() -> AsyncIterator[str]:
+            try:
+                sent = 0
+                deadline = time.monotonic() + 600
+                while time.monotonic() < deadline:
+                    steps = await run_in_threadpool(
+                        service.timeline, principal.tenant_id, document_id
+                    )
+                    for step in steps[sent:]:
+                        payload = {"stage": step.stage, "at": step.at.isoformat()}
+                        if step.detail:
+                            payload["detail"] = step.detail
+                        yield f"event: stage\ndata: {json.dumps(payload)}\n\n"
+                    sent = len(steps)
+                    if steps and steps[-1].stage in _FINAL_STAGES:
+                        return
+                    await asyncio.sleep(1)
+            finally:
+                _open_streams[caller] -= 1
+                if _open_streams[caller] <= 0:
+                    del _open_streams[caller]
+
+        return StreamingResponse(
+            events(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
 
     @router.get("/documents/{document_id}/audit", response_model=list[AuditEntryOut])
     def get_audit_trail(document_id: uuid.UUID, principal: Reader) -> list[AuditEntryOut]:

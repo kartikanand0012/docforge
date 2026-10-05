@@ -3,7 +3,8 @@
 Three kinds:
 - `summary`: one per document, written from the extraction in plain words (type, numbers,
   parties, dates spelled out, products, batches). It is what answers "the invoice from X to Y
-  in September", which no single printed block says.
+  in September", which no single printed block says. A general document's is its name and
+  title line.
 - `table_row`: one per table row, the cells joined with their column headers, so a line item
   is found and cited on its own.
 - `text`: the other blocks of a page in reading order, grouped up to a size.
@@ -90,6 +91,8 @@ def _summary(doc_type: str, filename: str, extraction: BaseModel) -> str:
             f"{_say(', expiring {}', _month(_v(e.expiry)))}.{_say(' Tests: {}.', tests)}"
             f"{_say(' Conclusion: {}', _v(e.conclusion))}"
         )
+    if doc_type == "general":
+        return f"Document {filename}{_say(': {}', getattr(e, 'title', None))}."
     return f"{doc_type.replace('_', ' ').capitalize()} {filename}."
 
 
@@ -106,6 +109,8 @@ def chunk_document(
             for block_id in field.block_ids
         )
     )
+    if doc_type == "general":  # nothing extracted: the summary cites the title line
+        cited = tuple(b.id for b in parsed.blocks if b.kind == "text" and b.text.strip())[:1]
     known = {block.id: block for block in parsed.blocks}
     summary_blocks = tuple(b for b in cited if b in known)[:_SUMMARY_CITATIONS]
     first_page = known[summary_blocks[0]].page if summary_blocks else 1

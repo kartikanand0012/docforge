@@ -3,14 +3,15 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const FIXTURES = path.resolve(__dirname, "../../../tests/fixtures/synthetic/pair_002");
+const GENERAL = path.resolve(__dirname, "../../../tests/fixtures/general");
 const API = process.env.E2E_API_URL ?? "http://127.0.0.1:8011";
 const EMAIL = "e2e@example.com";
 const PIN = "246810";
 
-async function upload(page: Page, file: string, type: "invoice" | "purchase_order"): Promise<string> {
+async function upload(page: Page, file: string, type: "invoice" | "purchase_order" | "general"): Promise<string> {
   await page.goto("/upload");
   await page.getByLabel("Document type").selectOption(type);
-  await page.getByLabel(/PDF, born-digital or scanned/).setInputFiles(path.join(FIXTURES, file));
+  await page.getByLabel(/^PDF \(born-digital or scanned\), Word/).setInputFiles(file);
   await page.getByRole("button", { name: "Upload" }).click();
   await page.waitForURL(/\/documents\/[0-9a-f-]{36}$/);
   return page.url().split("/").at(-1)!;
@@ -44,12 +45,21 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
   });
 
   test("the order and the invoice are uploaded and processed", async ({ page }) => {
-    await upload(page, "purchase_order.pdf", "purchase_order");
+    await upload(page, path.join(FIXTURES, "purchase_order.pdf"), "purchase_order");
     await expect(page.getByText("It can be approved")).toBeVisible({ timeout: 60_000 });
 
-    invoiceId = await upload(page, "invoice.pdf", "invoice");
+    invoiceId = await upload(page, path.join(FIXTURES, "invoice.pdf"), "invoice");
     await expect(page.getByText("Needs a person")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("order: match")).toBeVisible();
+    // Indexed for search and chat after the extraction: the page says so as it happens.
+    await expect(page.locator(".timeline-compact")).toContainText("Ready to chat", { timeout: 60_000 });
+
+    // Both are listed, newest first, with where each one is.
+    await page.getByRole("link", { name: "Documents" }).click();
+    const rows = page.locator("table.documents tbody tr");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText("invoice.pdf");
+    await expect(rows.first()).toContainText("Ready to chat");
   });
 
   test("the invoice waits in the review queue with its reason", async ({ page }) => {
@@ -145,5 +155,25 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     await expect(page.getByRole("heading", { name: "Seeded defects" })).toBeVisible();
     await expect(page.getByText("9 / 9")).toBeVisible();
     await expect(page.getByText("No model prices are configured")).toBeVisible();
+  });
+
+  test("a Word document is converted, read and indexed for search and chat, with nothing extracted", async ({ page }) => {
+    await upload(page, path.join(GENERAL, "sop-goods-receipt.docx"), "general");
+    await expect(page.getByRole("heading", { name: /sop-goods-receipt\.docx/ })).toContainText("Word");
+
+    const stages = page.getByRole("list", { name: "Processing stages" });
+    await expect(stages.locator("li").last()).toHaveClass(/stage-done/, { timeout: 60_000 });
+    await expect(stages).toContainText("Converting to PDF");
+    await expect(stages.locator("li").last()).toContainText("Ready to chat");
+    await expect(stages).not.toContainText("Extracting values");
+    await expect(page.getByRole("img", { name: "Page 1 of sop-goods-receipt.docx" })).toBeVisible();
+
+    await page.goto("/search");
+    await page.getByLabel("Question or words").fill("What happens to goods above 8 °C?");
+    await page.getByRole("button", { name: "Search" }).click();
+    // The passage that answers comes first, shown where the question's words are.
+    const first = page.getByRole("listitem").first();
+    await expect(first.getByRole("link", { name: "sop-goods-receipt.docx" })).toBeVisible({ timeout: 30_000 });
+    await expect(first).toContainText("anything above 8 °C is rejected");
   });
 });

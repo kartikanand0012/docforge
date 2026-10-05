@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
+import { ACCEPT } from "@/lib/formats";
 
 export default function UploadPage() {
   const router = useRouter();
@@ -14,7 +15,7 @@ export default function UploadPage() {
     const form = new FormData(event.currentTarget);
     const file = form.get("file");
     if (!(file instanceof File) || file.size === 0) {
-      setError("Choose a PDF first.");
+      setError("Choose a file first.");
       return;
     }
     setBusy(true);
@@ -36,9 +37,11 @@ export default function UploadPage() {
         <select id="doc_type" name="doc_type" defaultValue="invoice">
           <option value="invoice">Invoice</option>
           <option value="purchase_order">Purchase order</option>
+          <option value="coa">Certificate of analysis</option>
+          <option value="general">General document (read and indexed for search and chat, nothing extracted)</option>
         </select>
-        <label htmlFor="file">PDF, born-digital or scanned (up to 10 MB, 20 pages)</label>
-        <input id="file" name="file" type="file" accept="application/pdf" />
+        <label htmlFor="file">PDF (born-digital or scanned), Word, PowerPoint, Excel, or a photo or scan as PNG, JPEG or TIFF (up to 10 MB, 20 pages)</label>
+        <input id="file" name="file" type="file" accept={ACCEPT} />
         {error && <p className="error" role="alert">{error}</p>}
         <p>
           <button className="primary" type="submit" disabled={busy}>
