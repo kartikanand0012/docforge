@@ -39,9 +39,11 @@ def test_what_is_held_at_once_is_capped_across_processes(sessions: SessionFactor
 
 def test_a_hold_left_by_a_process_that_died_expires(sessions: SessionFactory) -> None:
     limits = DatabaseLimits(sessions)
-    limits.hold("stream:t:a", at_most=1, seconds=1).__enter__()  # never released: the process died
+    abandoned = limits.hold("stream:t:a", at_most=1, seconds=1)
+    abandoned.__enter__()  # never left: as if the process died holding it
     with pytest.raises(LimitReached):
-        limits.hold("stream:t:a", at_most=1, seconds=1).__enter__()
+        with limits.hold("stream:t:a", at_most=1, seconds=1):
+            pass
 
     time.sleep(1.2)
     with limits.hold("stream:t:a", at_most=1, seconds=60):

@@ -6,7 +6,6 @@ import json
 import logging
 import time
 import uuid
-from collections import Counter
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated, Any
@@ -29,6 +28,7 @@ from docforge.documents import (
     UnsupportedFormat,
 )
 from docforge.formats import ACCEPTED, extension
+from docforge.limits import LimitReached, Limits
 from docforge.parsing.base import ParseError
 from docforge.parsing.pdf import pdf_page_count
 from docforge.storage import StorageUnavailable
@@ -38,10 +38,9 @@ logger = logging.getLogger(__name__)
 Reader = Annotated[Principal, Depends(require("documents:read"))]
 Writer = Annotated[Principal, Depends(require("documents:write"))]
 _FINAL_STAGES = ("ready", "processed", "failed")
-# Each open stream reads the timeline every second; a cap per caller (per API process)
-# keeps one caller from taking every thread and connection.
+# Each open stream reads the timeline every second; a cap per caller keeps one caller from
+# taking every thread and connection.
 MAX_STREAMS_PER_CALLER = 5
-_open_streams: Counter[tuple[uuid.UUID, str]] = Counter()
 
 
 class _Out(BaseModel):
@@ -170,7 +169,7 @@ _NOT_FOUND = HTTPException(404, "No such document.")
 
 
 def documents_router(
-    service: DocumentService, *, max_upload_bytes: int, max_pages: int
+    service: DocumentService, *, max_upload_bytes: int, max_pages: int, limits: Limits
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
 
@@ -335,10 +334,17 @@ def documents_router(
         except DocumentNotFound:
             raise _NOT_FOUND from None
 
-        caller = (principal.tenant_id, principal.actor)
-        if _open_streams[caller] >= MAX_STREAMS_PER_CALLER:
-            raise HTTPException(429, "Too many open streams; close one or poll the timeline.")
-        _open_streams[caller] += 1
+        # Held in the database, so the cap holds across every API process; a stream lasts
+        # ten minutes at most, so a place left by a process that died frees itself after 11.
+        held = limits.hold(
+            f"stream:{principal.tenant_id}:{principal.actor}", MAX_STREAMS_PER_CALLER, 660
+        )
+        try:
+            await run_in_threadpool(held.__enter__)
+        except LimitReached:
+            raise HTTPException(
+                429, "Too many open streams; close one or poll the timeline."
+            ) from None
 
         async def events() -> AsyncIterator[str]:
             try:
@@ -358,9 +364,7 @@ def documents_router(
                         return
                     await asyncio.sleep(1)
             finally:
-                _open_streams[caller] -= 1
-                if _open_streams[caller] <= 0:
-                    del _open_streams[caller]
+                await run_in_threadpool(held.__exit__, None, None, None)
 
         return StreamingResponse(
             events(),

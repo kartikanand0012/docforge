@@ -1,9 +1,6 @@
 """Search over the organisation's documents, with citations."""
 
-import threading
-import time
 import uuid
-from collections import deque
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +9,7 @@ from pydantic import BaseModel
 
 from docforge.api.auth import require
 from docforge.auth import Principal
+from docforge.limits import Limits
 from docforge.search.embeddings import EmbeddingMissing, EmbeddingUnavailable
 from docforge.search.service import SearchService
 
@@ -38,30 +36,10 @@ class SearchOut(BaseModel):
     results: list[HitOut]
 
 
-class PerCaller:
-    """Searches per caller in the last minute, in this process: each vector search is a paid
-    call, so one credential cannot use up the organisation's quota."""
-
-    def __init__(self, per_minute: int) -> None:
-        self._limit = per_minute
-        self._seen: dict[str, deque[float]] = {}
-        self._lock = threading.Lock()
-
-    def allow(self, caller: str) -> bool:
-        now = time.monotonic()
-        with self._lock:
-            recent = self._seen.setdefault(caller, deque())
-            while recent and recent[0] <= now - 60:
-                recent.popleft()
-            if len(recent) >= self._limit:
-                return False
-            recent.append(now)
-            return True
-
-
-def search_router(search: SearchService, per_minute: int = 60) -> APIRouter:
+def search_router(search: SearchService, per_minute: int, limits: Limits) -> APIRouter:
+    """Searches are counted per caller and minute, across every API process: each vector
+    search is a paid call, so one credential cannot use up the organisation's quota."""
     router = APIRouter(prefix="/v1")
-    limiter = PerCaller(per_minute)
 
     @router.get("/search", response_model=SearchOut)
     async def run_search(
@@ -71,7 +49,8 @@ def search_router(search: SearchService, per_minute: int = 60) -> APIRouter:
         mode: Literal["keyword", "vector", "hybrid"] = "hybrid",
         doc_type: str | None = None,
     ) -> SearchOut:
-        if not limiter.allow(principal.actor):
+        key = f"search:{principal.tenant_id}:{principal.actor}"
+        if not await run_in_threadpool(limits.allow, key, per_minute):
             raise HTTPException(
                 429, "Too many searches. Try again in a minute.", headers={"Retry-After": "60"}
             )

@@ -5,9 +5,8 @@ import asyncio
 import json
 import logging
 import uuid
-from collections import Counter
-from collections.abc import AsyncIterator, Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
+from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import Annotated, Any
 
@@ -17,7 +16,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from docforge.api.auth import require
-from docforge.api.search import PerCaller
 from docforge.auth import Principal
 from docforge.chat.service import (
     ChatService,
@@ -28,6 +26,7 @@ from docforge.chat.service import (
     ScopeGone,
 )
 from docforge.collections import CollectionNotFound
+from docforge.limits import LimitReached, Limits
 from docforge.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
@@ -125,23 +124,28 @@ def _answer_out(answer: Any) -> "AnswerOut":
     )
 
 
-def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
+def chat_router(chat: ChatService, per_minute: int, limits: Limits) -> APIRouter:
     router = APIRouter(prefix="/v1")
-    limiter = PerCaller(per_minute)  # each question is a paid model call
-    in_flight: Counter[str] = Counter()  # questions being answered, per caller, here
 
-    @contextmanager
-    def slot(caller: str) -> Iterator[None]:
-        """Each question holds a thread for its model call: a few at a time per caller."""
-        if in_flight[caller] >= MAX_IN_FLIGHT_PER_CALLER:
-            raise HTTPException(429, "Wait for your other questions to be answered.")
-        in_flight[caller] += 1
+    def minute(principal: Principal) -> bool:
+        # Each question is a paid model call: counted per caller and minute, everywhere.
+        return limits.allow(f"chat-minute:{principal.tenant_id}:{principal.actor}", per_minute)
+
+    def slot(principal: Principal) -> AbstractContextManager[None]:
+        # Each question holds a thread for its model call: a few at a time per caller, across
+        # every API process. A place left by a process that died frees itself after 15 min.
+        key = f"chat:{principal.tenant_id}:{principal.actor}"
+        return limits.hold(key, MAX_IN_FLIGHT_PER_CALLER, 900)
+
+    async def take(principal: Principal) -> AbstractContextManager[None]:
+        if not await run_in_threadpool(minute, principal):
+            raise HTTPException(429, "Too many questions; wait a minute.")
+        held = slot(principal)
         try:
-            yield
-        finally:
-            in_flight[caller] -= 1
-            if in_flight[caller] <= 0:
-                del in_flight[caller]
+            await run_in_threadpool(held.__enter__)
+        except LimitReached:
+            raise HTTPException(429, "Wait for your other questions to be answered.") from None
+        return held
 
     def call(body: QuestionIn, principal: Principal, progress: Any = None) -> Any:
         return chat.ask(
@@ -156,13 +160,13 @@ def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
 
     @router.post("/chat", response_model=AnswerOut)
     async def ask(body: QuestionIn, principal: Reader) -> AnswerOut:
-        if not limiter.allow(principal.actor):
-            raise HTTPException(429, "Too many questions; wait a minute.")
-        with slot(principal.actor):
-            try:
-                answer = await run_in_threadpool(call, body, principal)
-            except Exception as error:
-                raise _http_error(error) from error
+        held = await take(principal)
+        try:
+            answer = await run_in_threadpool(call, body, principal)
+        except Exception as error:
+            raise _http_error(error) from error
+        finally:
+            await run_in_threadpool(held.__exit__, None, None, None)
         return _answer_out(answer)
 
     @router.post("/chat/stream")
@@ -170,10 +174,9 @@ def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
         """Server-sent events: a `stage` event as each stage begins (searching, reading with
         the number of passages, checking), then the checked `answer`, or an `error`. The
         answer's text is never streamed before its quotes are checked."""
-        if not limiter.allow(principal.actor):
-            raise HTTPException(429, "Too many questions; wait a minute.")
-        held = slot(principal.actor)
-        held.__enter__()  # released when the answer is in, whether or not anyone listens
+        held = await take(
+            principal
+        )  # released when the answer is in, whether or not anyone listens
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[tuple[str, dict[str, Any]] | None] = asyncio.Queue()
 
@@ -191,7 +194,7 @@ def chat_router(chat: ChatService, per_minute: int = 20) -> APIRouter:
                     ("error", {"status": failure.status_code, "detail": failure.detail})
                 )
             finally:
-                held.__exit__(None, None, None)
+                await run_in_threadpool(held.__exit__, None, None, None)
                 await queue.put(None)
 
         # Held here until done: the stream may be dropped by a client that leaves, and a
