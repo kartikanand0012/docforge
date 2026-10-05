@@ -311,7 +311,7 @@
     "report": "answers",
     "path": "prompt_version",
     "op": "==",
-    "value": "chat-1",
+    "value": "chat-2",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {

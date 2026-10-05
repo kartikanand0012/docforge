@@ -79,7 +79,9 @@ def test_a_short_number_cell_is_not_outlined_inside_a_longer_number() -> None:
 
 
 def test_a_quote_joining_parts_of_a_passage_with_an_ellipsis_is_found_when_every_part_is() -> None:
-    passage = "Invoice NVM/26-27/09004 dated 14 June 2026 | Taxable 30,000.00 | Grand total 31674.00"
+    passage = (
+        "Invoice NVM/26-27/09004 dated 14 June 2026 | Taxable 30,000.00 | Grand total 31674.00"
+    )
     assert quote_in("Invoice NVM/26-27/09004 [...] Grand total 31674.00.", passage)
     assert quote_in("Invoice NVM/26-27/09004 ... Grand total 31674.00", passage)
     assert quote_in("Invoice NVM/26-27/09004 … Grand total 31674.00", passage)

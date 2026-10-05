@@ -373,6 +373,7 @@ class Message(Base):
     status: Mapped[str] = mapped_column(Text)  # supported, partly_supported, unsupported, not_found
     citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     dropped_citations: Mapped[int] = mapped_column(Integer, server_default="0")
+    dropped_statements: Mapped[int] = mapped_column(Integer, server_default="0")
     model: Mapped[str | None] = mapped_column(Text)
     prompt_version: Mapped[str] = mapped_column(Text)
     input_tokens: Mapped[int | None] = mapped_column(Integer)

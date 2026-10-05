@@ -11,6 +11,10 @@ describe("statusNote", () => {
     expect(statusNote("partly_supported", 1)).toBe("1 quote could not be found in the documents and was left out.");
   });
 
+  it("says how many statements were left out for a figure no quote holds", () => {
+    expect(statusNote("partly_supported", 0, 1)).toBe("1 statement could not be checked against the documents and was left out.");
+  });
+
   it("explains a withheld answer and one the documents do not hold", () => {
     expect(statusNote("unsupported", 3)).toMatch(/not shown/);
     expect(statusNote("not_found", 0)).toMatch(/not in the documents/);

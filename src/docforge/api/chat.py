@@ -67,6 +67,7 @@ class AnswerOut(BaseModel):
     text: str
     citations: list[CitationOut]
     dropped_citations: int
+    dropped_statements: int  # statements left out: no quote found, or a figure it lacks
     words_only: bool
 
 
@@ -120,6 +121,7 @@ def _answer_out(answer: Any) -> "AnswerOut":
         text=answer.text,
         citations=[CitationOut(**c.as_json()) for c in answer.citations],
         dropped_citations=answer.dropped_citations,
+        dropped_statements=answer.dropped_statements,
         words_only=answer.words_only,
     )
 

@@ -1,6 +1,6 @@
 {
   "model": "gemini-3.5-flash-lite",
-  "prompt_version": "chat-1",
+  "prompt_version": "chat-2",
   "questions": 104,
   "answerable": 72,
   "unanswerable": 32,
@@ -14,8 +14,8 @@
   "follow_ups_correct": 1.0,
   "cross_tenant_citations": 0,
   "outside_knowledge_base": 0,
-  "input_tokens_per_question": 1478,
-  "output_tokens_per_question": 103,
+  "input_tokens_per_question": 1521,
+  "output_tokens_per_question": 113,
   "missed": [],
   "answers": {}
 }

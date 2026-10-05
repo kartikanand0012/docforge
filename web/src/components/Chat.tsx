@@ -132,8 +132,8 @@ export default function Chat({
             ) : (
               <div className={`answer ${turn.answer.status}`}>
                 <p>{turn.answer.text}</p>
-                {statusNote(turn.answer.status, turn.answer.dropped_citations) && (
-                  <p className="muted">{statusNote(turn.answer.status, turn.answer.dropped_citations)}</p>
+                {statusNote(turn.answer.status, turn.answer.dropped_citations, turn.answer.dropped_statements) && (
+                  <p className="muted">{statusNote(turn.answer.status, turn.answer.dropped_citations, turn.answer.dropped_statements)}</p>
                 )}
                 {turn.answer.citations.length > 0 && (
                   <ol className="citations" aria-label="Sources">

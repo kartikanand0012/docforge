@@ -26,7 +26,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passage, build_prompt
-from docforge.chat.verify import cited_blocks, quote_in
+from docforge.chat.statements import RawStatement, check_statements
+from docforge.chat.verify import cited_blocks
 from docforge.collections import CollectionNotFound, CollectionService
 from docforge.db.models import Conversation, Document, Message
 from docforge.db.session import SessionFactory
@@ -113,14 +114,10 @@ class Search(Protocol):
     ) -> SearchHits: ...
 
 
-class RawCitation(BaseModel):  # no extra="forbid": Gemini's schema has no additionalProperties
-    passage: int = Field(description="The number of the passage quoted.")
-    quote: str = Field(description="Words copied exactly from that passage.")
-
-
-class RawAnswer(BaseModel):
-    answer: str
-    citations: list[RawCitation]
+class RawAnswer(BaseModel):  # no extra="forbid": Gemini's schema has no additionalProperties
+    statements: list[RawStatement] = Field(
+        description="The answer, one claim per statement, each with its citations."
+    )
     unanswerable: bool
 
 
@@ -152,6 +149,7 @@ class Answer:
     text: str
     citations: tuple[Citation, ...]
     dropped_citations: int  # quotes not found in the passages they named
+    dropped_statements: int  # statements without a found quote, or with a figure it lacks
     words_only: bool  # the passages were found by words alone (no embedding service)
     model: str | None
     input_tokens: int | None
@@ -180,35 +178,35 @@ class ConversationSummary:
 
 
 def _checked(
-    raw: RawAnswer, passages: Sequence[Passage], hits: Sequence[SearchHit]
-) -> tuple[Status, str, tuple[Citation, ...], int]:
+    raw: RawAnswer, passages: Sequence[Passage], hits: Sequence[SearchHit], given: str
+) -> tuple[Status, str, tuple[Citation, ...], int, int]:
+    """Status, text, citations, and the citations and statements dropped."""
     if raw.unanswerable:
-        return "not_found", NOT_FOUND, (), 0
+        return "not_found", NOT_FOUND, (), 0, 0
+    checked = check_statements(raw.statements, passages, given=given)
     citations: list[Citation] = []
-    dropped = 0
-    for cited in raw.citations:
-        index = cited.passage - 1
-        if not 0 <= index < len(passages) or not quote_in(cited.quote, passages[index].text):
-            dropped += 1
-            continue
-        hit = hits[index]
-        blocks = cited_blocks(cited.quote, hit.blocks)
-        citation = Citation(
-            document_id=hit.document_id,
-            filename=hit.filename,
-            doc_type=hit.doc_type,
-            page=int(blocks[0]["page"]) if blocks else hit.page,
-            quote=cited.quote,
-            # Where the quote is; failing that, where the passage is.
-            boxes=tuple({k: block[k] for k in _BOX_KEYS if k in block} for block in blocks)
-            or hit.boxes,
-        )
-        if citation not in citations:
-            citations.append(citation)
-    if not citations:
-        return "unsupported", WITHHELD, (), dropped
+    for kept in checked.kept:
+        for index, quote in kept.citations:
+            hit = hits[index]
+            blocks = cited_blocks(quote, hit.blocks)
+            citation = Citation(
+                document_id=hit.document_id,
+                filename=hit.filename,
+                doc_type=hit.doc_type,
+                page=int(blocks[0]["page"]) if blocks else hit.page,
+                quote=quote,
+                # Where the quote is; failing that, where the passage is.
+                boxes=tuple({k: block[k] for k in _BOX_KEYS if k in block} for block in blocks)
+                or hit.boxes,
+            )
+            if citation not in citations:
+                citations.append(citation)
+    if not checked.kept:
+        return "unsupported", WITHHELD, (), checked.dropped_citations, checked.dropped_statements
+    dropped = checked.dropped_citations + checked.dropped_statements
     status: Status = "partly_supported" if dropped else "supported"
-    return status, raw.answer.strip(), tuple(citations), dropped
+    text = " ".join(kept.text for kept in checked.kept)
+    return status, text, tuple(citations), checked.dropped_citations, checked.dropped_statements
 
 
 class ChatService:
@@ -273,20 +271,26 @@ class ChatService:
                 citations: tuple[Citation, ...] = ()
                 if not passages:
                     status: Status = "not_found"
-                    text, dropped = NOT_FOUND, 0
+                    text, dropped, dropped_statements = NOT_FOUND, 0, 0
                 else:
                     raw, responses = self._ask(build_prompt(passages, question, history))
                     tell("checking", {})
-                    status, text, citations, dropped = _checked(raw, passages, hits)
+                    # Figures a statement repeats from the question or the conversation need
+                    # no quote of their own.
+                    given = " ".join([question, *(f"{q} {a}" for q, a in history)])
+                    status, text, citations, dropped, dropped_statements = _checked(
+                        raw, passages, hits, given
+                    )
                 span.set_attribute("docforge.chat.status", status)
                 span.set_attribute("docforge.chat.dropped_citations", dropped)
+                span.set_attribute("docforge.chat.dropped_statements", dropped_statements)
         except Exception as error:
             spent = getattr(error, "responses", responses)
             self._complete(message_id, "error", "The model could not answer.", (), 0, spent)
             raise
         if not passages:
             tell("checking", {})  # nothing to check, but every stream shows the same stages
-        self._complete(message_id, status, text, citations, dropped, responses)
+        self._complete(message_id, status, text, citations, dropped, responses, dropped_statements)
         input_tokens, output_tokens = _tokens(responses)
         return Answer(
             conversation_id=conversation_id,
@@ -295,6 +299,7 @@ class ChatService:
             text=text,
             citations=citations,
             dropped_citations=dropped,
+            dropped_statements=dropped_statements,
             words_only=hits.words_only,
             model=responses[-1].model if responses else None,
             input_tokens=input_tokens,
@@ -470,6 +475,7 @@ class ChatService:
         citations: tuple[Citation, ...],
         dropped: int,
         responses: tuple[LLMResponse, ...],
+        dropped_statements: int = 0,
     ) -> None:
         input_tokens, output_tokens = _tokens(responses)
         try:
@@ -479,6 +485,7 @@ class ChatService:
                 message.answer = text
                 message.citations = [c.as_json() for c in citations]
                 message.dropped_citations = dropped
+                message.dropped_statements = dropped_statements
                 message.model = responses[-1].model if responses else None
                 message.input_tokens = input_tokens
                 message.output_tokens = output_tokens
