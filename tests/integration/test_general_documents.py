@@ -33,6 +33,7 @@ class Converter:
     def __init__(self, fail: bool = False) -> None:
         self.calls: list[str] = []
         self.fail = fail
+        self.version = "fake-1"  # a LibreOffice upgrade changes it
 
     def to_pdf(self, data: bytes, fmt: Format) -> bytes:
         self.calls.append(fmt)
@@ -41,11 +42,23 @@ class Converter:
         return data if fmt == "pdf" else CONVERTED
 
 
+class ReadingStore(MemoryObjectStore):
+    """Remembers which keys were read."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.reads: list[str] = []
+
+    def get(self, key: str) -> bytes:
+        self.reads.append(key)
+        return super().get(key)
+
+
 class Service:
     def __init__(self, sessions: SessionFactory, converter: Converter | None = None) -> None:
         self.queued: list[uuid.UUID] = []
         self.indexed: list[uuid.UUID] = []
-        self.store = MemoryObjectStore()
+        self.store = ReadingStore()
         self.converter = converter or Converter()
         self.parser = FakeParser()
         self.sha = ""
@@ -97,7 +110,10 @@ def test_a_docx_is_converted_read_and_queued_for_indexing(svc: Service) -> None:
     detail = svc.service.detail(DEFAULT_TENANT_ID, document_id)
     assert detail.document.stage == "indexing" and detail.document.page_count == 1
     assert svc.indexed == [detail.versions[-1].id]
-    assert svc.store.get(rendition_key(DEFAULT_TENANT_ID, detail.document.sha256)) == CONVERTED
+    assert (
+        svc.store.get(rendition_key(DEFAULT_TENANT_ID, detail.document.sha256, "fake-1"))
+        == CONVERTED
+    )
     assert svc.parser.calls == 1
 
 
@@ -233,7 +249,7 @@ def test_a_pdf_made_with_too_many_pages_is_refused_before_it_is_stored(
 
     last = svc.service.timeline(DEFAULT_TENANT_ID, document.id)[-1]
     assert last.detail == "The document has 3 pages; the limit is 2."
-    assert not svc.store.exists(rendition_key(DEFAULT_TENANT_ID, document.sha256))
+    assert not svc.store.exists(rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-1"))
 
 
 def test_when_two_deliveries_convert_the_stored_pdf_wins(sessions: SessionFactory) -> None:
@@ -247,7 +263,9 @@ def test_when_two_deliveries_convert_the_stored_pdf_wins(sessions: SessionFactor
 
         def to_pdf(self, data: bytes, fmt: Format) -> bytes:
             # Another delivery finished converting first.
-            self.store.put(rendition_key(DEFAULT_TENANT_ID, racing.sha), stored, "application/pdf")
+            self.store.put(
+                rendition_key(DEFAULT_TENANT_ID, racing.sha, "fake-1"), stored, "application/pdf"
+            )
             return CONVERTED
 
     racing = Service(sessions)
@@ -257,7 +275,7 @@ def test_when_two_deliveries_convert_the_stored_pdf_wins(sessions: SessionFactor
     racing.sha = document.sha256
     racing.run()
 
-    assert racing.store.get(rendition_key(DEFAULT_TENANT_ID, document.sha256)) == stored
+    assert racing.store.get(rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-1")) == stored
     assert racing.service.detail(DEFAULT_TENANT_ID, document.id).document.page_count == 1
 
 
@@ -302,3 +320,48 @@ def test_a_stage_that_cannot_be_recorded_does_not_retry_the_document(
     svc.ingest(DOCX)
 
     assert svc.run() == ["succeeded"]
+
+
+# --- a converter upgrade (hardening) ------------------------------------------------------
+
+
+def test_after_a_converter_upgrade_reprocessing_converts_again(
+    sessions: SessionFactory, svc: Service
+) -> None:
+    document = svc.ingest(DOCX).document
+    svc.run()
+    svc.converter.version = "fake-2"  # LibreOffice upgraded
+
+    svc.service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=document.id, actor="t")
+    svc.run()
+
+    assert svc.converter.calls == ["docx", "docx"]
+    assert svc.store.exists(rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-2"))
+    versions = svc.service.detail(DEFAULT_TENANT_ID, document.id).versions
+    assert [v.rendition_key for v in versions] == [
+        rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-1"),
+        rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-2"),
+    ]
+
+
+def test_page_images_come_from_the_pdf_the_newest_reading_used(
+    sessions: SessionFactory, svc: Service
+) -> None:
+    document = svc.ingest(PNG, "photo.png").document
+    svc.run()
+    svc.converter.version = "fake-2"
+    newer = image_bytes("PDF", size=(400, 400))
+    svc.converter.to_pdf = lambda data, fmt: newer  # type: ignore[method-assign]
+    svc.service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=document.id, actor="t")
+    svc.run()
+    review = ReviewService(sessions, svc.store, {})
+
+    review.page_image(DEFAULT_TENANT_ID, document.id, 1)
+
+    assert svc.store.reads[-1] == rendition_key(DEFAULT_TENANT_ID, document.sha256, "fake-2")
+
+
+def test_a_pdf_upload_records_no_converted_pdf(svc: Service) -> None:
+    document = svc.ingest(CONVERTED, "manual.pdf").document
+    svc.run()
+    assert svc.service.detail(DEFAULT_TENANT_ID, document.id).versions[-1].rendition_key is None

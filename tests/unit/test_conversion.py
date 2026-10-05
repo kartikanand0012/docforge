@@ -297,3 +297,17 @@ def test_a_pdf_larger_than_the_limit_is_refused() -> None:
 def test_a_pdf_upload_never_starts_a_child() -> None:
     pdf = b"%PDF-1.7 as it is"
     assert isolated(timeout_seconds=0.001).to_pdf(pdf, "pdf") is pdf
+
+
+def test_the_converter_names_its_version_with_libreoffice_and_pillow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import PIL
+
+    monkeypatch.setattr(FileConverter, "find_soffice", classmethod(lambda cls: None))
+    version = FileConverter().version
+    assert f"pillow={PIL.__version__}" in version and "libreoffice=none" in version
+
+
+def test_recorded_conversions_have_a_version_of_their_own(tmp_path: Path) -> None:
+    assert RecordingConverter(tmp_path, None).version == "recorded"
