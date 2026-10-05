@@ -5,6 +5,7 @@ Pillow, with a size limit."""
 import io
 import shutil
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pypdf import PdfReader
@@ -15,6 +16,7 @@ from docforge.conversion import (
     IsolatedConverter,
     RecordingConverter,
 )
+from docforge.formats import Format
 from office_files import docx_bytes, image_bytes, pptx_bytes
 
 needs_libreoffice = pytest.mark.skipif(
@@ -34,7 +36,7 @@ def test_a_pdf_is_returned_as_it_is() -> None:
 
 @pytest.mark.parametrize("fmt", ["PNG", "JPEG"])
 def test_a_scan_becomes_a_one_page_pdf_of_its_own_size(fmt: str) -> None:
-    pdf = FileConverter().to_pdf(image_bytes(fmt, (850, 1100), dpi=100), fmt.lower())
+    pdf = FileConverter().to_pdf(image_bytes(fmt, (850, 1100), dpi=100), cast(Format, fmt.lower()))
     assert pdf.startswith(b"%PDF-")
     ((width, height),) = pages(pdf)
     assert (round(width), round(height)) == (612, 792)  # 850 x 1100 pixels at 100 dpi
@@ -178,8 +180,9 @@ def test_a_transparent_image_is_put_on_white() -> None:
     out = io.BytesIO()
     image.save(out, format="PNG")
     (page,) = render_pages(FileConverter().to_pdf(out.getvalue(), "png"), 72)
-    assert page.getpixel((5, 5)) > 240  # background white
-    assert page.getpixel((300, 85)) < 20  # the bar still black
+    background, bar = page.getpixel((5, 5)), page.getpixel((300, 85))  # greyscale: numbers
+    assert isinstance(background, int) and background > 240  # white
+    assert isinstance(bar, int) and bar < 20  # the bar still black
 
 
 def test_libreoffice_gets_only_the_environment_it_needs(

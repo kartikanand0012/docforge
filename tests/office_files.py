@@ -28,7 +28,7 @@ def pptx_bytes(title: str = "Quarterly supplier review") -> bytes:
 
 
 def xlsx_bytes() -> bytes:
-    from openpyxl import Workbook
+    from openpyxl import Workbook  # type: ignore[import-untyped]
 
     workbook = Workbook()
     sheet = workbook.active

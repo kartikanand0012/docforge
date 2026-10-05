@@ -247,18 +247,18 @@ def test_when_two_deliveries_convert_the_stored_pdf_wins(sessions: SessionFactor
 
         def to_pdf(self, data: bytes, fmt: Format) -> bytes:
             # Another delivery finished converting first.
-            self.store.put(rendition_key(DEFAULT_TENANT_ID, svc.sha), stored, "application/pdf")
+            self.store.put(rendition_key(DEFAULT_TENANT_ID, racing.sha), stored, "application/pdf")
             return CONVERTED
 
-    svc = Service(sessions)
-    svc.converter = Racing(svc.store)
-    svc.service._converter = svc.converter
-    document = svc.ingest(DOCX).document
-    svc.sha = document.sha256
-    svc.run()
+    racing = Service(sessions)
+    racing.converter = Racing(racing.store)
+    racing.service._converter = racing.converter
+    document = racing.ingest(DOCX).document
+    racing.sha = document.sha256
+    racing.run()
 
-    assert svc.store.get(rendition_key(DEFAULT_TENANT_ID, document.sha256)) == stored
-    assert svc.service.detail(DEFAULT_TENANT_ID, document.id).document.page_count == 1
+    assert racing.store.get(rendition_key(DEFAULT_TENANT_ID, document.sha256)) == stored
+    assert racing.service.detail(DEFAULT_TENANT_ID, document.id).document.page_count == 1
 
 
 def test_reprocessing_moves_the_document_back_to_stored(svc: Service) -> None:
