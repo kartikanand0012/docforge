@@ -11,6 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from docforge.config import get_settings
+from docforge.evals.answers import (
+    AnswerResult,
+    Question,
+    format_answer_report,
+    run_answer_eval,
+)
 from docforge.evals.coa import format_coa_report, run_coa_eval
 from docforge.evals.run import format_report, record_pipeline, replay_pipeline, run_eval
 from docforge.evals.scans import format_scan_report, run_scan_eval
@@ -40,7 +46,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m docforge.evals", description=__doc__)
     parser.add_argument(
         "--suite",
-        choices=("extraction", "trust", "scans", "coa", "search", "search-heldout"),
+        choices=("extraction", "trust", "scans", "coa", "search", "search-heldout", "answers"),
         default="extraction",
     )
     parser.add_argument("--mode", choices=("replay", "record"), default="replay")
@@ -60,10 +66,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         "coa": "coa",
         "search": "search",
         "search-heldout": "search_heldout",
+        "answers": "answers",
     }
     out = args.out or Path(f"evals/baselines/{names[args.suite]}.json")
     if args.mode == "record" and settings.gemini_api_key is None:
         parser.error("record mode needs GEMINI_API_KEY")
+    if args.suite == "answers":
+        secret = settings.gemini_api_key if args.mode == "record" else None
+        return _answers(args, out, settings.embedding_model, secret)
     if args.suite in ("search", "search-heldout"):
         secret = settings.gemini_api_key if args.mode == "record" else None
         return _search(args, out, settings.embedding_model, secret)
@@ -149,6 +159,39 @@ def _search(args: argparse.Namespace, out: Path, model: str, secret: Any) -> int
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(body + "\n", encoding="utf-8")
     print(summary)
+    print(f"Report written to {out}")
+    return 0
+
+
+def _answers(args: argparse.Namespace, out: Path, embedding_model: str, secret: Any) -> int:
+    key = secret.get_secret_value() if secret is not None else None
+    embedder = RecordingEmbedder(
+        args.recordings / "embeddings",
+        GeminiEmbedder(embedding_model, key) if key else None,
+        model=embedding_model,
+    )
+    provider = RecordingProvider(
+        args.recordings / "llm", args.model, GeminiProvider(args.model, key) if key else None
+    )
+
+    def progress(question: Question, result: AnswerResult) -> None:
+        print(f"{question.id}: {result.status}: {result.text[:90]}", flush=True)
+
+    try:
+        report = run_answer_eval(
+            args.fixtures, args.coa, args.recordings, embedder, provider, on_answer=progress
+        )
+    except LLMQuotaExhausted as error:
+        print(f"Stopped: {error}", file=sys.stderr)
+        return 2
+    except (EmbeddingMissing, ParseError, LLMError) as error:
+        print(f"Eval failed: {error}", file=sys.stderr)
+        if args.mode == "replay":
+            print("Recordings are missing or stale; record the answer eval.", file=sys.stderr)
+        return 1
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    print(format_answer_report(report))
     print(f"Report written to {out}")
     return 0
 

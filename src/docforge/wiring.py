@@ -7,6 +7,7 @@ from pathlib import Path
 
 from docforge.anchors import AnchorStore
 from docforge.auth import Authenticator
+from docforge.chat.service import ChatService
 from docforge.config import Settings
 from docforge.conversion import Converter, FileConverter, IsolatedConverter, RecordingConverter
 from docforge.db.session import make_engine, make_session_factory
@@ -15,6 +16,7 @@ from docforge.extraction.coa import COA_SPEC, CoaExtraction
 from docforge.extraction.general import GeneralPipeline
 from docforge.extraction.pipeline import INVOICE_SPEC, ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
+from docforge.llm.base import LLMProvider
 from docforge.llm.gemini import GeminiProvider
 from docforge.llm.replay import RecordingProvider
 from docforge.parsing.cache import CachingParser
@@ -135,17 +137,47 @@ def build_authenticator(settings: Settings) -> Authenticator:
 
 
 def build_search(settings: Settings) -> SearchService:
-    """Search with Gemini embeddings. With no key, recorded embeddings are replayed (tests
-    and demos on the recorded documents); nothing is ever recorded in a deployment."""
-    embedder: Embedder = (
-        GeminiEmbedder(settings.embedding_model, settings.gemini_api_key.get_secret_value())
-        if settings.gemini_api_key is not None
-        else RecordingEmbedder(
-            Path(settings.recordings_dir) / "embeddings", None, model=settings.embedding_model
+    """Search with Gemini embeddings. With no key, or with replayed pipelines, recorded
+    embeddings are replayed (tests and demos on the recorded documents), so a replayed run
+    ranks exactly as the recorded one; with `CHAT_RECORD=1` and a key, missing ones are
+    recorded. Nothing is ever recorded in a deployment."""
+    directory = Path(settings.recordings_dir) / "embeddings"
+    key = settings.gemini_api_key
+    embedder: Embedder
+    if settings.pipeline_factory == REPLAY_FACTORY or key is None:
+        live = (
+            GeminiEmbedder(settings.embedding_model, key.get_secret_value())
+            if key is not None and settings.chat_record
+            else None
         )
-    )
+        embedder = RecordingEmbedder(directory, live, model=settings.embedding_model)
+    else:
+        embedder = GeminiEmbedder(settings.embedding_model, key.get_secret_value())
     sessions = make_session_factory(make_engine(settings.database_url.get_secret_value()))
     return SearchService(sessions, embedder)
+
+
+def build_chat(settings: Settings, search: SearchService) -> ChatService:
+    """Answers with Gemini. With no key, recorded answers are replayed (the demo and the
+    browser test); `CHAT_RECORD=1` with a key records what is asked, for those replays."""
+    recordings = Path(settings.recordings_dir) / "llm"
+    provider: LLMProvider
+    if settings.gemini_api_key is None:
+        provider = RecordingProvider(recordings, settings.gemini_model)
+    else:
+        live = GeminiProvider(settings.gemini_model, settings.gemini_api_key.get_secret_value())
+        provider = (
+            RecordingProvider(recordings, settings.gemini_model, live)
+            if settings.chat_record
+            else live
+        )
+    return ChatService(
+        make_session_factory(make_engine(settings.database_url.get_secret_value())),
+        search,
+        provider,
+        daily_limit=settings.chat_daily_limit,
+        daily_limit_per_person=settings.chat_daily_limit_per_person,
+    )
 
 
 def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Chat from "@/components/Chat";
 import Timeline from "@/components/Timeline";
 import { ApiError, api, type FieldAssessment, type ReviewDetail } from "@/lib/api";
 import { fieldAt, label, section } from "@/lib/fields";
@@ -297,6 +298,14 @@ export default function Review({ id }: { id: string }) {
           </div>
         </section>
       </div>
+      <Chat
+        documentId={d.document_id}
+        onCite={(citation) => {
+          // The review shows the pages in order: bring the cited one into view.
+          const pages = document.querySelectorAll<HTMLElement>(".review figure.page");
+          pages[citation.page - 1]?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }}
+      />
     </>
   );
 }

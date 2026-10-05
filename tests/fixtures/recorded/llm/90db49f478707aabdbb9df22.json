@@ -1,0 +1,14 @@
+{
+  "key": "90db49f478707aabdbb9df22ea3f0eb0545551af69416bfad2264cb4c156530e",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1130,
+    "output_tokens": 23,
+    "thinking_tokens": null,
+    "latency_ms": 2750.9
+  }
+}

@@ -10,6 +10,7 @@ from docforge.extraction.pipeline import InvoicePipeline
 from docforge.telemetry import configure_tracing, settings_prices
 from docforge.wiring import (
     build_authenticator,
+    build_chat,
     build_review,
     build_search,
     build_service,
@@ -26,6 +27,7 @@ def create_default_app() -> FastAPI:
     # The stateless preview endpoint uses the invoice pipeline directly.
     preview = load_pipelines(settings).get("invoice")
     prices = settings_prices(settings)
+    search = build_search(settings)
     return create_app(
         preview if isinstance(preview, InvoicePipeline) else None,
         max_upload_bytes=settings.max_upload_bytes,
@@ -37,5 +39,6 @@ def create_default_app() -> FastAPI:
         cors_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
         authenticator=build_authenticator(settings),
         webhooks=webhooks,
-        search=build_search(settings),
+        search=search,
+        chat=build_chat(settings, search),
     )

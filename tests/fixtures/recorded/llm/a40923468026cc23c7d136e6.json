@@ -1,0 +1,14 @@
+{
+  "key": "a40923468026cc23c7d136e61969df3b17777eb308440d9f0b9f751184c8ea63",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Cold-chain goods with a temperature above 8 \u00b0C are rejected.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Record the temperature of cold-chain goods; anything above 8 \u00b0C is rejected.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 556,
+    "output_tokens": 79,
+    "thinking_tokens": null,
+    "latency_ms": 2306.7
+  }
+}

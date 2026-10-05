@@ -2,6 +2,52 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C11 Chat with documents (2026-10-05): gate passed
+
+Branch `c11-chat`, stacked on C10. Evidence: `docs/tdd/c11-chat.tdd.md`.
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Answer eval: correctness | Pass | 39 of 40 answerable questions answered with the expected value and no other figure (97.5%); floor 0.93 |
+| Answer eval: citation support | Pass | 97.5% of answerable questions answered citing the document the answer is in; every citation's quote is checked against its passage |
+| Answer eval: abstention | Pass | 24 of 24 questions the documents cannot answer were declined; 0 answered anyway |
+| 0 cross-tenant leaks | Pass | 0 citations of the other organisation's documents |
+| Gated in CI | Pass | Recorded live once, replayed in CI with floors on correctness, citations, wrong answers (0), abstention, false abstention, leaks, tokens per question, and pins on the question set, model and prompt; gate 46/46 |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Questions | 64 on 8 invoice pairs and their certificates in two organisations: 40 answerable (8 asked within one document), 24 not |
+| Answered correctly | 97.5% (the miss: a line quantity, declined rather than guessed) |
+| Wrong answers | 0 |
+| Tokens per question | about 1,570 in and 85 out (Gemini 3.5 Flash-Lite, prompt `chat-1`) |
+| Tests | 1,699 Python, 92% coverage; 61 web; e2e 8/8 |
+
+### What was built
+
+- **Chat.** A question is answered from up to eight passages hybrid search finds, in one document or across the organisation, by a model with no tools. Every citation is a passage number and an exact quote, checked against that passage on word and number boundaries and outlined on the page. An answer with no checked quote is withheld; "the documents do not say" when they do not.
+- **Conversations.** Per person and tenant under row-level security (migration 0016); follow-ups get the last three turns (non-answers left out); deletable by their owner.
+- **Cost.** A question takes its place for the day before the model is asked, under a lock per organisation: daily limits per organisation (500) and per person (100) hold under concurrent questions and count failures. Tokens and model recorded per question.
+- **API.** `POST /v1/chat`, `GET /v1/conversations`, `GET` and `DELETE /v1/conversations/{id}`.
+- **Web.** An "Ask about this document" panel on every document page (sources outlined on general documents' pages), and a Chat page with earlier conversations.
+- **Answer eval** (`python -m docforge.evals --suite answers`), recorded and replayed like the others.
+
+### Review (ECC security-reviewer, python-reviewer, react-reviewer)
+
+Security found no critical or high issue: tenant isolation, prompt fencing, rendering and logging held. Fixed, each with a failing test first: the daily limit raced and did not count failed questions; one person could use up the organisation's day; quotes matched inside longer numbers and words, and lone common words counted; short number cells were outlined; the eval accepted an answer with a second, wrong figure and did not count answers to unanswerable questions, nor ask within one document; non-answers were given as history; a follow-up could name another document; conversations could not be deleted, and blocked a document's deletion; chat recording was allowed in production. Web: the page scrolled to the chat on opening; the chat kept another document's conversation; Enter while composing sent; a failed question was lost; screen-reader announcements; lazy pages scrolled to the wrong place.
+
+### Honest limits
+
+- **A checked quote shows the source exists, not that it supports every word of the answer.** One real quote makes an answer "supported"; a partly supported answer still shows its text, with the dropped quotes counted. The eval measures 0 wrong answers on its 64 questions, not on every document.
+- **Synthetic documents.** Invoices and certificates with clean text; a pilot measures real ones.
+- **No streaming.** Answers arrive whole (a few seconds); streaming is in C12.
+- **Retrieval for follow-ups** uses the previous question only; a third turn can lose context.
+- **The per-minute limit is per API process**; the daily limits are in the database.
+- **On typed documents' review pages** a citation scrolls to its page but is not outlined there yet.
+
 ## C10 Status and general documents (2026-10-04): gate passed
 
 Branch `c10-status`, stacked on C9. Evidence: `docs/tdd/c10-status.tdd.md`.

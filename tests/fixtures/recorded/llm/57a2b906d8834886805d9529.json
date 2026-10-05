@@ -1,0 +1,14 @@
+{
+  "key": "57a2b906d8834886805d95296e17e32571d5b15a0352460bab2a31a68fd8cae0",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The provided documents do not contain the bank account number of Shreeram Pharma Distributors.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1559,
+    "output_tokens": 40,
+    "thinking_tokens": null,
+    "latency_ms": 1332.2
+  }
+}

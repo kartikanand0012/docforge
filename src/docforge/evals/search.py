@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import create_engine, text
 
 from docforge.config import get_settings
-from docforge.db.session import make_engine, make_session_factory
+from docforge.db.session import SessionFactory, make_engine, make_session_factory
 from docforge.documents import DocumentService
 from docforge.evals.database import temporary_database
 from docforge.extraction.coa import COA_SPEC, CoaExtraction
@@ -151,6 +151,7 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 20) -> list[Questio
 @dataclass(frozen=True)
 class Corpus:
     search: SearchService
+    sessions: SessionFactory
     tenants: dict[str, uuid.UUID]  # a, b, and "all" (every document, for the unfiltered run)
     keys: dict[uuid.UUID, tuple[str, str]]  # document id -> (key, tenant name)
     documents: int
@@ -230,7 +231,7 @@ def indexed_corpus(
                     service.process(ingested.version.id)
                     search.index_document(tenants[name], ingested.document.id)
                     keys[ingested.document.id] = (key, name)
-        yield Corpus(search, tenants, keys, documents)
+        yield Corpus(search, sessions, tenants, keys, documents)
 
 
 def run_search_eval(

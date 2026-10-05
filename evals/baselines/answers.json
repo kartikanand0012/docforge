@@ -1,0 +1,22 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "questions": 64,
+  "answerable": 40,
+  "unanswerable": 24,
+  "answered_correctly": 0.975,
+  "cited_expected_document": 0.975,
+  "false_abstention": 0.025,
+  "wrong_answers": 0,
+  "abstained_when_no_answer": 1.0,
+  "answered_unanswerable": 0,
+  "cross_tenant_citations": 0,
+  "input_tokens_per_question": 1569,
+  "output_tokens_per_question": 85,
+  "missed": [
+    "pair_004-quantity"
+  ],
+  "answers": {
+    "pair_004-quantity": "[not_found] The documents do not say."
+  }
+}

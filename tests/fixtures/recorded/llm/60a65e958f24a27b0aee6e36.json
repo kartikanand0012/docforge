@@ -1,0 +1,14 @@
+{
+  "key": "60a65e958f24a27b0aee6e366cea7fde7531a32eb569c94f489913304c935d54",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"100 units of Atorvastatin Tablets IP 10mg were billed on invoice KLP/26-27/13006.\",\n  \"citations\": [\n    {\n      \"passage\": 6,\n      \"quote\": \"Qty: 100\"\n    },\n    {\n      \"passage\": 6,\n      \"quote\": \"Description of Goods: Atorvastatin Tablets IP 10mg\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1669,
+    "output_tokens": 120,
+    "thinking_tokens": null,
+    "latency_ms": 1238.1
+  }
+}

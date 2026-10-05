@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     parser_max_documents: int = 50
     parser_timeout_seconds: float = 900.0
     parser_max_rss_mb: int = 8192
+    chat_daily_limit: int = 500  # questions per organisation per day (each is a model call)
+    chat_daily_limit_per_person: int = 100  # so one person cannot use up the organisation's
+    chat_record: bool = False  # record chat replies for replay (with a key; never deployed)
     conversion_timeout_seconds: float = 120.0  # LibreOffice, per office file
     conversion_max_rss_mb: int = 2048  # the converter and every process it starts
     parser_batch_pages: int = 10  # pages converted at a time; bounds memory on long files
@@ -140,6 +143,9 @@ class Settings(BaseSettings):
             raise ValueError(f"{', '.join(unset)} still has its local default value")
         if self.webhook_allow_local:
             raise ValueError("WEBHOOK_ALLOW_LOCAL is for local development only")
+        if self.chat_record:
+            # Recording writes questions, passages and answers to disk, unprotected.
+            raise ValueError("CHAT_RECORD is for local development only")
         if not self.pipeline_factory.startswith("docforge."):
             # The factory is imported and called with every secret in these settings.
             raise ValueError("PIPELINE_FACTORY must name a function in this package")

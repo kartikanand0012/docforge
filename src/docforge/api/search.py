@@ -38,7 +38,7 @@ class SearchOut(BaseModel):
     results: list[HitOut]
 
 
-class _PerCaller:
+class PerCaller:
     """Searches per caller in the last minute, in this process: each vector search is a paid
     call, so one credential cannot use up the organisation's quota."""
 
@@ -61,7 +61,7 @@ class _PerCaller:
 
 def search_router(search: SearchService, per_minute: int = 60) -> APIRouter:
     router = APIRouter(prefix="/v1")
-    limiter = _PerCaller(per_minute)
+    limiter = PerCaller(per_minute)
 
     @router.get("/search", response_model=SearchOut)
     async def run_search(
@@ -87,7 +87,10 @@ def search_router(search: SearchService, per_minute: int = 60) -> APIRouter:
             query=q,
             mode=mode,
             words_only=getattr(hits, "words_only", False),
-            results=[HitOut(**{**vars(hit), "boxes": list(hit.boxes)}) for hit in hits],
+            # Block texts stay server-side: chat uses them to place quotes; search shows boxes.
+            results=[
+                HitOut(**{**vars(hit), "boxes": list(hit.boxes), "blocks": None}) for hit in hits
+            ],
         )
 
     return router

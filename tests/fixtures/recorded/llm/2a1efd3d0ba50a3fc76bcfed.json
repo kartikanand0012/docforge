@@ -1,0 +1,14 @@
+{
+  "key": "2a1efd3d0ba50a3fc76bcfedcebb07ef0da00f5fe0d191dfb6db1bccdea5d4d1",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"10 units of ORS Powder WHO Formula 21g were billed on invoice CPA/26-27/02008.\",\n  \"citations\": [\n    {\n      \"passage\": 6,\n      \"quote\": \"Description of Goods: ORS Powder WHO Formula 21g | Batch No.: LJE1302 | Expiry: 11/28 | Mfg.: 11/25 | Packing: 1x25 | M.R.P.: 24.49 | Qty: 10\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1642,
+    "output_tokens": 148,
+    "thinking_tokens": null,
+    "latency_ms": 2522.7
+  }
+}

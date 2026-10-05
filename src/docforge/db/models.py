@@ -337,3 +337,39 @@ class AuditEntry(Base):
     details: Mapped[dict[str, Any]] = mapped_column(JSONB)
     prev_hash: Mapped[str | None] = mapped_column(CHAR(64))
     hash: Mapped[str] = mapped_column(CHAR(64))
+
+
+class Conversation(Base):
+    """A person's chat: questions about one document (`document_id`) or the organisation's."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    owner: Mapped[str] = mapped_column(Text)  # the principal's actor; only they may read it
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    title: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class Message(Base):
+    """One question and its answer. The question may hold personal data, so it is kept here,
+    where it can be deleted, and never in the audit log or a trace."""
+
+    __tablename__ = "messages"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("conversations.id")
+    )
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)  # supported, partly_supported, unsupported, not_found
+    citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    dropped_citations: Mapped[int] = mapped_column(Integer, server_default="0")
+    model: Mapped[str | None] = mapped_column(Text)
+    prompt_version: Mapped[str] = mapped_column(Text)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _created_at()

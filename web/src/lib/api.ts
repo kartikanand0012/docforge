@@ -1,5 +1,6 @@
 /** The DocForge API, as the review screen uses it. */
 
+import type { Answer, ChatStatus, Citation } from "./chat";
 import type { Box } from "./geometry";
 
 /** Every call goes to this site's own `/api/v1/...`, which adds the session token server-side. */
@@ -113,6 +114,10 @@ export type DocumentRow = {
   created_at: string;
 };
 
+export type ConversationSummary = { id: string; title: string; document_id: string | null; created_at: string };
+
+export type StoredMessage = { id: string; question: string; answer: string; status: ChatStatus; citations: Citation[]; created_at: string };
+
 export type DocumentPage = { items: DocumentRow[]; next_before: string | null };
 
 export type Credentials = { email: string; pin: string };
@@ -184,5 +189,9 @@ export const api = {
     return call<DocumentPage>(`/v1/documents${qs ? `?${qs}` : ""}`);
   },
   timeline: (id: string) => call<Step[]>(`/v1/documents/${encodeURIComponent(id)}/timeline`),
+  ask: (question: string, scope: { document_id?: string; conversation_id?: string } = {}) =>
+    call<Answer>("/v1/chat", json({ question, ...scope })),
+  conversations: () => call<ConversationSummary[]>("/v1/conversations"),
+  conversation: (id: string) => call<{ id: string; messages: StoredMessage[] }>(`/v1/conversations/${encodeURIComponent(id)}`),
   pageUrl: (id: string, page: number) => `${API_URL}/v1/documents/${encodeURIComponent(id)}/pages/${page}`,
 };

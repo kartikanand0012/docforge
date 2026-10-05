@@ -1,0 +1,14 @@
+{
+  "key": "d4b1345a7fc507c0496b990dd171f351a3c99d89608416d43e1504d0ebffbba2",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The grand total of invoice CPA/26-27/33007 is 75703.00.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Grand Total\\n75703.00\"\n    },\n    {\n      \"passage\": 2,\n      \"quote\": \"Invoice CPA/26-27/33007 dated 13 September 2026 ... Grand total 75703.00.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 2035,
+    "output_tokens": 145,
+    "thinking_tokens": null,
+    "latency_ms": 1370.6
+  }
+}

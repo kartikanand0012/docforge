@@ -21,7 +21,7 @@ export default function DocumentView({ id }: { id: string }) {
     };
   }, [id]);
 
-  if (summary?.document.doc_type === "general") return <GeneralDocument summary={summary} />;
+  if (summary?.document.doc_type === "general") return <GeneralDocument key={summary.document.id} summary={summary} />;
   if (summary || problem) return <Review id={id} />; // the review says what went wrong, and retries
   return (
     <div className="card">

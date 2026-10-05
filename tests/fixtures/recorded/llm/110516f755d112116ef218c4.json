@@ -1,0 +1,14 @@
+{
+  "key": "110516f755d112116ef218c410380a486b04c1a3133c13439ab1e80c0911764a",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not provide information about the total microbial count for batch XGX944068.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1145,
+    "output_tokens": 45,
+    "thinking_tokens": null,
+    "latency_ms": 1470.8
+  }
+}

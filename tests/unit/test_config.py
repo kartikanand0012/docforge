@@ -185,3 +185,18 @@ def test_production_on_aws_uses_the_instance_role_for_s3(monkeypatch: pytest.Mon
 
     assert settings.s3_endpoint_url is None
     assert settings.s3_region == "ap-south-1"
+
+
+def test_recording_chat_is_refused_in_production(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Recording writes questions and answers to disk; never where real tenants ask."""
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
+    monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("CHAT_RECORD", "1")
+
+    with pytest.raises(ValueError, match="CHAT_RECORD"):
+        make_settings()

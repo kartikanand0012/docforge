@@ -1,0 +1,14 @@
+{
+  "key": "761074c7639f5032926d353d5570a9880cecfc70513b7279c31c2a3f356b96bc",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not contain the phone number of Vaigai Medical Pharmacy.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1745,
+    "output_tokens": 38,
+    "thinking_tokens": null,
+    "latency_ms": 1815.5
+  }
+}

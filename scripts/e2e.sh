@@ -60,7 +60,12 @@ CREATED=1
 export MIGRATION_DATABASE_URL="$(echo "$URLS" | sed -n 1p)"
 export DATABASE_URL="$(echo "$URLS" | sed -n 2p)"
 export PIPELINE_FACTORY="docforge.wiring:build_replay_pipelines"
-export GEMINI_API_KEY=""
+# Everything is replayed. E2E_RECORD=1 (with GEMINI_API_KEY) records what chat asks for.
+if [ "${E2E_RECORD:-0}" = "1" ]; then
+  export CHAT_RECORD=1
+else
+  export GEMINI_API_KEY=""
+fi
 
 uv run alembic upgrade head >/dev/null
 uv run python -m docforge.db.roles >/dev/null

@@ -1,0 +1,14 @@
+{
+  "key": "0eb333a995f697bf4ea0156e67f1be9359e0386f8ff5d4111ff47b1e857805a0",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The provided documents do not contain the phone number of Sanjeevani Wellness Chemist.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1758,
+    "output_tokens": 41,
+    "thinking_tokens": null,
+    "latency_ms": 1410.7
+  }
+}
