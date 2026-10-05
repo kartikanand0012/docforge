@@ -271,10 +271,10 @@ def check_statements(
             else:
                 checked.dropped_citations += 1
         text = statement.text.strip()
-        cited = [passages[i] for i in dict.fromkeys(i for i, _ in found)]
+        read = [passages[i] for i in dict.fromkeys(i for i, _ in found)]
         figures_ok = bool(text and found) and _supported(text, [q for _, q in found], given)
-        wording_ok = figures_ok and _wording_supported(text, [p.text for p in cited], given)
-        if figures_ok and wording_ok and _labelled(text, cited, given):
+        wording_ok = figures_ok and _wording_supported(text, [p.text for p in read], given)
+        if figures_ok and wording_ok and _labelled(text, read, given):
             checked.kept.append(KeptStatement(text=text, citations=tuple(found)))
         else:
             checked.dropped_statements += 1
