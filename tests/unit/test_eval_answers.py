@@ -62,9 +62,13 @@ def test_questions_come_from_the_labels_with_answers_and_unanswerables() -> None
     assert len({q.id for q in questions}) == len(questions)
     answerable = [q for q in questions if q.expect is not None]
     unanswerable = [q for q in questions if q.expect is None]
-    assert len(answerable) == 10 and len(unanswerable) == 6
+    assert len(answerable) == 12 and len(unanswerable) == 8
     scoped = [q for q in questions if q.scoped]
     assert [q.id for q in scoped] == ["pair_001-total-in-document", "pair_002-total-in-document"]
+    # Within a knowledge base: the certificates answer; the invoices must not.
+    in_kb = {q.id: (q.collection, q.expect is not None) for q in questions if q.collection}
+    assert in_kb["pair_001-assay-in-certificates"] == ("certificates", True)
+    assert in_kb["pair_001-assay-in-invoices"] == ("invoices", False)
     total = next(q for q in questions if q.id == "pair_001-total")
     assert total.expect == Expect(kind="number", value="98697.00")
     assert total.documents == ("pair_001/invoice",)
@@ -73,11 +77,16 @@ def test_questions_come_from_the_labels_with_answers_and_unanswerables() -> None
 
 
 def result(
-    qid: str, status: str, text: str = "", docs: tuple[str, ...] = (), leaks: int = 0
+    qid: str,
+    status: str,
+    text: str = "",
+    docs: tuple[str, ...] = (),
+    leaks: int = 0,
+    outside: int = 0,
 ) -> AnswerResult:
     return AnswerResult(
         question_id=qid, status=status, text=text, cited_documents=docs, cross_tenant=leaks,
-        input_tokens=1000, output_tokens=100,
+        outside_collection=outside, input_tokens=1000, output_tokens=100,
     )  # fmt: skip
 
 
@@ -100,12 +109,32 @@ def test_the_report_counts_right_answers_citations_abstention_and_leaks() -> Non
     report = score_answers(questions, results, model="m", prompt_version="chat-1")
 
     assert report.questions == len(questions) == len(by_id)
-    assert report.answered_correctly == pytest.approx(1 / 5)
-    assert report.cited_expected_document == pytest.approx(2 / 5)
-    assert report.false_abstention == pytest.approx(3 / 5)
+    assert report.answered_correctly == pytest.approx(1 / 6, abs=1e-4)
+    assert report.cited_expected_document == pytest.approx(2 / 6, abs=1e-4)
+    assert report.false_abstention == pytest.approx(4 / 6, abs=1e-4)
     assert report.wrong_answers == 1
-    assert report.abstained_when_no_answer == pytest.approx(2 / 3, abs=1e-4)  # rounded to 4 places
+    assert report.abstained_when_no_answer == pytest.approx(3 / 4, abs=1e-4)  # rounded to 4 places
     assert report.answered_unanswerable == 1  # the bank question, answered when it cannot be
     assert report.cross_tenant_citations == 1
     assert (report.input_tokens_per_question, report.output_tokens_per_question) == (1000, 100)
     assert "pair_001-seller" in report.missed
+
+
+def test_a_citation_from_outside_the_knowledge_base_asked_is_counted() -> None:
+    questions = [
+        q
+        for q in build_questions(FIXTURES / "synthetic", FIXTURES / "coa", pairs=1)
+        if q.collection
+    ]
+    results = [
+        result(
+            q.id,
+            "supported",
+            "96.3 %",
+            ("coa_001",),
+            outside=1 if q.collection == "invoices" else 0,
+        )
+        for q in questions
+    ]
+    report = score_answers(questions, results, model="m", prompt_version="chat-1")
+    assert report.outside_knowledge_base == 1

@@ -14,11 +14,18 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import Select, func, literal_column, select, text, update
+from sqlalchemy import Select, exists, func, literal_column, select, text, update
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from docforge.db.models import ChunkRow, Document, DocumentVersion, Extraction, ParseOutput
+from docforge.db.models import (
+    ChunkRow,
+    CollectionDocument,
+    Document,
+    DocumentVersion,
+    Extraction,
+    ParseOutput,
+)
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
 from docforge.documents import DocumentNotFound
@@ -234,13 +241,14 @@ class SearchService:
         mode: Mode = "hybrid",
         doc_type: str | None = None,
         document_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
     ) -> "SearchHits":
         # The question itself is not recorded: it may name a patient, a price or a supplier.
         with traced("search.query") as span:
             span.set_attribute("docforge.search.mode", mode)
             span.set_attribute("docforge.search.k", k)
             span.set_attribute("docforge.search.doc_type", doc_type or "")
-            hits = self._search(tenant_id, query, k, mode, doc_type, document_id)
+            hits = self._search(tenant_id, query, k, mode, doc_type, document_id, collection_id)
             span.set_attribute("docforge.search.hits", len(hits))
             span.set_attribute("docforge.search.words_only", hits.words_only)
             return hits
@@ -253,6 +261,7 @@ class SearchService:
         mode: Mode,
         doc_type: str | None,
         document_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
     ) -> SearchHits:
         ranked: list[list[uuid.UUID]] = []
         # Embedded before a connection is taken, so a slow embedding holds no database session.
@@ -277,9 +286,13 @@ class SearchService:
 
         with self._sessions() as session:
             if mode in ("keyword", "hybrid"):
-                ranked.append(self._keyword(session, tenant_id, query, doc_type, document_id))
+                ranked.append(
+                    self._keyword(session, tenant_id, query, doc_type, document_id, collection_id)
+                )
             if vector is not None:
-                ranked.append(self._vector(session, tenant_id, vector, doc_type, document_id))
+                ranked.append(
+                    self._vector(session, tenant_id, vector, doc_type, document_id, collection_id)
+                )
             # A question naming a code is answered by the documents that print it: their
             # words count double against documents that are only similar in meaning.
             weights = [2.0 if mode == "hybrid" and _codes(_words(query)) else 1.0, 1.0]
@@ -306,7 +319,11 @@ class SearchService:
         return cached
 
     def _filters(
-        self, tenant_id: uuid.UUID, doc_type: str | None, document_id: uuid.UUID | None = None
+        self,
+        tenant_id: uuid.UUID,
+        doc_type: str | None,
+        document_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
     ) -> list[Any]:
         # Only each document's newest indexed version: a reprocessed document's old text is
         # not current, though its chunks are kept (the record is append-only). The document
@@ -319,6 +336,13 @@ class SearchService:
             filters.append(Document.doc_type == doc_type)
         if document_id is not None:
             filters.append(Document.id == document_id)
+        if collection_id is not None:
+            filters.append(
+                exists().where(
+                    CollectionDocument.collection_id == collection_id,
+                    CollectionDocument.document_id == Document.id,
+                )
+            )
         return filters
 
     def _keyword(
@@ -328,6 +352,7 @@ class SearchService:
         query: str,
         doc_type: str | None,
         document_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
     ) -> list[uuid.UUID]:
         words = _words(query)
         if not words:
@@ -350,7 +375,7 @@ class SearchService:
             select(ChunkRow.id)
             .join(Document, Document.id == ChunkRow.document_id)
             .where(
-                *self._filters(tenant_id, doc_type, document_id),
+                *self._filters(tenant_id, doc_type, document_id, collection_id),
                 literal_column("chunks.tsv").op("@@")(tsquery),
                 *required,
             )
@@ -366,11 +391,12 @@ class SearchService:
         vector: list[float],
         doc_type: str | None,
         document_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
     ) -> list[uuid.UUID]:
         # When the approximate index is used, keep scanning until enough rows pass the tenant
         # filter (pgvector 0.8), rather than filtering a fixed handful of nearest rows.
         _approximate(session)
-        query = self._vector_query(tenant_id, vector, doc_type, document_id)
+        query = self._vector_query(tenant_id, vector, doc_type, document_id, collection_id)
         return list(session.scalars(query))
 
     def _vector_query(
@@ -379,12 +405,13 @@ class SearchService:
         vector: list[float],
         doc_type: str | None,
         document_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
     ) -> Select[uuid.UUID]:
         return (
             select(ChunkRow.id)
             .join(Document, Document.id == ChunkRow.document_id)
             .where(
-                *self._filters(tenant_id, doc_type, document_id),
+                *self._filters(tenant_id, doc_type, document_id, collection_id),
                 ChunkRow.embedding_model == self._embedder.model,
             )
             .order_by(ChunkRow.embedding.cosine_distance(vector), *_TIE_BREAK)

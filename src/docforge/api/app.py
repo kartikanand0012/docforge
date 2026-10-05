@@ -20,6 +20,7 @@ from sqlalchemy.exc import OperationalError
 from docforge import __version__
 from docforge.api.auth import require, sessions_router
 from docforge.api.chat import chat_router
+from docforge.api.collections import collections_router
 from docforge.api.documents import documents_router
 from docforge.api.exports import exports_router
 from docforge.api.review import review_router
@@ -34,6 +35,7 @@ from docforge.api.uploads import (
 from docforge.api.webhooks import webhooks_router
 from docforge.auth import Authenticator, FailureLimiter, Principal
 from docforge.chat.service import ChatService
+from docforge.collections import CollectionService
 from docforge.documents import DocumentService
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, InvoicePipeline
 from docforge.extraction.schema import InvoiceExtraction
@@ -106,6 +108,7 @@ def create_app(
     searches_per_minute: int = 60,
     chat: ChatService | None = None,
     questions_per_minute: int = 20,
+    collections: CollectionService | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     # FastAPI's own telemetry is off: its request spans record the query string (a search
@@ -191,6 +194,8 @@ def create_app(
         app.include_router(search_router(search, searches_per_minute))
     if chat is not None:
         app.include_router(chat_router(chat, questions_per_minute))
+    if collections is not None:
+        app.include_router(collections_router(collections))
     if pipeline is not None:
         _add_preview_endpoint(app, pipeline, max_upload_bytes)
     return app

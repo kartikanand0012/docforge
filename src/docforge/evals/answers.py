@@ -12,6 +12,7 @@ import json
 import re
 import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Literal
@@ -21,6 +22,7 @@ from pydantic import BaseModel, ConfigDict
 from docforge.chat.prompt import CHAT_PROMPT_VERSION
 from docforge.chat.service import ChatService
 from docforge.chat.verify import normalise
+from docforge.collections import CollectionService
 from docforge.evals.search import _tenant, indexed_corpus
 from docforge.llm.base import LLMProvider
 from docforge.search.embeddings import Embedder
@@ -46,6 +48,7 @@ class Question(_Model):
     expect: Expect | None  # None: the documents do not answer it
     documents: tuple[str, ...]  # where the answer is, e.g. pair_001/invoice, coa_001
     scoped: bool = False  # asked about its document alone, not the whole organisation
+    collection: str | None = None  # asked within this knowledge base: invoices or certificates
 
 
 class AnswerResult(_Model):
@@ -54,6 +57,7 @@ class AnswerResult(_Model):
     text: str
     cited_documents: tuple[str, ...]
     cross_tenant: int  # citations of another organisation's documents
+    outside_collection: int = 0  # citations of documents outside the knowledge base asked
     input_tokens: int | None
     output_tokens: int | None
 
@@ -71,6 +75,7 @@ class AnswerReport(_Model):
     abstained_when_no_answer: float
     answered_unanswerable: int  # answered, with checked quotes, what the documents do not say
     cross_tenant_citations: int
+    outside_knowledge_base: int  # citations from outside the knowledge base asked; must be 0
     input_tokens_per_question: int  # mean, over questions the model was asked
     output_tokens_per_question: int
     missed: tuple[str, ...]
@@ -104,6 +109,7 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question
             pair: str = pair,
             tenant: str = tenant,
             scoped: bool = False,
+            collection: str | None = None,
         ) -> None:
             questions.append(
                 Question(
@@ -113,6 +119,7 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question
                     expect=expect,
                     documents=documents,
                     scoped=scoped,
+                    collection=collection,
                 )
             )
 
@@ -141,6 +148,22 @@ def build_questions(synthetic: Path, coa: Path, pairs: int = 8) -> list[Question
             f"What was the assay result for batch {batch}?",
             Expect(kind="text", value=assay["result"]),
             (case,),
+        )
+        # Within a knowledge base: the certificates hold the assay; the invoices, which
+        # print the same batch, do not, and must not be answered from elsewhere.
+        ask(
+            "assay-in-certificates",
+            f"What was the assay result for batch {batch}?",
+            Expect(kind="text", value=assay["result"]),
+            (case,),
+            collection="certificates",
+        )
+        ask(
+            "assay-in-invoices",
+            f"What was the assay result for batch {batch}?",
+            None,
+            (),
+            collection="invoices",
         )
         ask("bank", f"What is the bank account number of {seller}?", None, ())
         ask("phone", f"What is the phone number of {invoice['buyer']['name']}?", None, ())
@@ -232,6 +255,7 @@ def score_answers(
         abstained_when_no_answer=_share(held_back, len(unanswerable)),
         answered_unanswerable=answered_anyway,
         cross_tenant_citations=sum(r.cross_tenant for r in results),
+        outside_knowledge_base=sum(r.outside_collection for r in results),
         input_tokens_per_question=tokens[0],
         output_tokens_per_question=tokens[1],
         missed=tuple(missed),
@@ -257,16 +281,28 @@ def run_answer_eval(
         # Big enough for every question; the limit itself is tested elsewhere.
         chat = ChatService(corpus.sessions, corpus.search, provider, daily_limit=10_000)
         ids = {(key, tenant): document_id for document_id, (key, tenant) in corpus.keys.items()}
+        bases = _knowledge_bases(corpus)
         for q in questions:
             scope = ids[(q.documents[0], q.tenant)] if q.scoped else None
-            answer = chat.ask(corpus.tenants[q.tenant], "eval", q.text, document_id=scope)
+            base = bases[(q.tenant, q.collection)] if q.collection else None
+            answer = chat.ask(
+                corpus.tenants[q.tenant],
+                "eval",
+                q.text,
+                document_id=scope,
+                collection_id=base.id if base else None,
+            )
             found = [corpus.keys.get(uuid.UUID(str(c.document_id))) for c in answer.citations]
+            outside = (
+                sum(1 for c in answer.citations if c.document_id not in base.members) if base else 0
+            )
             result = AnswerResult(
                 question_id=q.id,
                 status=answer.status,
                 text=answer.text,
                 cited_documents=tuple(key for key, _ in filter(None, found)),
                 cross_tenant=sum(1 for f in found if f is None or f[1] != q.tenant),
+                outside_collection=outside,
                 input_tokens=answer.input_tokens,
                 output_tokens=answer.output_tokens,
             )
@@ -276,6 +312,29 @@ def run_answer_eval(
     return score_answers(
         questions, results, model=provider.model, prompt_version=CHAT_PROMPT_VERSION
     )
+
+
+@dataclass(frozen=True)
+class _Base:
+    id: uuid.UUID
+    members: frozenset[uuid.UUID]
+
+
+def _knowledge_bases(corpus: Any) -> dict[tuple[str, str], _Base]:
+    """In each organisation: "invoices" (invoices and orders) and "certificates"."""
+    collections = CollectionService(corpus.sessions)
+    bases: dict[tuple[str, str], _Base] = {}
+    for tenant in ("a", "b"):
+        tenant_id = corpus.tenants[tenant]
+        mine = {d: key for d, (key, t) in corpus.keys.items() if t == tenant}
+        for name, wanted in (
+            ("invoices", [d for d, key in mine.items() if "/" in key]),
+            ("certificates", [d for d, key in mine.items() if key.startswith("coa_")]),
+        ):
+            created = collections.create(tenant_id, name, actor="eval")
+            collections.add(tenant_id, created.id, wanted)
+            bases[(tenant, name)] = _Base(created.id, frozenset(wanted))
+    return bases
 
 
 def format_answer_report(report: AnswerReport) -> str:
@@ -290,6 +349,7 @@ def format_answer_report(report: AnswerReport) -> str:
             f"  abstained when no answer  {report.abstained_when_no_answer:.2%}",
             f"  answered the unanswerable {report.answered_unanswerable}",
             f"  cross-tenant citations    {report.cross_tenant_citations}",
+            f"  outside knowledge base    {report.outside_knowledge_base}",
             f"  tokens per question       {report.input_tokens_per_question} in, "
             f"{report.output_tokens_per_question} out",
             f"  missed: {', '.join(report.missed) or 'none'}",

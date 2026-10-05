@@ -1,6 +1,6 @@
 /** The DocForge API, as the review screen uses it. */
 
-import type { Answer, ChatStatus, Citation } from "./chat";
+import { readEvents, type Answer, type ChatStatus, type Citation } from "./chat";
 import type { Box } from "./geometry";
 
 /** Every call goes to this site's own `/api/v1/...`, which adds the session token server-side. */
@@ -114,6 +114,12 @@ export type DocumentRow = {
   created_at: string;
 };
 
+export type ChatScope = { document_id?: string; collection_id?: string; conversation_id?: string };
+
+export type KnowledgeBase = { id: string; name: string; description: string; documents: number; created_by: string; created_at: string };
+
+export type KnowledgeBaseMember = { id: string; filename: string; doc_type: string; stage: string; added_at: string };
+
 export type ConversationSummary = { id: string; title: string; document_id: string | null; created_at: string };
 
 export type StoredMessage = { id: string; question: string; answer: string; status: ChatStatus; citations: Citation[]; created_at: string };
@@ -131,24 +137,28 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, { cache: "no-store", ...init });
+/** The error a failed response means; a lost session sends the page to sign in. */
+async function failure(response: Response): Promise<ApiError> {
   if (response.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
     // A full load on purpose: the session is gone, so nothing of the old page should stay.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign(`/login?next=${encodeURIComponent(window.location.pathname)}`);
   }
-  if (!response.ok) {
-    let message = `Request failed (${response.status}).`;
-    try {
-      const body = (await response.json()) as { detail?: unknown };
-      if (typeof body.detail === "string") message = body.detail;
-      else if (Array.isArray(body.detail)) message = "Some of what was entered is not valid.";
-    } catch {
-      /* not JSON: keep the generic message */
-    }
-    throw new ApiError(response.status, message);
+  let message = `Request failed (${response.status}).`;
+  try {
+    const body = (await response.json()) as { detail?: unknown };
+    if (typeof body.detail === "string") message = body.detail;
+    else if (Array.isArray(body.detail)) message = "Some of what was entered is not valid.";
+  } catch {
+    /* not JSON: keep the generic message */
   }
+  return new ApiError(response.status, message);
+}
+
+async function call<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, { cache: "no-store", ...init });
+  if (!response.ok) throw await failure(response);
+  if (response.status === 204) return null as T; // deleted: nothing to read
   return (await response.json()) as T;
 }
 
@@ -189,8 +199,47 @@ export const api = {
     return call<DocumentPage>(`/v1/documents${qs ? `?${qs}` : ""}`);
   },
   timeline: (id: string) => call<Step[]>(`/v1/documents/${encodeURIComponent(id)}/timeline`),
-  ask: (question: string, scope: { document_id?: string; conversation_id?: string } = {}) =>
-    call<Answer>("/v1/chat", json({ question, ...scope })),
+  ask: (question: string, scope: ChatScope = {}) => call<Answer>("/v1/chat", json({ question, ...scope })),
+  /** As `ask`, telling `onStage` each stage as it begins; the answer comes whole, checked. */
+  askStreamed: async (
+    question: string,
+    scope: ChatScope,
+    onStage: (stage: string, data: Record<string, unknown>) => void,
+    signal?: AbortSignal,
+  ): Promise<Answer> => {
+    const response = await fetch(`${API_URL}/v1/chat/stream`, { ...json({ question, ...scope }), cache: "no-store", signal });
+    if (!response.ok) throw await failure(response);
+    if (!response.body) throw new ApiError(502, "The answer did not arrive. Try again.");
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        // At the end, a last event without its blank line is still an event.
+        const { events, rest } = readEvents(buffer + (value ?? ""), { final: done });
+        buffer = rest;
+        for (const event of events) {
+          if (event.name === "stage") onStage(String(event.data.stage), event.data);
+          if (event.name === "answer") return event.data as unknown as Answer;
+          if (event.name === "error") throw new ApiError(Number(event.data.status) || 500, String(event.data.detail));
+        }
+        if (done) break;
+      }
+    } finally {
+      reader.cancel().catch(() => undefined); // nothing more is read: let the connection go
+    }
+    throw new ApiError(502, "The answer did not arrive. Try again.");
+  },
+  collections: () => call<KnowledgeBase[]>("/v1/collections"),
+  createCollection: (name: string, description: string) => call<KnowledgeBase>("/v1/collections", json({ name, description })),
+  renameCollection: (id: string, name: string, description: string) =>
+    call<KnowledgeBase>(`/v1/collections/${encodeURIComponent(id)}`, { ...json({ name, description }), method: "PATCH" }),
+  deleteCollection: (id: string) => call<null>(`/v1/collections/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  collectionDocuments: (id: string) => call<KnowledgeBaseMember[]>(`/v1/collections/${encodeURIComponent(id)}/documents`),
+  addToCollection: (id: string, documentIds: string[]) =>
+    call<{ added: number }>(`/v1/collections/${encodeURIComponent(id)}/documents`, json({ document_ids: documentIds })),
+  removeFromCollection: (id: string, documentId: string) =>
+    call<null>(`/v1/collections/${encodeURIComponent(id)}/documents/${encodeURIComponent(documentId)}`, { method: "DELETE" }),
   conversations: () => call<ConversationSummary[]>("/v1/conversations"),
   conversation: (id: string) => call<{ id: string; messages: StoredMessage[] }>(`/v1/conversations/${encodeURIComponent(id)}`),
   pageUrl: (id: string, page: number) => `${API_URL}/v1/documents/${encodeURIComponent(id)}/pages/${page}`,

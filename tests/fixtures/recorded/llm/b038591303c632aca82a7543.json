@@ -1,0 +1,14 @@
+{
+  "key": "b038591303c632aca82a7543c469adfcbb26d421f080af7c9b1385703eaeacb5",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The provided documents do not contain information about the assay result for batch LJE1302.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1696,
+    "output_tokens": 43,
+    "thinking_tokens": null,
+    "latency_ms": 1205.0
+  }
+}

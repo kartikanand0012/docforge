@@ -15,7 +15,7 @@ A conversation belongs to the person who started it. Questions and answers are s
 
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Literal, Protocol
@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passage, build_prompt
 from docforge.chat.verify import cited_blocks, quote_in
+from docforge.collections import CollectionNotFound, CollectionService
 from docforge.db.models import Conversation, Document, Message
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
@@ -60,6 +61,27 @@ class ScopeConflict(ValueError):
     """A follow-up named a different document from the one its conversation is about."""
 
 
+class ScopeGone(LookupError):
+    """The document or knowledge base a conversation was about has been deleted."""
+
+
+@dataclass(frozen=True)
+class Scope:
+    document_id: uuid.UUID | None = None
+    collection_id: uuid.UUID | None = None
+
+    @property
+    def kind(self) -> str:
+        if self.document_id is not None:
+            return "document"
+        if self.collection_id is not None:
+            return "collection"
+        return "organisation"
+
+
+Progress = Callable[[str, dict[str, Any]], None]
+
+
 class DocumentNotFound(LookupError):
     """The document a question is about does not exist in this organisation."""
 
@@ -82,6 +104,7 @@ class Search(Protocol):
         mode: Mode = ...,
         doc_type: str | None = ...,
         document_id: uuid.UUID | None = ...,
+        collection_id: uuid.UUID | None = ...,
     ) -> SearchHits: ...
 
 
@@ -209,39 +232,53 @@ class ChatService:
         question: str,
         *,
         document_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
+        progress: Progress | None = None,
     ) -> Answer:
         """Raises `QuestionLimitReached`, `ConversationNotFound`, `DocumentNotFound`,
-        `ScopeConflict`, or `LLMError` when the model cannot answer.
+        `CollectionNotFound`, `ScopeConflict`, `ScopeGone`, or `LLMError` when the model
+        cannot answer. `progress` is told each stage: searching, reading, checking.
 
         The question takes its place for the day before the model is asked, so the limit
         holds when questions arrive together and counts those that fail. It is completed
         with the answer, or marked an error with what it cost.
         """
         question = question.strip()
-        conversation_id, message_id, document_id, history = self._reserve(
-            tenant_id, owner, question, document_id, conversation_id
+        if document_id is not None and collection_id is not None:
+            raise ScopeConflict("a question is about one document or one knowledge base")
+        tell = _safe(progress)
+        conversation_id, message_id, scope, history = self._reserve(
+            tenant_id, owner, question, Scope(document_id, collection_id), conversation_id
         )
         responses: tuple[LLMResponse, ...] = ()
         try:
             with traced("chat.answer") as span:
+                tell("searching", {})
                 # A follow-up such as "and its batch?" is searched with the question before.
                 query = f"{history[-1][0]} {question}" if history else question
                 hits = self._search.search(
-                    tenant_id, query, k=self._passages, mode="hybrid", document_id=document_id
+                    tenant_id,
+                    query,
+                    k=self._passages,
+                    mode="hybrid",
+                    document_id=scope.document_id,
+                    collection_id=scope.collection_id,
                 )
                 span.set_attribute("docforge.chat.passages", len(hits))
-                span.set_attribute("docforge.chat.scoped", document_id is not None)
+                span.set_attribute("docforge.chat.scope", scope.kind)
                 passages = [
                     Passage(n=n, filename=hit.filename, page=hit.page, text=hit.text)
                     for n, hit in enumerate(hits, start=1)
                 ]
+                tell("reading", {"passages": len(passages)})
                 citations: tuple[Citation, ...] = ()
                 if not passages:
                     status: Status = "not_found"
                     text, dropped = NOT_FOUND, 0
                 else:
                     raw, responses = self._ask(build_prompt(passages, question, history))
+                    tell("checking", {})
                     status, text, citations, dropped = _checked(raw, passages, hits)
                 span.set_attribute("docforge.chat.status", status)
                 span.set_attribute("docforge.chat.dropped_citations", dropped)
@@ -249,6 +286,8 @@ class ChatService:
             spent = getattr(error, "responses", responses)
             self._complete(message_id, "error", "The model could not answer.", (), 0, spent)
             raise
+        if not passages:
+            tell("checking", {})  # nothing to check, but every stream shows the same stages
         self._complete(message_id, status, text, citations, dropped, responses)
         input_tokens, output_tokens = _tokens(responses)
         return Answer(
@@ -269,20 +308,21 @@ class ChatService:
         tenant_id: uuid.UUID,
         owner: str,
         question: str,
-        document_id: uuid.UUID | None,
+        asked: "Scope",
         conversation_id: uuid.UUID | None,
-    ) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID | None, list[tuple[str, str]]]:
+    ) -> tuple[uuid.UUID, uuid.UUID, "Scope", list[tuple[str, str]]]:
         """Check the limits and take the question's place, in one transaction under a lock
         per organisation, so two questions cannot both take the last place."""
         with self._sessions.begin() as session:
-            session.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"chat:{tenant_id}"))))
+            lock = func.hashtext(f"chat:{tenant_id}")
+            session.execute(select(func.pg_advisory_xact_lock(lock)))
             today = Message.created_at >= func.date_trunc("day", func.now(), "UTC")
-            asked = session.scalar(
+            count = session.scalar(
                 select(func.count())
                 .select_from(Message)
                 .where(Message.tenant_id == tenant_id, today)
             )
-            if (asked or 0) >= self._daily_limit:
+            if (count or 0) >= self._daily_limit:
                 raise QuestionLimitReached(f"{self._daily_limit} questions a day")
             mine = session.scalar(
                 select(func.count())
@@ -296,12 +336,17 @@ class ChatService:
             history: list[tuple[str, str]] = []
             if conversation_id is not None:
                 conversation = self._owned(session, tenant_id, owner, conversation_id)
-                if document_id is not None and document_id != conversation.document_id:
-                    raise ScopeConflict("a conversation keeps the document it began with")
-                document_id = conversation.document_id
+                scope = Scope(conversation.document_id, conversation.collection_id)
+                # Its document or knowledge base was deleted: continuing would widen the
+                # question to the whole organisation, so it is refused instead. Checked
+                # first: resending the deleted id is not a conflict, it is gone.
+                if conversation.scope != scope.kind:
+                    raise ScopeGone(conversation.scope)
+                if asked.kind != "organisation" and asked != scope:
+                    raise ScopeConflict("a conversation keeps the scope it began with")
                 earlier = session.scalars(
                     select(Message)
-                    .where(Message.conversation_id == conversation_id)
+                    .where(Message.conversation_id == conversation_id, Message.status != "pending")
                     .order_by(Message.created_at.desc(), Message.id.desc())
                     .limit(_HISTORY)
                 ).all()
@@ -312,16 +357,26 @@ class ChatService:
                     for m in reversed(earlier)
                 ]
             else:
-                if document_id is not None:
-                    exists = session.scalar(
+                scope = asked
+                if scope.document_id is not None:
+                    found = session.scalar(
                         select(Document.id).where(
-                            Document.tenant_id == tenant_id, Document.id == document_id
+                            Document.tenant_id == tenant_id, Document.id == scope.document_id
                         )
                     )
-                    if exists is None:
-                        raise DocumentNotFound(document_id)
+                    if found is None:
+                        raise DocumentNotFound(scope.document_id)
+                if scope.collection_id is not None and not CollectionService.exists(
+                    session, tenant_id, scope.collection_id
+                ):
+                    raise CollectionNotFound(scope.collection_id)
                 conversation = Conversation(
-                    tenant_id=tenant_id, owner=owner, document_id=document_id, title=question[:200]
+                    tenant_id=tenant_id,
+                    owner=owner,
+                    document_id=scope.document_id,
+                    collection_id=scope.collection_id,
+                    scope=scope.kind,
+                    title=question[:200],
                 )
                 session.add(conversation)
                 session.flush()
@@ -336,7 +391,7 @@ class ChatService:
             )
             session.add(message)
             session.flush()
-            return conversation.id, message.id, document_id, history
+            return conversation.id, message.id, scope, history
 
     def _complete(
         self,
@@ -457,6 +512,21 @@ class ChatService:
         if conversation is None:
             raise ConversationNotFound(conversation_id)
         return conversation
+
+
+def _safe(progress: Progress | None) -> Progress:
+    """A listener whose failure (a closed stream, a stopped server) is logged, never the
+    question's: the answer is still checked, stored and counted."""
+
+    def tell(stage: str, details: dict[str, Any]) -> None:
+        if progress is None:
+            return
+        try:
+            progress(stage, details)
+        except Exception:
+            logger.warning("progress listener failed at stage %s", stage, exc_info=True)
+
+    return tell
 
 
 def _tokens(responses: Sequence[LLMResponse]) -> tuple[int | None, int | None]:

@@ -297,7 +297,7 @@
     "report": "answers",
     "path": "questions",
     "op": "==",
-    "value": 64,
+    "value": 80,
     "why": "the question set the floors were set on"
   },
   {
@@ -320,5 +320,12 @@
     "op": "<=",
     "value": 0,
     "why": "never an answer, with quotes, to what the documents do not say"
+  },
+  {
+    "report": "answers",
+    "path": "outside_knowledge_base",
+    "op": "==",
+    "value": 0,
+    "why": "a question within a knowledge base never answers from documents outside it"
   }
 ]

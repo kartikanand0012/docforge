@@ -1,0 +1,14 @@
+{
+  "key": "b5c8a13c5ece496f24355be77942eb20083c226e9fabf2561b5b28ad2592808f",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The assay result for batch RL5781 was 99.0 %.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Assay 99.0 %\"\n    },\n    {\n      \"passage\": 5,\n      \"quote\": \"Result: 99.0 %\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 806,
+    "output_tokens": 102,
+    "thinking_tokens": null,
+    "latency_ms": 1055.8
+  }
+}
