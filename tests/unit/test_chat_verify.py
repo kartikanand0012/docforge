@@ -92,3 +92,12 @@ def test_an_ellipsis_cannot_join_parts_out_of_order_or_hide_a_made_up_part() -> 
     assert not quote_in("Grand total 31674.00 [...] Invoice NVM/26-27/09004", passage)
     assert not quote_in("Invoice NVM/26-27/09004 [...] Grand total 99999.00", passage)
     assert not quote_in("[...]", passage)
+
+
+def test_an_ellipsis_cannot_join_parts_far_apart_or_lean_on_trivial_parts() -> None:
+    far = "Batch B-17 shipped | " + "filler text " * 40 + "| Grand total 98,697"
+    assert not quote_in("Batch B-17 [...] Grand total 98,697", far)
+    near = "Batch B-17 | Qty 20 | Grand total 98,697"
+    assert quote_in("Batch B-17 [...] Grand total 98,697", near)
+    assert not quote_in("Batch B-17 [...] 1", near)  # every part must mean something
+    assert not quote_in("Batch [...] B-17 [...] Qty [...] Grand total", near)  # three parts at most

@@ -90,3 +90,37 @@ def test_a_code_must_be_quoted_whole() -> None:
         [statement("The batch is XGX944069.", (2, "Batch XGX944068"))], PASSAGES, given=""
     )
     assert checked.kept == []
+
+
+# --- review findings (hardening) ----------------------------------------------------------
+
+ROW = [
+    Passage(
+        n=1,
+        filename="coa.pdf",
+        page=1,
+        text="Amoxicillin Capsules IP 250 mg | Assay 95.0 - 105.0 % | 96.3 % | Rs. 500 | Loss 500",
+    )
+]
+
+
+def keep(text: str, quote: str, given: str = "") -> bool:
+    return bool(check_statements([statement(text, (1, quote))], ROW, given=given).kept)
+
+
+def test_ordinary_ways_of_writing_a_figure_are_the_same_figure() -> None:
+    assert keep("Each capsule is 250mg.", "Amoxicillin Capsules IP 250 mg")
+    assert keep("The limit is 95.0-105.0 %.", "Assay 95.0 - 105.0 %")
+    assert keep("It costs Rs.500.", "Rs. 500")
+
+
+def test_a_sign_and_a_list_are_not_lost() -> None:
+    assert not keep("A loss of -500.", "Loss 500")
+    assert not keep("Pages 1,2,3 show it.", "Loss 500")  # read as 1, 2 and 3, not 123
+
+
+def test_a_figure_only_repeated_from_the_question_does_not_stand_without_its_own() -> None:
+    """'Is the total 5,000?' cannot be answered 'the total is 5,000' on a quote of 500."""
+    assert not keep("The total is 5,000.", "Loss 500", given="Is the total 5,000?")
+    # A code named in the question may be repeated next to a figure its quote holds.
+    assert keep("Batch XGX944068 assayed 96.3 %.", "96.3 %", given="Assay of batch XGX944068?")

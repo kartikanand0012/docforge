@@ -115,3 +115,14 @@ def test_a_service_that_cannot_be_reached_is_unavailable_not_the_files_fault() -
     )
     with pytest.raises(ConverterUnavailable):
         converter.to_pdf(b"docx bytes", "docx")
+
+
+def test_a_malformed_version_answer_is_unavailable_not_an_internal_error() -> None:
+    def html(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>proxy</html>")
+
+    converter = RemoteConverter(
+        "http://converter:8090", TOKEN, client=httpx.Client(transport=httpx.MockTransport(html))
+    )
+    with pytest.raises(ConverterUnavailable):
+        _ = converter.version

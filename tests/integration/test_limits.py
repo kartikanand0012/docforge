@@ -75,3 +75,47 @@ def test_the_cap_holds_when_requests_arrive_together(sessions: SessionFactory) -
         t.join()
 
     assert got.count(True) == 2 and got.count(False) == 4
+
+
+def test_old_counts_and_expired_places_are_swept(sessions: SessionFactory) -> None:
+    from sqlalchemy import text
+
+    limits = DatabaseLimits(sessions)
+    with sessions.begin() as session:
+        session.execute(
+            text(
+                "INSERT INTO rate_windows VALUES ('old', now() - interval '2 hours', 5); "
+                "INSERT INTO leases (key, expires_at) VALUES ('gone', now() - interval '1 minute')"
+            )
+        )
+
+    limits.sweep()
+
+    with sessions() as session:
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM rate_windows WHERE key = 'old'")
+            ).scalar_one()
+            == 0
+        )
+        assert (
+            session.execute(text("SELECT count(*) FROM leases WHERE key = 'gone'")).scalar_one()
+            == 0
+        )
+
+
+def test_a_failed_release_does_not_hide_what_happened_inside(sessions: SessionFactory) -> None:
+    limits = DatabaseLimits(sessions)
+
+    class Broken(Exception):
+        pass
+
+    real = limits._release  # noqa: SLF001
+
+    def failing(lease: object) -> None:
+        raise RuntimeError("database gone")
+
+    limits._release = failing  # type: ignore[method-assign]  # noqa: SLF001
+    with pytest.raises(Broken), limits.hold("k:t:a", at_most=1, seconds=60):
+        raise Broken
+    limits._release = real  # type: ignore[method-assign]  # noqa: SLF001

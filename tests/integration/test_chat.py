@@ -441,3 +441,22 @@ def test_a_statement_with_a_figure_its_quote_does_not_hold_is_dropped(setup: Set
     assert answer.status == "partly_supported"
     assert answer.text == f"Batch {setup.batch} is on it."
     assert answer.dropped_statements == 1
+
+
+def test_cited_documents_leave_room_for_the_rest(sessions: SessionFactory, setup: Setup) -> None:
+    """Passages from documents a conversation cited take at most half the places, so a
+    follow-up about another document still reaches it."""
+    chat = ChatService(sessions, setup.search, setup.model, passages=4)
+    setup.model.reply = quoting(setup.invoice_no, f"Invoice {setup.invoice_no} billed it.")
+    first = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?")
+
+    chat.ask(
+        DEFAULT_TENANT_ID,
+        "reviewer:a",
+        "And the purchase order?",
+        conversation_id=first.conversation_id,
+    )
+
+    prompt = setup.model.requests[-1].prompt
+    assert prompt.count('document="invoice.pdf"') <= 2
+    assert 'document="purchase_order.pdf"' in prompt
