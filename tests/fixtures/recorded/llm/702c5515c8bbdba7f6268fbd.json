@@ -1,0 +1,14 @@
+{
+  "key": "702c5515c8bbdba7f6268fbdd7a5bc1b3eadd75145dbf4e3d2a6ab8747191d8e",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not say how many units of ORS Powder WHO Formula 21g were billed on invoice CPA/26-27/02008.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1333,
+    "output_tokens": 59,
+    "thinking_tokens": null,
+    "latency_ms": 1429.6
+  }
+}

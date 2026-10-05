@@ -1,0 +1,14 @@
+{
+  "key": "41eb64a6a059e4147428e4a8a3eea4de8d5c1974e189cb51964893ccd6c57903",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not provide information about the total microbial count for batch UNL2812.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 911,
+    "output_tokens": 43,
+    "thinking_tokens": null,
+    "latency_ms": 16929.7
+  }
+}

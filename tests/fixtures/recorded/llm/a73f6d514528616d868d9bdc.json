@@ -1,0 +1,14 @@
+{
+  "key": "a73f6d514528616d868d9bdcdfd75b1a2f5834016b76da3e08b0e9ec84a5a3be",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Invoice NVM/26-27/27003 billed batch RL5781.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Invoice NVM/26-27/27003 dated 18 September 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Yamuna Medicine House (GSTIN 07ACFPY6639G1Z3), against purchase order PO-YMH-46003. Products: Pantoprazole Tablets IP 40mg, Ibuprofen Tablets IP 400mg, Atorvastatin Tablets IP 10mg, ORS Powder WHO Formula 21g, Ciprofloxacin Tablets IP 500mg, Vitamin C Tablets 500mg, Metformin Tablets IP 500mg, Paracetamol Tablets IP 500mg, Amoxicillin Capsules IP 250mg, Salbutamol Inhaler 100mcg. Batches: RL5781, HNO3715, NL5134, BB0268, WGP09897, DUD76944, JND1511, TY797451, AYE0649, YY1205.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 2102,
+    "output_tokens": 331,
+    "thinking_tokens": null,
+    "latency_ms": 2362.5
+  }
+}

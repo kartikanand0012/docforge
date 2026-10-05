@@ -1,0 +1,14 @@
+{
+  "key": "9062cf64aa5bb7db479461c4935770e8a3ad9a626ccb342dfad2d2a895dd54e3",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not contain the answer.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1410,
+    "output_tokens": 31,
+    "thinking_tokens": null,
+    "latency_ms": 1204.0
+  }
+}

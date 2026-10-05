@@ -317,3 +317,79 @@ def test_a_person_can_delete_their_conversation(setup: Setup) -> None:
 
     with pytest.raises(ConversationNotFound):
         setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", first.conversation_id)
+
+
+# --- follow-ups keep their subject (hardening) --------------------------------------------
+
+
+class Spy:
+    """The real search, with every call it is asked to make recorded."""
+
+    def __init__(self, inner: SearchService) -> None:
+        self.inner = inner
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def search(self, tenant_id: uuid.UUID, query: str, **kwargs: Any) -> Any:
+        self.calls.append((query, kwargs))
+        return self.inner.search(tenant_id, query, **kwargs)
+
+
+def test_a_third_follow_up_is_searched_with_the_whole_conversation(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    spy = Spy(setup.search)
+    chat = ChatService(sessions, spy, setup.model)
+    setup.model.reply = quoting(setup.batch, f"Invoice {setup.invoice_no} billed it.")
+    first = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?")
+    chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", "Who issued it?", conversation_id=first.conversation_id
+    )
+    spy.calls.clear()
+
+    chat.ask(
+        DEFAULT_TENANT_ID,
+        "reviewer:a",
+        "What is its grand total?",
+        conversation_id=first.conversation_id,
+    )
+
+    queries = " ".join(query for query, _ in spy.calls)
+    assert setup.batch in queries  # the first question is still part of the search
+    assert setup.invoice_no in queries  # and what its answer named
+    # The documents earlier answers cited are searched directly.
+    assert any(kwargs.get("document_id") == setup.invoice_id for _, kwargs in spy.calls)
+
+
+def test_passages_from_the_documents_already_cited_come_first(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    chat = ChatService(sessions, setup.search, setup.model)
+    setup.model.reply = quoting(setup.batch, f"Invoice {setup.invoice_no} billed it.")
+    first = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?")
+
+    chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", "And the order?", conversation_id=first.conversation_id
+    )
+
+    prompt = setup.model.requests[-1].prompt
+    first_passage = prompt.split("<passage ", 2)[1]
+    assert 'document="invoice.pdf"' in first_passage
+
+
+def test_a_follow_up_stays_within_its_scope_when_searching_cited_documents(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    spy = Spy(setup.search)
+    chat = ChatService(sessions, spy, setup.model)
+    setup.model.reply = quoting(setup.batch, "That one.")
+    first = chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", f"Which invoice billed batch {setup.batch}?",
+        document_id=setup.invoice_id,
+    )  # fmt: skip
+    spy.calls.clear()
+
+    chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Its total?", conversation_id=first.conversation_id)
+
+    assert spy.calls and all(
+        kwargs.get("document_id") == setup.invoice_id for _, kwargs in spy.calls
+    )

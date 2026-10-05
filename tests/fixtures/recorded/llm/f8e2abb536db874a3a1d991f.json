@@ -1,0 +1,14 @@
+{
+  "key": "f8e2abb536db874a3a1d991f2942a9ce9dc7a0108d9ebb79d82de911ba13e41e",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The grand total is 25263.00.\",\n  \"citations\": [\n    {\n      \"passage\": 8,\n      \"quote\": \"Grand total 25263.00.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1161,
+    "output_tokens": 72,
+    "thinking_tokens": null,
+    "latency_ms": 1869.1
+  }
+}

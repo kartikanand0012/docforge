@@ -1,0 +1,14 @@
+{
+  "key": "572d31a26b0d6e750bebd3e84e8ca81ca983e501369a1461484cb037d7acd5ad",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\"answer\": \"20 units of Atorvastatin Tablets IP 10mg were billed on invoice SRP/26-27/40002.\", \"citations\": [{\"passage\": 6, \"quote\": \"Description of Goods: Atorvastatin Tablets IP 10mg | Batch No.: UNL2812 | Expiry: 02/27 | Mfg.: 08/25 | Packing: 10x10 | M.R.P.: 104.64 | Qty: 20\"}], \"unanswerable\": false}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1366,
+    "output_tokens": 129,
+    "thinking_tokens": null,
+    "latency_ms": 1701.6
+  }
+}
