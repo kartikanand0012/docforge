@@ -1,6 +1,6 @@
 /** The DocForge API, as the review screen uses it. */
 
-import type { Answer, ChatStatus, Citation } from "./chat";
+import { readEvents, type Answer, type ChatStatus, type Citation } from "./chat";
 import type { Box } from "./geometry";
 
 /** Every call goes to this site's own `/api/v1/...`, which adds the session token server-side. */
@@ -114,6 +114,12 @@ export type DocumentRow = {
   created_at: string;
 };
 
+export type ChatScope = { document_id?: string; collection_id?: string; conversation_id?: string };
+
+export type KnowledgeBase = { id: string; name: string; description: string; documents: number; created_by: string; created_at: string };
+
+export type KnowledgeBaseMember = { id: string; filename: string; doc_type: string; stage: string; added_at: string };
+
 export type ConversationSummary = { id: string; title: string; document_id: string | null; created_at: string };
 
 export type StoredMessage = { id: string; question: string; answer: string; status: ChatStatus; citations: Citation[]; created_at: string };
@@ -149,6 +155,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new ApiError(response.status, message);
   }
+  if (response.status === 204) return null as T; // deleted: nothing to read
   return (await response.json()) as T;
 }
 
@@ -189,8 +196,45 @@ export const api = {
     return call<DocumentPage>(`/v1/documents${qs ? `?${qs}` : ""}`);
   },
   timeline: (id: string) => call<Step[]>(`/v1/documents/${encodeURIComponent(id)}/timeline`),
-  ask: (question: string, scope: { document_id?: string; conversation_id?: string } = {}) =>
-    call<Answer>("/v1/chat", json({ question, ...scope })),
+  ask: (question: string, scope: ChatScope = {}) => call<Answer>("/v1/chat", json({ question, ...scope })),
+  /** As `ask`, telling `onStage` each stage as it begins; the answer comes whole, checked. */
+  askStreamed: async (question: string, scope: ChatScope, onStage: (stage: string, data: Record<string, unknown>) => void): Promise<Answer> => {
+    const response = await fetch(`${API_URL}/v1/chat/stream`, { ...json({ question, ...scope }), cache: "no-store" });
+    if (!response.ok || !response.body) {
+      let message = `The request failed (${response.status}).`;
+      try {
+        const body = (await response.json()) as { detail?: unknown };
+        if (typeof body.detail === "string") message = body.detail;
+      } catch {
+        /* keep the generic message */
+      }
+      throw new ApiError(response.status, message);
+    }
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const { events, rest } = readEvents(buffer + value);
+      buffer = rest;
+      for (const event of events) {
+        if (event.name === "stage") onStage(String(event.data.stage), event.data);
+        if (event.name === "answer") return event.data as unknown as Answer;
+        if (event.name === "error") throw new ApiError(Number(event.data.status) || 500, String(event.data.detail));
+      }
+    }
+    throw new ApiError(502, "The answer did not arrive. Try again.");
+  },
+  collections: () => call<KnowledgeBase[]>("/v1/collections"),
+  createCollection: (name: string, description: string) => call<KnowledgeBase>("/v1/collections", json({ name, description })),
+  renameCollection: (id: string, name: string, description: string) =>
+    call<KnowledgeBase>(`/v1/collections/${encodeURIComponent(id)}`, { ...json({ name, description }), method: "PATCH" }),
+  deleteCollection: (id: string) => call<null>(`/v1/collections/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  collectionDocuments: (id: string) => call<KnowledgeBaseMember[]>(`/v1/collections/${encodeURIComponent(id)}/documents`),
+  addToCollection: (id: string, documentIds: string[]) =>
+    call<{ added: number }>(`/v1/collections/${encodeURIComponent(id)}/documents`, json({ document_ids: documentIds })),
+  removeFromCollection: (id: string, documentId: string) =>
+    call<null>(`/v1/collections/${encodeURIComponent(id)}/documents/${encodeURIComponent(documentId)}`, { method: "DELETE" }),
   conversations: () => call<ConversationSummary[]>("/v1/conversations"),
   conversation: (id: string) => call<{ id: string; messages: StoredMessage[] }>(`/v1/conversations/${encodeURIComponent(id)}`),
   pageUrl: (id: string, page: number) => `${API_URL}/v1/documents/${encodeURIComponent(id)}/pages/${page}`,

@@ -3,18 +3,23 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { api } from "@/lib/api";
-import { sendsOnEnter, statusNote, type Citation, type Turn } from "@/lib/chat";
+import { STAGE_TEXT, chatScope, sendsOnEnter, statusNote, type Citation, type Turn } from "@/lib/chat";
 
 /** Questions about one document (`documentId`) or every document of the organisation.
  * Each answer shows the quotes it rests on; choosing one shows it on its page (`onCite`),
  * or opens its document. Answers whose quotes are not in the documents are not shown. */
 export default function Chat({
   documentId,
+  collectionId,
+  collectionName,
   conversationId: initial,
   onCite,
   onConversation,
 }: {
   documentId?: string;
+  /** Ask within one knowledge base. */
+  collectionId?: string;
+  collectionName?: string;
   conversationId?: string;
   onCite?: (citation: Citation) => void;
   onConversation?: (id: string) => void;
@@ -24,6 +29,7 @@ export default function Chat({
   const [conversationId, setConversationId] = useState<string | undefined>(initial);
   const [question, setQuestion] = useState("");
   const [busy, setBusy] = useState(false);
+  const [stage, setStage] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [historyFailed, setHistoryFailed] = useState(false);
   const end = useRef<HTMLDivElement | null>(null);
@@ -77,7 +83,8 @@ export default function Chat({
     const index = turns.length;
     setTurns((current) => [...current, { question: text, answer: null, error: null }]);
     try {
-      const answer = await api.ask(text, conversationId ? { conversation_id: conversationId } : documentId ? { document_id: documentId } : {});
+      const scope = chatScope({ documentId, collectionId, conversationId });
+      const answer = await api.askStreamed(text, scope, (name, data) => setStage(STAGE_TEXT[name]?.(data) ?? null));
       setConversationId(answer.conversation_id);
       if (!conversationId) onConversation?.(answer.conversation_id);
       setTurns((current) => current.map((t, i) => (i === index ? { ...t, answer } : t)));
@@ -87,13 +94,16 @@ export default function Chat({
     } finally {
       sending.current = false;
       setBusy(false);
+      setStage(null);
       box.current?.focus();
     }
   }
 
   return (
     <section className="card chat" aria-labelledby={headingId}>
-      <h2 id={headingId}>{documentId ? "Ask about this document" : "Ask about your documents"}</h2>
+      <h2 id={headingId}>
+        {documentId ? "Ask about this document" : collectionId ? `Ask within ${collectionName ?? "this knowledge base"}` : "Ask about your documents"}
+      </h2>
       {problem && <p className="error" role="alert">{problem}</p>}
       <div className="turns" role="log" aria-busy={busy}>
         {turns.map((turn, i) => (
@@ -102,7 +112,7 @@ export default function Chat({
             {turn.error ? (
               <p className="error">{turn.error}</p>
             ) : turn.answer === null ? (
-              <p className="muted">Reading the documents…</p>
+              <p className="muted">{stage ?? "Asking…"}</p>
             ) : (
               <div className={`answer ${turn.answer.status}`}>
                 <p>{turn.answer.text}</p>

@@ -192,4 +192,23 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     await expect(first.getByRole("link", { name: "sop-goods-receipt.docx" })).toBeVisible({ timeout: 30_000 });
     await expect(first).toContainText("anything above 8 °C is rejected");
   });
+
+  test("a knowledge base is made, given the procedure, and asked within", async ({ page }) => {
+    await page.getByRole("link", { name: "Knowledge bases" }).click();
+    const form = page.getByRole("form", { name: "New knowledge base" });
+    await form.getByLabel("Name").fill("Warehouse procedures");
+    await form.getByRole("button", { name: "Create" }).click();
+    await page.getByRole("link", { name: "Warehouse procedures" }).click();
+
+    await page.getByLabel("Documents to add").selectOption({ label: "sop-goods-receipt.docx" });
+    await page.getByRole("button", { name: "Add 1 document" }).click();
+    const documents = page.getByRole("region", { name: "Documents in this knowledge base" });
+    await expect(documents.getByRole("link", { name: "sop-goods-receipt.docx" })).toBeVisible();
+
+    const chat = page.getByRole("region", { name: "Ask within Warehouse procedures" });
+    await chat.getByLabel("Question").fill("What happens to goods above 8 °C?");
+    await chat.getByRole("button", { name: "Ask" }).click();
+    await expect(chat.locator(".answer")).toContainText("rejected", { timeout: 30_000 });
+    await expect(chat.getByRole("link", { name: "sop-goods-receipt.docx, page 1" })).toBeVisible();
+  });
 });

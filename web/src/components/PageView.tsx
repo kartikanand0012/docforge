@@ -2,18 +2,20 @@
 
 import { useEffect, useRef } from "react";
 import type { FieldAssessment } from "@/lib/api";
-import { toOverlay } from "@/lib/geometry";
+import { toOverlay, type Box } from "@/lib/geometry";
 
 type Props = {
   src: string;
   page: { number: number; width: number; height: number };
   fields: FieldAssessment[];
   selected: string | null;
+  /** Boxes of a chat answer's quote to outline on this page. */
+  cited?: Box[];
 };
 
 /** One page of the original as uploaded: the selected value's source filled, values that
  * need attention outlined. Where a value is, is also announced in words by the review screen. */
-export default function PageView({ src, page, fields, selected }: Props) {
+export default function PageView({ src, page, fields, selected, cited = [] }: Props) {
   const selectedMark = useRef<HTMLSpanElement | null>(null);
   useEffect(() => {
     selectedMark.current?.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -45,6 +47,11 @@ export default function PageView({ src, page, fields, selected }: Props) {
           />
         );
       })}
+      {cited
+        .filter((box) => box.page === page.number)
+        .map((box, i) => (
+          <span key={`cited-${i}`} className="mark selected cited" style={toOverlay(box, page)} aria-hidden="true" />
+        ))}
     </figure>
   );
 }

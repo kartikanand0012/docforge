@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Chat from "@/components/Chat";
 import Timeline from "@/components/Timeline";
 import { ApiError, api, type FieldAssessment, type ReviewDetail } from "@/lib/api";
+import type { Citation } from "@/lib/chat";
 import { fieldAt, label, section } from "@/lib/fields";
 import PageView from "./PageView";
 import CorrectionForm from "./CorrectionForm";
@@ -27,6 +28,7 @@ export default function Review({ id }: { id: string }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [cited, setCited] = useState<Citation | null>(null);
   const latest = useRef(0);
 
   /** Load the review; true when there is nothing more to wait for. Keeps what was shown last
@@ -166,7 +168,14 @@ export default function Review({ id }: { id: string }) {
             <span className="swatch needs" aria-hidden="true" /> needs attention <span className="swatch selected" aria-hidden="true" /> selected value
           </p>
           {d.pages.map((page) => (
-            <PageView key={page.number} src={api.pageUrl(d.document_id, page.number)} page={page} fields={d.assessment.fields} selected={selected} />
+            <PageView
+              key={page.number}
+              src={api.pageUrl(d.document_id, page.number)}
+              page={page}
+              fields={d.assessment.fields}
+              selected={selected}
+              cited={cited?.boxes}
+            />
           ))}
         </section>
 
@@ -299,8 +308,11 @@ export default function Review({ id }: { id: string }) {
         </section>
       </div>
       <Chat
+        key={d.document_id}
         documentId={d.document_id}
         onCite={(citation) => {
+          setCited(citation);
+          setAnnouncement(`The quote is outlined on page ${citation.page}.`);
           // The review shows the pages in order: bring the cited one into view.
           const pages = document.querySelectorAll<HTMLElement>(".review figure.page");
           pages[citation.page - 1]?.scrollIntoView({ behavior: "smooth", block: "start" });

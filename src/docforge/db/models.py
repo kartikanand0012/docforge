@@ -348,6 +348,9 @@ class Conversation(Base):
     tenant_id: Mapped[uuid.UUID] = _tenant()
     owner: Mapped[str] = mapped_column(Text)  # the principal's actor; only they may read it
     document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    collection_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # organisation, document or collection; kept when the document or collection is deleted
+    scope: Mapped[str] = mapped_column(Text, server_default="organisation")
     title: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 
@@ -373,3 +376,25 @@ class Message(Base):
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = _created_at()
+
+
+class Collection(Base):
+    """A knowledge base: a named set of an organisation's documents to search and ask within."""
+
+    __tablename__ = "collections"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    name: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, server_default="")
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class CollectionDocument(Base):
+    __tablename__ = "collection_documents"
+
+    collection_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    added_at: Mapped[datetime] = _created_at()

@@ -1,0 +1,14 @@
+{
+  "key": "4ffd10b0bc858f1beaeb620e394dc20825ea02487bfe099ddd72b8219ae4f7d4",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not contain the assay result for batch BO893576.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1442,
+    "output_tokens": 41,
+    "thinking_tokens": null,
+    "latency_ms": 1005.1
+  }
+}

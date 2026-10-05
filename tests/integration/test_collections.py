@@ -47,7 +47,9 @@ class Setup:
 
 @pytest.fixture
 def setup(
-    sessions: SessionFactory, raw_invoice_from_label: RawFromLabel, raw_order_from_label: RawFromLabel
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
 ) -> Setup:
     world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
     world.invoice_parsed = CachingParser(RECORDED).parse(world.invoice_pdf)
@@ -81,7 +83,9 @@ def test_documents_are_added_once_and_removed(setup: Setup) -> None:
     assert [d.id for d in members] == [setup.invoice_id]
 
 
-def test_a_document_not_in_the_organisation_is_not_added(setup: Setup, other_tenant: uuid.UUID) -> None:
+def test_a_document_not_in_the_organisation_is_not_added(
+    setup: Setup, other_tenant: uuid.UUID
+) -> None:
     kb = setup.create()
     from docforge.collections import DocumentsNotFound
 
@@ -90,7 +94,9 @@ def test_a_document_not_in_the_organisation_is_not_added(setup: Setup, other_ten
     assert setup.collections.documents(DEFAULT_TENANT_ID, kb.id) == []  # all or nothing
 
 
-def test_another_organisation_cannot_see_or_change_it(setup: Setup, other_tenant: uuid.UUID) -> None:
+def test_another_organisation_cannot_see_or_change_it(
+    setup: Setup, other_tenant: uuid.UUID
+) -> None:
     kb = setup.create()
 
     assert setup.collections.list(other_tenant) == []
@@ -106,7 +112,9 @@ def test_search_within_a_knowledge_base_finds_only_its_documents(setup: Setup) -
     kb = setup.create()
     setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
 
-    hits = setup.search.search(DEFAULT_TENANT_ID, "invoice order", mode="keyword", collection_id=kb.id)
+    hits = setup.search.search(
+        DEFAULT_TENANT_ID, "invoice order", mode="keyword", collection_id=kb.id
+    )
 
     assert hits and {h.document_id for h in hits} == {setup.order_id}
 
@@ -115,8 +123,12 @@ def test_a_question_within_a_knowledge_base_reads_only_its_documents(setup: Setu
     kb = setup.create()
     setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
 
-    first = setup.chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id)
-    setup.chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "And when?", conversation_id=first.conversation_id)
+    first = setup.chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id
+    )
+    setup.chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", "And when?", conversation_id=first.conversation_id
+    )
 
     for request in setup.model.requests:
         assert 'document="purchase_order.pdf"' in request.prompt
@@ -127,7 +139,11 @@ def test_a_question_has_one_scope(setup: Setup) -> None:
     kb = setup.create()
     with pytest.raises(ScopeConflict):
         setup.chat.ask(
-            DEFAULT_TENANT_ID, "reviewer:a", "Total?", collection_id=kb.id, document_id=setup.invoice_id
+            DEFAULT_TENANT_ID,
+            "reviewer:a",
+            "Total?",
+            collection_id=kb.id,
+            document_id=setup.invoice_id,
         )
 
 
@@ -136,12 +152,16 @@ def test_a_follow_up_after_its_knowledge_base_is_deleted_is_refused_not_widened(
 ) -> None:
     kb = setup.create()
     setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
-    first = setup.chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id)
+    first = setup.chat.ask(
+        DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id
+    )
 
     setup.collections.delete(DEFAULT_TENANT_ID, kb.id)
 
     with pytest.raises(ScopeGone):
-        setup.chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "More?", conversation_id=first.conversation_id)
+        setup.chat.ask(
+            DEFAULT_TENANT_ID, "reviewer:a", "More?", conversation_id=first.conversation_id
+        )
     # The conversation itself is still there to read.
     assert setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", first.conversation_id)
 

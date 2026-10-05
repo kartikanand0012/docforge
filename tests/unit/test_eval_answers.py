@@ -109,9 +109,9 @@ def test_the_report_counts_right_answers_citations_abstention_and_leaks() -> Non
     report = score_answers(questions, results, model="m", prompt_version="chat-1")
 
     assert report.questions == len(questions) == len(by_id)
-    assert report.answered_correctly == pytest.approx(1 / 6)
-    assert report.cited_expected_document == pytest.approx(2 / 6)
-    assert report.false_abstention == pytest.approx(4 / 6)
+    assert report.answered_correctly == pytest.approx(1 / 6, abs=1e-4)
+    assert report.cited_expected_document == pytest.approx(2 / 6, abs=1e-4)
+    assert report.false_abstention == pytest.approx(4 / 6, abs=1e-4)
     assert report.wrong_answers == 1
     assert report.abstained_when_no_answer == pytest.approx(3 / 4, abs=1e-4)  # rounded to 4 places
     assert report.answered_unanswerable == 1  # the bank question, answered when it cannot be
@@ -122,13 +122,18 @@ def test_the_report_counts_right_answers_citations_abstention_and_leaks() -> Non
 
 def test_a_citation_from_outside_the_knowledge_base_asked_is_counted() -> None:
     questions = [
-        q for q in build_questions(FIXTURES / "synthetic", FIXTURES / "coa", pairs=1) if q.collection
+        q
+        for q in build_questions(FIXTURES / "synthetic", FIXTURES / "coa", pairs=1)
+        if q.collection
     ]
     results = [
         result(
-            q.id, "supported", "96.3 %", ("coa_001",),
+            q.id,
+            "supported",
+            "96.3 %",
+            ("coa_001",),
             outside=1 if q.collection == "invoices" else 0,
-        )  # fmt: skip
+        )
         for q in questions
     ]
     report = score_answers(questions, results, model="m", prompt_version="chat-1")

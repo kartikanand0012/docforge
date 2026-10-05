@@ -5,7 +5,9 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from docforge.api.app import create_app
+from docforge.collections import CollectionService
 from docforge.config import get_settings
+from docforge.db.session import make_engine, make_session_factory
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.telemetry import configure_tracing, settings_prices
 from docforge.wiring import (
@@ -41,4 +43,7 @@ def create_default_app() -> FastAPI:
         webhooks=webhooks,
         search=search,
         chat=build_chat(settings, search),
+        collections=CollectionService(
+            make_session_factory(make_engine(settings.database_url.get_secret_value()))
+        ),
     )

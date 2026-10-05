@@ -42,3 +42,46 @@ export function citationMarks(boxes: CitationBox[], page: number): Overlay[] {
 export function sendsOnEnter(event: { key: string; shiftKey: boolean; isComposing: boolean; keyCode: number }): boolean {
   return event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229;
 }
+
+/** What a question is asked within: its conversation's scope for a follow-up, else one
+ * document, one knowledge base, or (neither) the whole organisation. */
+export function chatScope(where: { documentId?: string; collectionId?: string; conversationId?: string }): {
+  document_id?: string;
+  collection_id?: string;
+  conversation_id?: string;
+} {
+  if (where.conversationId) return { conversation_id: where.conversationId };
+  if (where.documentId) return { document_id: where.documentId };
+  if (where.collectionId) return { collection_id: where.collectionId };
+  return {};
+}
+
+export type StreamEvent = { name: string; data: Record<string, unknown> };
+
+/** The complete events in `buffer` (server-sent events, blank-line separated), and what is
+ * left of an event still arriving. */
+export function readEvents(buffer: string): { events: StreamEvent[]; rest: string } {
+  const blocks = buffer.split("\n\n");
+  const rest = blocks.pop() ?? "";
+  const events: StreamEvent[] = [];
+  for (const block of blocks) {
+    let name = "message";
+    let data = "";
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event: ")) name = line.slice(7);
+      else if (line.startsWith("data: ")) data += line.slice(6);
+    }
+    try {
+      events.push({ name, data: JSON.parse(data) as Record<string, unknown> });
+    } catch {
+      /* not an event this page understands */
+    }
+  }
+  return { events, rest };
+}
+
+export const STAGE_TEXT: Record<string, (data: Record<string, unknown>) => string> = {
+  searching: () => "Searching the documents…",
+  reading: (d) => (d.passages ? `Reading ${String(d.passages)} passages…` : "Nothing found to read."),
+  checking: () => "Checking every quote against its source…",
+};

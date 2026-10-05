@@ -1,0 +1,14 @@
+{
+  "key": "0e734c216395aa1ea6bc2b517196e35b4bfa227b88115f165d8232970943edfe",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The assay result for batch UNL2812 was 91.8 %.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Assay 91.8 %\"\n    },\n    {\n      \"passage\": 4,\n      \"quote\": \"Test: Assay | Specification: 95.0 - 105.0 % | Result: 91.8 %\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 791,
+    "output_tokens": 123,
+    "thinking_tokens": null,
+    "latency_ms": 1484.6
+  }
+}
