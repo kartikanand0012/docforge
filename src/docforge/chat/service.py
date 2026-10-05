@@ -22,7 +22,7 @@ from datetime import datetime
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passage, build_prompt
@@ -119,6 +119,9 @@ class RawAnswer(BaseModel):  # no extra="forbid": Gemini's schema has no additio
         description="The answer, one claim per statement, each with its citations."
     )
     unanswerable: bool
+    missing: str = Field(
+        default="", description="If unanswerable: what the passages lack, in a few words."
+    )
 
 
 @dataclass(frozen=True)
@@ -150,6 +153,10 @@ class Answer:
     citations: tuple[Citation, ...]
     dropped_citations: int  # quotes not found in the passages they named
     dropped_statements: int  # statements without a found quote, or with a figure it lacks
+    # Why there is no answer: no_passages, not_in_passages, quotes_not_found,
+    # figures_not_in_quotes (None when there is one), and what is known of it.
+    reason: str | None
+    reason_detail: dict[str, Any]
     words_only: bool  # the passages were found by words alone (no embedding service)
     model: str | None
     input_tokens: int | None
@@ -170,6 +177,23 @@ class StoredMessage:
 
 
 @dataclass(frozen=True)
+class UnansweredQuestion:
+    question: str
+    reason: str
+    missing: str  # what the passages lacked, as the model said
+    documents: list[str]  # what was read for it
+    owner: str
+    conversation_id: uuid.UUID
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class Unanswered:
+    questions: list[UnansweredQuestion]
+    by_reason: dict[str, int]  # over the last 30 days
+
+
+@dataclass(frozen=True)
 class ConversationSummary:
     id: uuid.UUID
     title: str
@@ -179,10 +203,15 @@ class ConversationSummary:
 
 def _checked(
     raw: RawAnswer, passages: Sequence[Passage], hits: Sequence[SearchHit], given: str
-) -> tuple[Status, str, tuple[Citation, ...], int, int]:
-    """Status, text, citations, and the citations and statements dropped."""
+) -> tuple[Status, str, tuple[Citation, ...], int, int, str | None, dict[str, Any]]:
+    """Status, text, citations, the citations and statements dropped, and why there is no
+    answer (with what is known of it), if there is none."""
     if raw.unanswerable:
-        return "not_found", NOT_FOUND, (), 0, 0
+        detail: dict[str, Any] = {
+            "missing": raw.missing.strip()[:300],
+            "documents": list(dict.fromkeys(hit.filename for hit in hits))[:8],
+        }
+        return "not_found", NOT_FOUND, (), 0, 0, "not_in_passages", detail
     checked = check_statements(raw.statements, passages, given=given)
     citations: list[Citation] = []
     for kept in checked.kept:
@@ -202,11 +231,29 @@ def _checked(
             if citation not in citations:
                 citations.append(citation)
     if not checked.kept:
-        return "unsupported", WITHHELD, (), checked.dropped_citations, checked.dropped_statements
+        reason = "figures_not_in_quotes" if checked.dropped_for_figures else "quotes_not_found"
+        detail = {"statements": checked.dropped_statements, "quotes": checked.dropped_citations}
+        return (
+            "unsupported",
+            WITHHELD,
+            (),
+            checked.dropped_citations,
+            checked.dropped_statements,
+            reason,
+            detail,
+        )
     dropped = checked.dropped_citations + checked.dropped_statements
     status: Status = "partly_supported" if dropped else "supported"
     text = " ".join(kept.text for kept in checked.kept)
-    return status, text, tuple(citations), checked.dropped_citations, checked.dropped_statements
+    return (
+        status,
+        text,
+        tuple(citations),
+        checked.dropped_citations,
+        checked.dropped_statements,
+        None,
+        {},
+    )
 
 
 class ChatService:
@@ -261,7 +308,14 @@ class ChatService:
                 hits = self._retrieve(
                     tenant_id, _follow_up_query(question, history), scope, anchors, question
                 )
+                # A passage that reads like instructions to the model is held back: a document
+                # is data, and one that tries to direct the answer is not read as evidence.
+                held_back = sum(1 for hit in hits if _instructs(hit.text))
+                hits = SearchHits(
+                    [hit for hit in hits if not _instructs(hit.text)], words_only=hits.words_only
+                )
                 span.set_attribute("docforge.chat.passages", len(hits))
+                span.set_attribute("docforge.chat.held_back", held_back)
                 span.set_attribute("docforge.chat.scope", scope.kind)
                 passages = [
                     Passage(n=n, filename=hit.filename, page=hit.page, text=hit.text, kind=hit.kind)
@@ -269,28 +323,39 @@ class ChatService:
                 ]
                 tell("reading", {"passages": len(passages)})
                 citations: tuple[Citation, ...] = ()
+                reason: str | None
+                detail: dict[str, Any]
                 if not passages:
                     status: Status = "not_found"
                     text, dropped, dropped_statements = NOT_FOUND, 0, 0
+                    reason, detail = "no_passages", {"scope": scope.kind}
                 else:
                     raw, responses = self._ask(build_prompt(passages, question, history))
                     tell("checking", {})
                     # Figures a statement repeats from the question or the conversation need
                     # no quote of their own.
                     given = " ".join([question, *(f"{q} {a}" for q, a in history)])
-                    status, text, citations, dropped, dropped_statements = _checked(
+                    status, text, citations, dropped, dropped_statements, reason, detail = _checked(
                         raw, passages, hits, given
                     )
+                if held_back:
+                    detail = {**detail, "held_back": held_back}
                 span.set_attribute("docforge.chat.status", status)
                 span.set_attribute("docforge.chat.dropped_citations", dropped)
                 span.set_attribute("docforge.chat.dropped_statements", dropped_statements)
         except Exception as error:
             spent = getattr(error, "responses", responses)
-            self._complete(message_id, "error", "The model could not answer.", (), 0, spent)
+            self._complete(
+                message_id, "error", "The model could not answer.", (), 0, spent,
+                reason="model_error", detail={"error": type(error).__name__},
+            )  # fmt: skip
             raise
         if not passages:
             tell("checking", {})  # nothing to check, but every stream shows the same stages
-        self._complete(message_id, status, text, citations, dropped, responses, dropped_statements)
+        self._complete(
+            message_id, status, text, citations, dropped, responses, dropped_statements,
+            reason=reason, detail=detail,
+        )  # fmt: skip
         input_tokens, output_tokens = _tokens(responses)
         return Answer(
             conversation_id=conversation_id,
@@ -300,6 +365,8 @@ class ChatService:
             citations=citations,
             dropped_citations=dropped,
             dropped_statements=dropped_statements,
+            reason=reason,
+            reason_detail=detail,
             words_only=hits.words_only,
             model=responses[-1].model if responses else None,
             input_tokens=input_tokens,
@@ -493,6 +560,9 @@ class ChatService:
         dropped: int,
         responses: tuple[LLMResponse, ...],
         dropped_statements: int = 0,
+        *,
+        reason: str | None = None,
+        detail: dict[str, Any] | None = None,
     ) -> None:
         input_tokens, output_tokens = _tokens(responses)
         try:
@@ -503,6 +573,8 @@ class ChatService:
                 message.citations = [c.as_json() for c in citations]
                 message.dropped_citations = dropped
                 message.dropped_statements = dropped_statements
+                message.reason = reason
+                message.reason_detail = detail or {}
                 message.model = responses[-1].model if responses else None
                 message.input_tokens = input_tokens
                 message.output_tokens = output_tokens
@@ -574,6 +646,43 @@ class ChatService:
             ]
 
     @scoped
+    def unanswered(self, tenant_id: uuid.UUID, *, limit: int = 100) -> Unanswered:
+        """The organisation's questions that went unanswered, newest first, with why: what
+        its documents cannot answer, so what to add. For administrators."""
+        with self._sessions() as session:
+            rows = session.execute(
+                select(Message, Conversation.owner)
+                .join(Conversation, Conversation.id == Message.conversation_id)
+                .where(Message.tenant_id == tenant_id, Message.reason.is_not(None))
+                .order_by(Message.created_at.desc(), Message.id.desc())
+                .limit(limit)
+            ).all()
+            counts = session.execute(
+                select(Message.reason, func.count())
+                .where(
+                    Message.tenant_id == tenant_id,
+                    Message.reason.is_not(None),
+                    Message.created_at >= func.now() - text("interval '30 days'"),
+                )
+                .group_by(Message.reason)
+            ).all()
+        return Unanswered(
+            questions=[
+                UnansweredQuestion(
+                    question=m.question,
+                    reason=str(m.reason),
+                    missing=str((m.reason_detail or {}).get("missing", "")),
+                    documents=list((m.reason_detail or {}).get("documents", [])),
+                    owner=owner,
+                    conversation_id=m.conversation_id,
+                    created_at=m.created_at,
+                )
+                for m, owner in rows
+            ],
+            by_reason={str(reason): int(n) for reason, n in counts},
+        )
+
+    @scoped
     def conversations(
         self, tenant_id: uuid.UUID, owner: str, *, limit: int = 50
     ) -> list[ConversationSummary]:
@@ -605,6 +714,21 @@ class ChatService:
         if conversation is None:
             raise ConversationNotFound(conversation_id)
         return conversation
+
+
+_INSTRUCTIONS = re.compile(
+    r"\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+|the\s+)?(?:previous|prior|above|earlier)"
+    r"\s+(?:instructions|rules|prompts?)\b"
+    r"|\b(?:system\s+prompt|developer\s+message)\b"
+    r"|\byou\s+(?:are\s+now|must\s+now|will\s+now)\b"
+    r"|\b(?:as\s+an?\s+)?(?:ai|assistant|language\s+model),?\s+(?:you\s+)?(?:must|should)\b",
+    re.IGNORECASE,
+)
+
+
+def _instructs(text: str) -> bool:
+    """A passage that reads like instructions to the model rather than document content."""
+    return _INSTRUCTIONS.search(text) is not None
 
 
 def _follow_up_query(question: str, history: Sequence[tuple[str, str]]) -> str:

@@ -1,0 +1,14 @@
+{
+  "key": "413f3b869c39866149f51e1618a8434eae22eba21df7d946110bd0e2c22e9729",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the phone number of Yamuna Medicine House\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1633,
+    "output_tokens": 33,
+    "thinking_tokens": null,
+    "latency_ms": 1190.4
+  }
+}

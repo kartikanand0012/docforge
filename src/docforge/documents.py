@@ -511,6 +511,8 @@ class DocumentService:
         if cost is not None:
             span.set_attribute("docforge.cost_usd", cost)
         outcome = self._complete(version_id, turn, result, rendition)
+        if outcome == "succeeded" and rendition is not None:
+            self._drop_superseded(version_id, tenant, sha256, rendition)
         if outcome == "succeeded":
             try:
                 with traced("document.match"):
@@ -519,6 +521,32 @@ class DocumentService:
                 # The extraction is stored; a failed comparison must not fail the job.
                 logger.exception("could not match version %s with its counterpart", version_id)
         return outcome
+
+    def _drop_superseded(
+        self, version_id: uuid.UUID, tenant: uuid.UUID, sha256: str, kept: str
+    ) -> None:
+        """Converted PDFs earlier readings used, now replaced: deleted, since the original
+        can always be converted again. A failure here is logged; it costs only storage."""
+        with self._sessions() as session:
+            document_id = session.scalar(
+                select(DocumentVersion.document_id).where(DocumentVersion.id == version_id)
+            )
+            used: set[str] = set(
+                key
+                for key in session.scalars(
+                    select(DocumentVersion.rendition_key).where(
+                        DocumentVersion.document_id == document_id,
+                        DocumentVersion.rendition_key.is_not(None),
+                    )
+                )
+                if key is not None
+            )
+        for key in (used | {rendition_key(tenant, sha256)}) - {kept}:
+            try:
+                if self._store.exists(key):
+                    self._store.delete(key)
+            except StorageUnavailable:
+                logger.warning("could not delete a superseded converted PDF")
 
     def _rendition(self, data: bytes, fmt: Format, key: str) -> bytes:
         """The PDF made from `data`: stored the first time, read back after (reprocessing).

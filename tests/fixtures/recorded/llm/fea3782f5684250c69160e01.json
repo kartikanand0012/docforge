@@ -1,0 +1,14 @@
+{
+  "key": "fea3782f5684250c69160e012c51a945ab13b145fb48d377ca4b383df6660476",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the phone number of Sanjeevani Wellness Chemist\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1521,
+    "output_tokens": 36,
+    "thinking_tokens": null,
+    "latency_ms": 1583.4
+  }
+}

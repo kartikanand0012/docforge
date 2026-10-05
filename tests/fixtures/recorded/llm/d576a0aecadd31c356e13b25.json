@@ -1,0 +1,14 @@
+{
+  "key": "d576a0aecadd31c356e13b257fbb4e8d38a34c70945eec96da129cec220d327e",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the total microbial count for batch UNL2812\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1159,
+    "output_tokens": 37,
+    "thinking_tokens": null,
+    "latency_ms": 989.9
+  }
+}

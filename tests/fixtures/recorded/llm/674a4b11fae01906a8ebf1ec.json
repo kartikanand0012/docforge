@@ -1,0 +1,14 @@
+{
+  "key": "674a4b11fae01906a8ebf1ecd3efd1824e24b7e7b02532ffef7f6b5b6a6b739b",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"50 units of Pantoprazole Tablets IP 40mg were billed on invoice NVM/26-27/09004.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Invoice NVM/26-27/09004 dated 12 June 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Umiya Medical Store (GSTIN 24ACDPU8840L1Z3), against purchase order PO-UMS-63004. Products: Pantoprazole Tablets IP 40mg, Insulin Injection IP 40IU/ml, Vitamin C Tablets 500mg, Amoxicillin Capsules IP 250mg, Omeprazole Capsules IP 20mg, Salbutamol Inhaler 100mcg, Ibuprofen Tablets IP 400mg.\"\n        },\n        {\n          \"passage\": 3,\n          \"quote\": \"# HSN/SAC: 1 30049099 | Description of Goods: Pantoprazole Tablets IP 40mg | Batch No.: BO893576 | Expiry: 10/28 | Mfg.: 10/25 | Packing: 10x10 | M.R.P.: 120.38 | Qty: 50 | Sch: 5 | Rate: 91.49 | D% Tax%: 2 | Taxable: 12 | Amt: 4483.01 | Net Amt: 5020.97\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1557,
+    "output_tokens": 416,
+    "thinking_tokens": null,
+    "latency_ms": 4895.1
+  }
+}

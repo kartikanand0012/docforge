@@ -14,6 +14,8 @@ export type Answer = {
   citations: Citation[];
   dropped_citations: number;
   dropped_statements?: number;
+  reason?: string | null;
+  reason_detail?: Record<string, unknown>;
   words_only: boolean;
 };
 
@@ -100,3 +102,28 @@ export const STAGE_TEXT: Record<string, (data: Record<string, unknown>) => strin
   reading: (d) => (d.passages ? `Reading ${String(d.passages)} passages…` : "Nothing found to read."),
   checking: () => "Checking every quote against its source…",
 };
+
+const SCOPE: Record<string, string> = { document: "this document", collection: "this knowledge base", organisation: "your documents" };
+
+/** Why a question went unanswered, in words; and whether passages were held back. */
+export function reasonNote(reason: string | null | undefined, detail: Record<string, unknown>): string | null {
+  const parts: string[] = [];
+  if (reason === "no_passages") parts.push(`Nothing in ${SCOPE[String(detail.scope)] ?? "your documents"} matched the question.`);
+  if (reason === "not_in_passages") {
+    const read = Array.isArray(detail.documents) && detail.documents.length ? ` (${detail.documents.join(", ")})` : "";
+    const missing = typeof detail.missing === "string" && detail.missing ? detail.missing : "the answer";
+    parts.push(`The documents read${read} do not give ${missing}.`);
+  }
+  if (reason === "quotes_not_found") parts.push("The answer drafted quoted text that is not in the documents.");
+  if (reason === "figures_not_in_quotes") parts.push("The answer drafted gave figures its quotes do not show.");
+  if (reason === "model_error") parts.push("The model could not answer.");
+  const held = Number(detail.held_back ?? 0);
+  if (held) {
+    parts.push(
+      held === 1
+        ? "1 passage was held back because it reads like instructions to the AI, not document content."
+        : `${held} passages were held back because they read like instructions to the AI, not document content.`,
+    );
+  }
+  return parts.join(" ") || null;
+}

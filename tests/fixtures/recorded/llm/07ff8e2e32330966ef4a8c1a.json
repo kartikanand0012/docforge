@@ -1,0 +1,14 @@
+{
+  "key": "07ff8e2e32330966ef4a8c1aac9abf90feb3847c586310148345fbbccf0187be",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the total microbial count for batch XGX944068\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1230,
+    "output_tokens": 39,
+    "thinking_tokens": null,
+    "latency_ms": 1933.7
+  }
+}

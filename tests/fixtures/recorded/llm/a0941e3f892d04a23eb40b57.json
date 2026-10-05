@@ -1,0 +1,14 @@
+{
+  "key": "a0941e3f892d04a23eb40b57ac55fc9fe21a344786b8298447bda0dc7e5c69bd",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the total microbial count for batch RL5781\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1214,
+    "output_tokens": 36,
+    "thinking_tokens": null,
+    "latency_ms": 1215.6
+  }
+}

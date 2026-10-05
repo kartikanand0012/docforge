@@ -54,3 +54,20 @@ describe("sendsOnEnter", () => {
     expect(sendsOnEnter({ key: "Enter", shiftKey: false, isComposing: false, keyCode: 229 })).toBe(false);
   });
 });
+
+import { reasonNote } from "@/lib/chat";
+
+describe("reasonNote", () => {
+  it("says why a question went unanswered, in words", () => {
+    expect(reasonNote("no_passages", { scope: "collection" })).toBe("Nothing in this knowledge base matched the question.");
+    expect(reasonNote("not_in_passages", { missing: "the bank account number", documents: ["a.pdf", "b.pdf"] })).toBe(
+      "The documents read (a.pdf, b.pdf) do not give the bank account number.",
+    );
+    expect(reasonNote("figures_not_in_quotes", {})).toMatch(/figures/);
+    expect(reasonNote(null, {})).toBeNull();
+  });
+
+  it("says when passages were held back for reading like instructions", () => {
+    expect(reasonNote(null, { held_back: 1 })).toBe("1 passage was held back because it reads like instructions to the AI, not document content.");
+  });
+});

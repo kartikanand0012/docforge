@@ -1,0 +1,14 @@
+{
+  "key": "75938a10a4a462b68106ab4d0dea5a6259e862846c8b30f393391156f4857883",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the assay result for batch UNL2812\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1529,
+    "output_tokens": 36,
+    "thinking_tokens": null,
+    "latency_ms": 1095.6
+  }
+}

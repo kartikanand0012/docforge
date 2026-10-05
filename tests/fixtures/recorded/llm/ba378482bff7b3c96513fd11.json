@@ -1,0 +1,14 @@
+{
+  "key": "ba378482bff7b3c96513fd118ae539f3adc18acdfde03cff4962a610589a6d27",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"Invoice NVM/26-27/32001 was issued by Navjivan Medical Agencies.\",\n      \"citations\": [\n        {\n          \"passage\": 2,\n          \"quote\": \"Invoice NVM/26-27/32001 dated 2 September 2026 from Navjivan Medical Agencies\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1565,
+    "output_tokens": 116,
+    "thinking_tokens": null,
+    "latency_ms": 12826.1
+  }
+}

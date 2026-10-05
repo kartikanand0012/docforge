@@ -56,6 +56,7 @@ class Checked:
     kept: list[KeptStatement] = field(default_factory=list)
     dropped_statements: int = 0
     dropped_citations: int = 0
+    dropped_for_figures: int = 0  # of the statements dropped: quoted, but a figure not held
 
 
 def _plain(text: str) -> str:
@@ -123,4 +124,5 @@ def check_statements(
             checked.kept.append(KeptStatement(text=text, citations=tuple(found)))
         else:
             checked.dropped_statements += 1
+            checked.dropped_for_figures += bool(text and found)
     return checked

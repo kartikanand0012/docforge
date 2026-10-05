@@ -59,6 +59,8 @@ class AnswerResult(_Model):
     cited_documents: tuple[str, ...]
     cross_tenant: int  # citations of another organisation's documents
     outside_collection: int = 0  # citations of documents outside the knowledge base asked
+    reason: str | None = None  # why it went unanswered, if it did
+    missing: str = ""  # what the passages lacked, as the model said
     input_tokens: int | None
     output_tokens: int | None
 
@@ -77,6 +79,9 @@ class AnswerReport(_Model):
     answered_unanswerable: int  # answered, with checked quotes, what the documents do not say
     follow_ups: int  # questions asked as follow-ups, the second and third of a conversation
     follow_ups_correct: float  # of those, answered with the expected value
+    # Unanswerable questions declined with a reason that says what is missing, or that
+    # nothing matched: what an organisation reads to know which documents to add.
+    explained_when_no_answer: float
     cross_tenant_citations: int
     outside_knowledge_base: int  # citations from outside the knowledge base asked; must be 0
     input_tokens_per_question: int  # mean, over questions the model was asked
@@ -274,10 +279,14 @@ def score_answers(
         else:
             abstained += 1
             missed.append(q.id)
-    held_back = answered_anyway = 0
+    held_back = answered_anyway = explained = 0
     for q in unanswerable:
         if by_id[q.id].status in ABSTAINED:
             held_back += 1
+            r = by_id[q.id]
+            explained += r.reason == "no_passages" or (
+                r.reason == "not_in_passages" and bool(r.missing.strip())
+            )
         else:
             answered_anyway += 1
             missed.append(q.id)
@@ -312,6 +321,7 @@ def score_answers(
         answered_unanswerable=answered_anyway,
         follow_ups=len(follow_ups),
         follow_ups_correct=_share(follow_ups_right, len(follow_ups)),
+        explained_when_no_answer=_share(explained, len(unanswerable)),
         cross_tenant_citations=sum(r.cross_tenant for r in results),
         outside_knowledge_base=sum(r.outside_collection for r in results),
         input_tokens_per_question=tokens[0],
@@ -365,6 +375,8 @@ def run_answer_eval(
                 cited_documents=tuple(key for key, _ in filter(None, found)),
                 cross_tenant=sum(1 for f in found if f is None or f[1] != q.tenant),
                 outside_collection=outside,
+                reason=answer.reason,
+                missing=str(answer.reason_detail.get("missing", "")),
                 input_tokens=answer.input_tokens,
                 output_tokens=answer.output_tokens,
             )
@@ -412,6 +424,7 @@ def format_answer_report(report: AnswerReport) -> str:
             f"  answered the unanswerable {report.answered_unanswerable}",
             f"  cross-tenant citations    {report.cross_tenant_citations}",
             f"  outside knowledge base    {report.outside_knowledge_base}",
+            f"  explained when no answer  {report.explained_when_no_answer:.2%}",
             f"  follow-ups correct        {report.follow_ups_correct:.2%} of {report.follow_ups}",
             f"  tokens per question       {report.input_tokens_per_question} in, "
             f"{report.output_tokens_per_question} out",

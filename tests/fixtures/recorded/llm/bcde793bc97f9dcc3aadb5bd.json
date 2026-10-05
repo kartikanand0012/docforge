@@ -1,0 +1,14 @@
+{
+  "key": "bcde793bc97f9dcc3aadb5bd9ea87e4b8edcef25f482cf2015a660c856b0e2dd",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the bank account number of Navjivan Medical Agencies\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1506,
+    "output_tokens": 35,
+    "thinking_tokens": null,
+    "latency_ms": 4368.3
+  }
+}

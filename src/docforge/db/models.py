@@ -374,6 +374,11 @@ class Message(Base):
     citations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     dropped_citations: Mapped[int] = mapped_column(Integer, server_default="0")
     dropped_statements: Mapped[int] = mapped_column(Integer, server_default="0")
+    # Why a question went unanswered (no_passages, not_in_passages, quotes_not_found,
+    # figures_not_in_quotes, model_error), and what is known of it: what was missing, what
+    # was read. None when it was answered.
+    reason: Mapped[str | None] = mapped_column(Text)
+    reason_detail: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
     model: Mapped[str | None] = mapped_column(Text)
     prompt_version: Mapped[str] = mapped_column(Text)
     input_tokens: Mapped[int | None] = mapped_column(Integer)
