@@ -27,6 +27,9 @@ No critical finding. Fixed with failing tests first: an ellipsis could join a ba
 
 Tests: 1,797 Python; web 68; e2e 9/9; gate 48/48.
 
+Gate change, declared (`gate-change` label): input tokens per question 1,490 to 1,493 (+0.2%), the
+cost of the statement-checked prompt; under the 2,000 floor, with every quality metric held or better.
+
 ## C12 Knowledge bases (2026-10-05): gate passed
 
 Branch `c12-knowledge`, stacked on C11. Evidence: `docs/tdd/c12-knowledge.tdd.md`.
