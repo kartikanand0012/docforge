@@ -1,0 +1,14 @@
+{
+  "key": "96a45d2a32261f4dbc8ae96ff55548e19e7a835ecde651a57274b660410cbbf8",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"Batch CD27015 was billed by invoice KLP/26-27/13006.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Batch No.: CD27015\"\n    },\n    {\n      \"passage\": 2,\n      \"quote\": \"Invoice KLP/26-27/13006 dated 22 June 2026 from Kaveri Lifecare Pharma (GSTIN 29AAGCK3390P1ZS) to Sanjeevani Wellness Chemist (GSTIN 27AAVFS2087J1ZF), against purchase order PO-SWC-50006. Products: Atorvastatin Tablets IP 10mg, Insulin Injection IP 40IU/ml, Cetirizine Tablets IP 10mg, Azithromycin Tablets IP 500mg, Vitamin C Tablets 500mg, Prednisolone Tablets IP 5mg, Amlodipine Tablets IP 5mg, Amoxicillin Capsules IP 250mg, Metformin Tablets IP 500mg. Batches: CD27015\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1382,
+    "output_tokens": 293,
+    "thinking_tokens": null,
+    "latency_ms": 1867.2
+  }
+}

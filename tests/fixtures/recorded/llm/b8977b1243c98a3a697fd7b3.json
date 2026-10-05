@@ -1,0 +1,14 @@
+{
+  "key": "b8977b1243c98a3a697fd7b33b4f1347f7c20d337d3698ca671133d2825f7ab9",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The provided documents do not contain information about the total microbial count for batch VJV3873.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1385,
+    "output_tokens": 44,
+    "thinking_tokens": null,
+    "latency_ms": 1213.5
+  }
+}

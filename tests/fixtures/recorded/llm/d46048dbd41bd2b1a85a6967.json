@@ -1,0 +1,14 @@
+{
+  "key": "d46048dbd41bd2b1a85a69673a32829dc547bfb06e4a1c923bcd8e8f67de394d",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The grand total of invoice NVM/26-27/32001 is 98697.00.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Grand Total\\n98697.00\"\n    },\n    {\n      \"passage\": 2,\n      \"quote\": \"Invoice NVM/26-27/32001 dated 2 September 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Jalaram Pharmacy (GSTIN 24AAHFJ1196Q1ZU), against purchase order PO-JPH-12001. Products: Amoxicillin Capsules IP 250mg, Ciprofloxacin Tablets IP 500mg, Atorvastatin Tablets IP 10mg, Salbutamol Inhaler 100mcg, Insulin Injection IP 40IU/ml, Cetirizine Tablets IP 10mg, Pantoprazole Tablets IP 40mg, Ibuprofen Tablets IP 400mg, Azithromycin Tablets IP 500mg, ORS Powder WHO Formula 21g. Batches: XGX944068, WE8364, DF644981, MUF6793, DX45745, NN1207, FEH31637, UJ089592, RWC5986, JI3192. Grand total 98697.00.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1893,
+    "output_tokens": 389,
+    "thinking_tokens": null,
+    "latency_ms": 2781.5
+  }
+}

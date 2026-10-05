@@ -14,6 +14,7 @@ A conversation belongs to the person who started it. Questions and answers are s
 """
 
 import logging
+import re
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -46,6 +47,10 @@ DEFAULT_PASSAGES = 8
 DEFAULT_DAILY_LIMIT = 500
 _HISTORY = 3  # earlier turns given with a follow-up
 _ANSWERED = ("supported", "partly_supported")
+_ANCHORS = 3  # documents an earlier answer cited, searched first for a follow-up
+_ANCHORED = 4  # passages from each
+# A code an answer named (an invoice or batch number): letters with digits, or with / or -.
+_CODE = re.compile(r"\b(?=[\w/.-]*\d)(?=[\w/.-]*[A-Za-z/-])[\w][\w/.-]*[\w]")
 _BOX_KEYS = ("page", "x0", "y0", "x1", "y1", "page_width", "page_height")
 
 
@@ -248,22 +253,15 @@ class ChatService:
         if document_id is not None and collection_id is not None:
             raise ScopeConflict("a question is about one document or one knowledge base")
         tell = _safe(progress)
-        conversation_id, message_id, scope, history = self._reserve(
+        conversation_id, message_id, scope, history, anchors = self._reserve(
             tenant_id, owner, question, Scope(document_id, collection_id), conversation_id
         )
         responses: tuple[LLMResponse, ...] = ()
         try:
             with traced("chat.answer") as span:
                 tell("searching", {})
-                # A follow-up such as "and its batch?" is searched with the question before.
-                query = f"{history[-1][0]} {question}" if history else question
-                hits = self._search.search(
-                    tenant_id,
-                    query,
-                    k=self._passages,
-                    mode="hybrid",
-                    document_id=scope.document_id,
-                    collection_id=scope.collection_id,
+                hits = self._retrieve(
+                    tenant_id, _follow_up_query(question, history), scope, anchors
                 )
                 span.set_attribute("docforge.chat.passages", len(hits))
                 span.set_attribute("docforge.chat.scope", scope.kind)
@@ -303,6 +301,66 @@ class ChatService:
             output_tokens=output_tokens,
         )
 
+    def _retrieve(
+        self, tenant_id: uuid.UUID, query: str, scope: "Scope", anchors: Sequence[uuid.UUID]
+    ) -> SearchHits:
+        """The passages to answer from. A follow-up ("what is its total?") names nothing, so
+        the documents its conversation has cited are searched first, each on its own, and
+        their passages come before the rest: what "it" is stays in front of the model, however
+        many other documents match the words."""
+        found: list[SearchHit] = []
+        words_only = False
+        for anchor in anchors:
+            if scope.document_id is not None and anchor != scope.document_id:
+                continue  # never outside the conversation's own scope
+            near = self._search.search(
+                tenant_id,
+                query,
+                k=_ANCHORED,
+                mode="hybrid",
+                document_id=anchor,
+                collection_id=scope.collection_id,
+            )
+            found += near
+            words_only = words_only or near.words_only
+        wide = self._search.search(
+            tenant_id,
+            query,
+            k=self._passages,
+            mode="hybrid",
+            document_id=scope.document_id,
+            collection_id=scope.collection_id,
+        )
+        # A question that names a document's code (an invoice number) is about that document,
+        # but only its header prints the code, not its line rows: search within it too.
+        codes = {code.casefold() for code in _CODE.findall(query)}
+        named = [
+            hit.document_id
+            for hit in wide
+            if codes and any(code in hit.text.casefold() for code in codes)
+        ]
+        for document_id in dict.fromkeys(named):
+            if document_id in anchors or len(found) >= self._passages:
+                continue
+            near = self._search.search(
+                tenant_id,
+                query,
+                k=_ANCHORED,
+                mode="hybrid",
+                document_id=document_id,
+                collection_id=scope.collection_id,
+            )
+            found += near
+            words_only = words_only or near.words_only
+        seen: set[tuple[uuid.UUID, int, str]] = set()
+        merged: list[SearchHit] = []
+        for hit in [*found, *wide]:
+            key = (hit.document_id, hit.page, hit.text)
+            if key not in seen:
+                seen.add(key)
+                merged.append(hit)
+        return SearchHits(merged[: self._passages], words_only=words_only or wide.words_only)
+
     def _reserve(
         self,
         tenant_id: uuid.UUID,
@@ -310,7 +368,7 @@ class ChatService:
         question: str,
         asked: "Scope",
         conversation_id: uuid.UUID | None,
-    ) -> tuple[uuid.UUID, uuid.UUID, "Scope", list[tuple[str, str]]]:
+    ) -> tuple[uuid.UUID, uuid.UUID, "Scope", list[tuple[str, str]], list[uuid.UUID]]:
         """Check the limits and take the question's place, in one transaction under a lock
         per organisation, so two questions cannot both take the last place."""
         with self._sessions.begin() as session:
@@ -334,6 +392,7 @@ class ChatService:
                 raise QuestionLimitReached(f"{self._per_person} questions a day per person")
 
             history: list[tuple[str, str]] = []
+            anchors: list[uuid.UUID] = []
             if conversation_id is not None:
                 conversation = self._owned(session, tenant_id, owner, conversation_id)
                 scope = Scope(conversation.document_id, conversation.collection_id)
@@ -356,6 +415,16 @@ class ChatService:
                     (m.question, m.answer if m.status in _ANSWERED else "(no answer found)")
                     for m in reversed(earlier)
                 ]
+                # The documents the conversation is about: those its answers cited, newest
+                # first.
+                anchors = list(
+                    dict.fromkeys(
+                        uuid.UUID(c["document_id"])
+                        for m in earlier
+                        if m.status in _ANSWERED
+                        for c in m.citations
+                    )
+                )[:_ANCHORS]
             else:
                 scope = asked
                 if scope.document_id is not None:
@@ -391,7 +460,7 @@ class ChatService:
             )
             session.add(message)
             session.flush()
-            return conversation.id, message.id, scope, history
+            return conversation.id, message.id, scope, history, anchors
 
     def _complete(
         self,
@@ -512,6 +581,16 @@ class ChatService:
         if conversation is None:
             raise ConversationNotFound(conversation_id)
         return conversation
+
+
+def _follow_up_query(question: str, history: Sequence[tuple[str, str]]) -> str:
+    """What a follow-up is searched with: every earlier question of the conversation and the
+    codes its answers named, then the question. Only the question before was used until
+    the hardening checkpoint, and a third turn lost what the first one named."""
+    if not history:
+        return question
+    codes = [code for _, answer in history for code in _CODE.findall(answer)]
+    return " ".join([*(asked for asked, _ in history), *dict.fromkeys(codes), question])
 
 
 def _safe(progress: Progress | None) -> Progress:

@@ -287,7 +287,7 @@ def score_answers(
         for q in follow_ups
         if by_id[q.id].status in ANSWERED
         and q.expect
-        and correct(by_id[q.id].text, q.expect, q.text)
+        and correct(by_id[q.id].text, q.expect, said_before(q))
     )
     calls = [r for r in results if r.input_tokens is not None]
     tokens = (

@@ -1,0 +1,14 @@
+{
+  "key": "65b47394cabf98907f052a17f5c008fa0a2a2aed58ba8c37c4d48510e09f276c",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The grand total of invoice NVM/26-27/09004 is 31674.00.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Grand total 31674.00.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1878,
+    "output_tokens": 88,
+    "thinking_tokens": null,
+    "latency_ms": 1082.3
+  }
+}

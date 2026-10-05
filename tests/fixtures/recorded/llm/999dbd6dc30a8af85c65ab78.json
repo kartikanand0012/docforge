@@ -1,0 +1,14 @@
+{
+  "key": "999dbd6dc30a8af85c65ab78a1c4550f3915229a2376af6521dbeafdfb4b973b",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The assay result for batch LJE1302 was 86.8 %.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Assay 86.8 %\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 796,
+    "output_tokens": 74,
+    "thinking_tokens": null,
+    "latency_ms": 1252.2
+  }
+}

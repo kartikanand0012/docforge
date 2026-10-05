@@ -1,0 +1,14 @@
+{
+  "key": "bb146b8a0c1ba0c1172b9a694be5439e3c9e61b32528756da7013ba099eb1c99",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The provided documents do not contain information about the assay result for batch UNL2812.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1456,
+    "output_tokens": 43,
+    "thinking_tokens": null,
+    "latency_ms": 1274.5
+  }
+}
