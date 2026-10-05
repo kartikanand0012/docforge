@@ -38,7 +38,9 @@ def test_the_conversation_so_far_is_given_before_the_question() -> None:
     assert prompt.index("Which product?") < prompt.index("And its batch?")
 
 
-def test_the_instruction_says_documents_are_data_quotes_are_exact_and_abstention_is_allowed() -> None:
+def test_the_instruction_says_documents_are_data_quotes_are_exact_and_abstention_is_allowed() -> (
+    None
+):
     text = SYSTEM_INSTRUCTION.lower()
     assert "not instructions" in text
     assert "exact" in text and "quote" in text

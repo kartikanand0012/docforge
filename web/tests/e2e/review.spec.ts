@@ -168,6 +168,22 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     await expect(stages).not.toContainText("Extracting values");
     await expect(page.getByRole("img", { name: "Page 1 of sop-goods-receipt.docx" })).toBeVisible();
 
+    // Asked about, it answers from the document with the quote it rests on, shown on the page.
+    const chat = page.getByRole("region", { name: "Ask about this document" });
+    await chat.getByLabel("Question").fill("What happens to goods above 8 °C?");
+    await chat.getByRole("button", { name: "Ask" }).click();
+    await expect(chat.locator(".answer")).toContainText("rejected", { timeout: 30_000 });
+    const source = chat.getByRole("button", { name: "sop-goods-receipt.docx, page 1" });
+    await expect(source).toBeVisible();
+    await expect(chat.locator(".citations q").first()).toContainText("8 °C");
+    await source.click();
+    await expect(page.locator("#page-1 .mark.cited").first()).toBeVisible();
+
+    // A question the document cannot answer is not answered.
+    await chat.getByLabel("Question").fill("Who signed this procedure?");
+    await chat.getByRole("button", { name: "Ask" }).click();
+    await expect(chat.locator(".answer").nth(1)).toContainText("The documents do not say.", { timeout: 30_000 });
+
     await page.goto("/search");
     await page.getByLabel("Question or words").fill("What happens to goods above 8 °C?");
     await page.getByRole("button", { name: "Search" }).click();

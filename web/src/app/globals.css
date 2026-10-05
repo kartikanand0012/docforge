@@ -119,3 +119,16 @@ input.inline { width: auto; }
 table.documents { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
 table.documents th, table.documents td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); }
 table.documents th { font-weight: 600; color: var(--muted); }
+
+/* Chat */
+.chat .turns { max-height: 32rem; overflow-y: auto; }
+.chat .turn { border-top: 1px solid var(--border); padding: 8px 0; }
+.chat .answer.unsupported p:first-child, .chat .answer.not_found p:first-child { font-style: italic; }
+.chat .citations { margin: 4px 0 0; padding-left: 20px; }
+.chat .citations q { color: var(--muted, #555); }
+.chat .ask { display: grid; gap: 6px; margin-top: 8px; }
+.chat .ask textarea { width: 100%; font: inherit; }
+button.citation, button.link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; }
+.chat-layout { display: grid; grid-template-columns: minmax(180px, 1fr) 3fr; gap: 16px; align-items: start; }
+@media (max-width: 720px) { .chat-layout { grid-template-columns: 1fr; } }
+.mark.cited { outline: 2px solid #c47f00; background: rgba(255, 196, 0, 0.25); }

@@ -5,7 +5,6 @@ and citations from another organisation (which must be none)."""
 from pathlib import Path
 
 import pytest
-
 from docforge.evals.answers import (
     AnswerResult,
     Expect,
@@ -24,7 +23,11 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
         ("It comes to 98697 rupees.", Expect(kind="number", value="98697.00"), True),
         ("The total is 98,696.77.", Expect(kind="number", value="98697.00"), False),
         ("Invoice 2026 has a total of 98,697.", Expect(kind="number", value="98697.00"), True),
-        ("Navjivan Medical Agencies issued it.", Expect(kind="text", value="Navjivan Medical Agencies"), True),
+        (
+            "Navjivan Medical Agencies issued it.",
+            Expect(kind="text", value="Navjivan Medical Agencies"),
+            True,
+        ),
         ("The assay was 96.3%.", Expect(kind="text", value="96.3 %"), True),
         ("The assay was 96.8 %.", Expect(kind="text", value="96.3 %"), False),
     ],
@@ -49,7 +52,9 @@ def test_questions_come_from_the_labels_with_answers_and_unanswerables() -> None
     assert questions == build_questions(FIXTURES / "synthetic", FIXTURES / "coa", pairs=2)
 
 
-def result(qid: str, status: str, text: str = "", docs: tuple[str, ...] = (), leaks: int = 0) -> AnswerResult:
+def result(
+    qid: str, status: str, text: str = "", docs: tuple[str, ...] = (), leaks: int = 0
+) -> AnswerResult:
     return AnswerResult(
         question_id=qid, status=status, text=text, cited_documents=docs, cross_tenant=leaks,
         input_tokens=1000, output_tokens=100,
@@ -79,7 +84,7 @@ def test_the_report_counts_right_answers_citations_abstention_and_leaks() -> Non
     assert report.cited_expected_document == pytest.approx(2 / 4)
     assert report.false_abstention == pytest.approx(2 / 4)
     assert report.wrong_answers == 1
-    assert report.abstained_when_no_answer == pytest.approx(2 / 3)
+    assert report.abstained_when_no_answer == pytest.approx(2 / 3, abs=1e-4)  # rounded to 4 places
     assert report.cross_tenant_citations == 1
-    assert report.tokens_per_question == (1000, 100)
+    assert (report.input_tokens_per_question, report.output_tokens_per_question) == (1000, 100)
     assert "pair_001-seller" in report.missed

@@ -1,0 +1,14 @@
+{
+  "key": "6d08b19a0da6d250bd16809c22231203d260bf46632a21b7d1396853cbebd123",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The documents do not say.\",\n  \"citations\": [],\n  \"unanswerable\": true\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1535,
+    "output_tokens": 29,
+    "thinking_tokens": null,
+    "latency_ms": 1383.4
+  }
+}

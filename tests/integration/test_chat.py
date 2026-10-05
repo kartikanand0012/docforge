@@ -53,9 +53,13 @@ class Model:
         )  # fmt: skip
 
 
-def quoting(target: str, answer: str, *, also: str | None = None) -> Callable[[dict[int, str]], dict[str, Any]]:
+def quoting(
+    target: str, answer: str, *, also: str | None = None
+) -> Callable[[dict[int, str]], dict[str, Any]]:
     def reply(passages: dict[int, str]) -> dict[str, Any]:
-        n = next(n for n, text in passages.items() if target in text)
+        holding = [n for n, text in passages.items() if target in text]
+        # A printed table row (cells joined by "|") rather than the generated summary.
+        n = next((n for n in holding if "|" in passages[n]), holding[0])
         citations = [{"passage": n, "quote": target}]
         if also is not None:
             citations.append({"passage": n, "quote": also})
@@ -65,7 +69,9 @@ def quoting(target: str, answer: str, *, also: str | None = None) -> Callable[[d
 
 
 class Setup:
-    def __init__(self, world: World, search: SearchService, model: Model, chat: ChatService) -> None:
+    def __init__(
+        self, world: World, search: SearchService, model: Model, chat: ChatService
+    ) -> None:
         self.world, self.search, self.model, self.chat = world, search, model, chat
         self.invoice_id = world.process("invoice")
         self.order_id = world.process("purchase_order")
@@ -80,7 +86,9 @@ class Setup:
 
 @pytest.fixture
 def setup(
-    sessions: SessionFactory, raw_invoice_from_label: RawFromLabel, raw_order_from_label: RawFromLabel
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
 ) -> Setup:
     world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
     world.invoice_parsed = CachingParser(RECORDED).parse(world.invoice_pdf)
@@ -90,16 +98,17 @@ def setup(
 
 
 def test_an_answer_cites_the_passage_and_page_it_comes_from(setup: Setup) -> None:
-    setup.model.reply = quoting(setup.invoice_no, f"The invoice number is {setup.invoice_no}.")
+    setup.model.reply = quoting(setup.batch, f"Batch {setup.batch} is on this invoice.")
 
-    answer = setup.ask(f"What is the number of the invoice with batch {setup.batch}?")
+    answer = setup.ask(f"Which invoice billed batch {setup.batch}?")
 
     assert answer.status == "supported"
-    assert answer.text == f"The invoice number is {setup.invoice_no}."
+    assert answer.text == f"Batch {setup.batch} is on this invoice."
     (citation,) = answer.citations
     assert citation.document_id == setup.invoice_id
-    assert citation.quote == setup.invoice_no and citation.page == 1
+    assert citation.quote == setup.batch and citation.page == 1
     assert citation.boxes and all(box["page"] == 1 for box in citation.boxes)
+    assert all(box["page_width"] > 0 and box["page_height"] > 0 for box in citation.boxes)
 
 
 def test_when_the_documents_do_not_say_it_says_so(setup: Setup) -> None:
@@ -136,7 +145,9 @@ def test_a_citation_naming_a_passage_that_was_not_given_is_not_a_citation(setup:
 def test_an_answer_with_one_good_and_one_made_up_quote_says_it_is_partly_supported(
     setup: Setup,
 ) -> None:
-    setup.model.reply = quoting(setup.invoice_no, "It is that one.", also="approved by the director")
+    setup.model.reply = quoting(
+        setup.invoice_no, "It is that one.", also="approved by the director"
+    )
 
     answer = setup.ask(f"Which invoice billed batch {setup.batch}?")
 
@@ -183,7 +194,9 @@ def test_a_conversation_is_only_its_owners(setup: Setup, other_tenant: uuid.UUID
 def test_another_organisation_gets_nothing_from_these_documents(
     setup: Setup, other_tenant: uuid.UUID
 ) -> None:
-    answer = setup.chat.ask(other_tenant, "reviewer:x", f"Which invoice billed batch {setup.batch}?")
+    answer = setup.chat.ask(
+        other_tenant, "reviewer:x", f"Which invoice billed batch {setup.batch}?"
+    )
 
     assert answer.status == "not_found"
     assert setup.model.requests == []  # nothing to read, so no model call

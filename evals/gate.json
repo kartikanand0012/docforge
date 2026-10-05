@@ -1,37 +1,317 @@
 [
-  {"report": "invoice", "path": "summary.fields.accuracy", "op": ">=", "value": 0.99, "why": "values read correctly on clean invoices"},
-  {"report": "invoice", "path": "summary.documents_fully_correct", "op": ">=", "value": 19, "why": "whole invoices with no wrong value"},
-  {"report": "invoice", "path": "summary.citations.accuracy", "op": ">=", "value": 0.98, "why": "values that cite where they are written"},
-  {"report": "invoice", "path": "usage.input_tokens", "op": "<=", "value": 52000, "why": "cost: about 25% above today's prompt"},
-  {"report": "invoice", "path": "usage.output_tokens", "op": "<=", "value": 130000, "why": "cost: about 25% above today's replies"},
-  {"report": "multipage", "path": "summary.fields.accuracy", "op": ">=", "value": 0.91, "why": "long invoices read a page at a time"},
-  {"report": "trust", "path": "summary.seeded_cases_caught", "op": ">=", "value": 9, "why": "every seeded defect caught"},
-  {"report": "trust", "path": "summary.seeded_findings_caught", "op": ">=", "value": 12, "why": "every expected finding raised"},
-  {"report": "trust", "path": "summary.clean_pairs_accepted", "op": ">=", "value": 12, "why": "correct pairs accepted without review"},
-  {"report": "scans", "path": "variants.scan_good.summary.fields.accuracy", "op": ">=", "value": 0.99, "why": "a clean scan reads like the original"},
-  {"report": "scans", "path": "variants.scan_poor.summary.fields.accuracy", "op": ">=", "value": 0.975, "why": "a poor scan still reads"},
-  {"report": "scans", "path": "variants.scan_poor.silent_errors_after_order_match", "op": "<=", "value": 0, "why": "no misread passes both its checks and the order"},
-  {"report": "coa", "path": "summary.fields_correct", "op": ">=", "value": 505, "why": "certificate values read correctly"},
-  {"report": "coa", "path": "summary.seeded_caught", "op": ">=", "value": 6, "why": "every out-of-limit result caught"},
-  {"report": "coa", "path": "summary.contradictions_caught", "op": ">=", "value": 3, "why": "every false compliance claim flagged"},
-  {"report": "coa", "path": "summary.clean_flagged", "op": "<=", "value": 0, "why": "clean certificates not flagged"},
-  {"report": "search", "path": "modes.hybrid.recall_at_5_filtered", "op": ">=", "value": 0.97, "why": "the right document in the top five"},
-  {"report": "search", "path": "modes.hybrid.cross_tenant_hits", "op": "==", "value": 0, "why": "never another organisation's document"},
-  {"report": "search", "path": "modes.keyword.cross_tenant_hits", "op": "==", "value": 0, "why": "never another organisation's document"},
-  {"report": "search", "path": "modes.vector.cross_tenant_hits", "op": "==", "value": 0, "why": "never another organisation's document"},
-  {"report": "search_heldout", "path": "modes.hybrid.recall_at_5", "op": ">=", "value": 0.85, "why": "held-out questions: the right document in the top five"},
-  {"report": "search_heldout", "path": "modes.hybrid.mrr", "op": ">=", "value": 0.82, "why": "held-out questions: how high the right document ranks"},
-  {"report": "search_heldout", "path": "modes.hybrid.cross_tenant_hits", "op": "==", "value": 0, "why": "never another organisation's document"},
-  {"report": "invoice", "path": "summary.documents", "op": "==", "value": 20, "why": "the dataset is the one the floors were set on"},
-  {"report": "invoice", "path": "summary.fields.total", "op": "==", "value": 2472, "why": "the dataset is the one the floors were set on"},
-  {"report": "invoice", "path": "model", "op": "==", "value": "gemini-3.5-flash-lite", "why": "a model change is a deliberate change: update this pin with it"},
-  {"report": "invoice", "path": "prompt_version", "op": "==", "value": "invoice-v1", "why": "a prompt change is a deliberate change: update this pin with it"},
-  {"report": "invoice", "path": "summary.fields.wrong", "op": "<=", "value": 0, "why": "a wrong value is worse than a missing one: none on clean invoices"},
-  {"report": "invoice", "path": "summary.null_expected.hallucinated", "op": "<=", "value": 0, "why": "no value invented for a field that is not printed"},
-  {"report": "invoice", "path": "summary.by_class.date.accuracy", "op": ">=", "value": 0.99, "why": "per class: a loss in one class hides in the total"},
-  {"report": "invoice", "path": "summary.by_class.amount.accuracy", "op": ">=", "value": 0.99, "why": "per class: a loss in one class hides in the total"},
-  {"report": "invoice", "path": "summary.by_class.identifier.accuracy", "op": ">=", "value": 0.99, "why": "per class: a loss in one class hides in the total"},
-  {"report": "search", "path": "questions", "op": "==", "value": 124, "why": "the question set the floors were set on"},
-  {"report": "search_heldout", "path": "questions", "op": "==", "value": 98, "why": "the held-out set is frozen: not tuned against, not changed"},
-  {"report": "search_heldout", "path": "modes.hybrid.by_kind.ocr_code.recall_at_5", "op": ">=", "value": 0.35, "why": "the hardest slice (19 questions): a loose floor so it cannot quietly drop to nothing"}
+  {
+    "report": "invoice",
+    "path": "summary.fields.accuracy",
+    "op": ">=",
+    "value": 0.99,
+    "why": "values read correctly on clean invoices"
+  },
+  {
+    "report": "invoice",
+    "path": "summary.documents_fully_correct",
+    "op": ">=",
+    "value": 19,
+    "why": "whole invoices with no wrong value"
+  },
+  {
+    "report": "invoice",
+    "path": "summary.citations.accuracy",
+    "op": ">=",
+    "value": 0.98,
+    "why": "values that cite where they are written"
+  },
+  {
+    "report": "invoice",
+    "path": "usage.input_tokens",
+    "op": "<=",
+    "value": 52000,
+    "why": "cost: about 25% above today's prompt"
+  },
+  {
+    "report": "invoice",
+    "path": "usage.output_tokens",
+    "op": "<=",
+    "value": 130000,
+    "why": "cost: about 25% above today's replies"
+  },
+  {
+    "report": "multipage",
+    "path": "summary.fields.accuracy",
+    "op": ">=",
+    "value": 0.91,
+    "why": "long invoices read a page at a time"
+  },
+  {
+    "report": "trust",
+    "path": "summary.seeded_cases_caught",
+    "op": ">=",
+    "value": 9,
+    "why": "every seeded defect caught"
+  },
+  {
+    "report": "trust",
+    "path": "summary.seeded_findings_caught",
+    "op": ">=",
+    "value": 12,
+    "why": "every expected finding raised"
+  },
+  {
+    "report": "trust",
+    "path": "summary.clean_pairs_accepted",
+    "op": ">=",
+    "value": 12,
+    "why": "correct pairs accepted without review"
+  },
+  {
+    "report": "scans",
+    "path": "variants.scan_good.summary.fields.accuracy",
+    "op": ">=",
+    "value": 0.99,
+    "why": "a clean scan reads like the original"
+  },
+  {
+    "report": "scans",
+    "path": "variants.scan_poor.summary.fields.accuracy",
+    "op": ">=",
+    "value": 0.975,
+    "why": "a poor scan still reads"
+  },
+  {
+    "report": "scans",
+    "path": "variants.scan_poor.silent_errors_after_order_match",
+    "op": "<=",
+    "value": 0,
+    "why": "no misread passes both its checks and the order"
+  },
+  {
+    "report": "coa",
+    "path": "summary.fields_correct",
+    "op": ">=",
+    "value": 505,
+    "why": "certificate values read correctly"
+  },
+  {
+    "report": "coa",
+    "path": "summary.seeded_caught",
+    "op": ">=",
+    "value": 6,
+    "why": "every out-of-limit result caught"
+  },
+  {
+    "report": "coa",
+    "path": "summary.contradictions_caught",
+    "op": ">=",
+    "value": 3,
+    "why": "every false compliance claim flagged"
+  },
+  {
+    "report": "coa",
+    "path": "summary.clean_flagged",
+    "op": "<=",
+    "value": 0,
+    "why": "clean certificates not flagged"
+  },
+  {
+    "report": "search",
+    "path": "modes.hybrid.recall_at_5_filtered",
+    "op": ">=",
+    "value": 0.97,
+    "why": "the right document in the top five"
+  },
+  {
+    "report": "search",
+    "path": "modes.hybrid.cross_tenant_hits",
+    "op": "==",
+    "value": 0,
+    "why": "never another organisation's document"
+  },
+  {
+    "report": "search",
+    "path": "modes.keyword.cross_tenant_hits",
+    "op": "==",
+    "value": 0,
+    "why": "never another organisation's document"
+  },
+  {
+    "report": "search",
+    "path": "modes.vector.cross_tenant_hits",
+    "op": "==",
+    "value": 0,
+    "why": "never another organisation's document"
+  },
+  {
+    "report": "search_heldout",
+    "path": "modes.hybrid.recall_at_5",
+    "op": ">=",
+    "value": 0.85,
+    "why": "held-out questions: the right document in the top five"
+  },
+  {
+    "report": "search_heldout",
+    "path": "modes.hybrid.mrr",
+    "op": ">=",
+    "value": 0.82,
+    "why": "held-out questions: how high the right document ranks"
+  },
+  {
+    "report": "search_heldout",
+    "path": "modes.hybrid.cross_tenant_hits",
+    "op": "==",
+    "value": 0,
+    "why": "never another organisation's document"
+  },
+  {
+    "report": "invoice",
+    "path": "summary.documents",
+    "op": "==",
+    "value": 20,
+    "why": "the dataset is the one the floors were set on"
+  },
+  {
+    "report": "invoice",
+    "path": "summary.fields.total",
+    "op": "==",
+    "value": 2472,
+    "why": "the dataset is the one the floors were set on"
+  },
+  {
+    "report": "invoice",
+    "path": "model",
+    "op": "==",
+    "value": "gemini-3.5-flash-lite",
+    "why": "a model change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "invoice",
+    "path": "prompt_version",
+    "op": "==",
+    "value": "invoice-v1",
+    "why": "a prompt change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "invoice",
+    "path": "summary.fields.wrong",
+    "op": "<=",
+    "value": 0,
+    "why": "a wrong value is worse than a missing one: none on clean invoices"
+  },
+  {
+    "report": "invoice",
+    "path": "summary.null_expected.hallucinated",
+    "op": "<=",
+    "value": 0,
+    "why": "no value invented for a field that is not printed"
+  },
+  {
+    "report": "invoice",
+    "path": "summary.by_class.date.accuracy",
+    "op": ">=",
+    "value": 0.99,
+    "why": "per class: a loss in one class hides in the total"
+  },
+  {
+    "report": "invoice",
+    "path": "summary.by_class.amount.accuracy",
+    "op": ">=",
+    "value": 0.99,
+    "why": "per class: a loss in one class hides in the total"
+  },
+  {
+    "report": "invoice",
+    "path": "summary.by_class.identifier.accuracy",
+    "op": ">=",
+    "value": 0.99,
+    "why": "per class: a loss in one class hides in the total"
+  },
+  {
+    "report": "search",
+    "path": "questions",
+    "op": "==",
+    "value": 124,
+    "why": "the question set the floors were set on"
+  },
+  {
+    "report": "search_heldout",
+    "path": "questions",
+    "op": "==",
+    "value": 98,
+    "why": "the held-out set is frozen: not tuned against, not changed"
+  },
+  {
+    "report": "search_heldout",
+    "path": "modes.hybrid.by_kind.ocr_code.recall_at_5",
+    "op": ">=",
+    "value": 0.35,
+    "why": "the hardest slice (19 questions): a loose floor so it cannot quietly drop to nothing"
+  },
+  {
+    "report": "answers",
+    "path": "answered_correctly",
+    "op": ">=",
+    "value": 0.93,
+    "why": "answerable questions answered with the right value (31 of 32 measured)"
+  },
+  {
+    "report": "answers",
+    "path": "cited_expected_document",
+    "op": ">=",
+    "value": 0.93,
+    "why": "answers cite the document the answer is in"
+  },
+  {
+    "report": "answers",
+    "path": "wrong_answers",
+    "op": "<=",
+    "value": 0,
+    "why": "a wrong answer with a citation is worse than none: never"
+  },
+  {
+    "report": "answers",
+    "path": "abstained_when_no_answer",
+    "op": ">=",
+    "value": 1.0,
+    "why": "when the documents do not say, it says so: every time"
+  },
+  {
+    "report": "answers",
+    "path": "false_abstention",
+    "op": "<=",
+    "value": 0.07,
+    "why": "it does not hide behind 'not found' when the answer is there"
+  },
+  {
+    "report": "answers",
+    "path": "cross_tenant_citations",
+    "op": "==",
+    "value": 0,
+    "why": "never another organisation's document"
+  },
+  {
+    "report": "answers",
+    "path": "input_tokens_per_question",
+    "op": "<=",
+    "value": 2000,
+    "why": "cost: about 25% above today's prompt per question"
+  },
+  {
+    "report": "answers",
+    "path": "questions",
+    "op": "==",
+    "value": 56,
+    "why": "the question set the floors were set on"
+  },
+  {
+    "report": "answers",
+    "path": "model",
+    "op": "==",
+    "value": "gemini-3.5-flash-lite",
+    "why": "a model change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "answers",
+    "path": "prompt_version",
+    "op": "==",
+    "value": "chat-1",
+    "why": "a prompt change is a deliberate change: update this pin with it"
+  }
 ]

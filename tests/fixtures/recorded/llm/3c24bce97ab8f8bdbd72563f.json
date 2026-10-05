@@ -1,0 +1,14 @@
+{
+  "key": "3c24bce97ab8f8bdbd72563fc95ed0cc809a09c82650425d50c333be3ba3ce07",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The assay result for batch QC5253 was 99.8 %.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Assay 99.8 %\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1169,
+    "output_tokens": 73,
+    "thinking_tokens": null,
+    "latency_ms": 1383.5
+  }
+}

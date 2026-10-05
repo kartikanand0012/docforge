@@ -1,0 +1,14 @@
+{
+  "key": "0729637ca3947f272e2aa77acc075ef780d467f7ada075de7534705786624837",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The grand total of invoice SRP/26-27/28005 is 45741.00.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Grand Total\\n45741.00\"\n    },\n    {\n      \"passage\": 2,\n      \"quote\": \"Invoice SRP/26-27/28005 dated 15 April 2026 from Shreeram Pharma Distributors (GSTIN 27AAKCS4821M1ZW) to Sanjeevani Wellness Chemist (GSTIN 27AAVFS2087J1ZF), against purchase order PO-SWC-30005. Products: Metformin Tablets IP 500mg, Amoxicillin Capsules IP 250mg, ORS Powder WHO Formula 21g, Vitamin C Tablets 500mg, Pantoprazole Tablets IP 40mg, Azithromycin Tablets IP 500mg, Ciprofloxacin Tablets IP 500mg, Ibuprofen Tablets IP 400mg, Salbutamol Inhaler 100mcg, Prednisolone Tablets IP 5mg. Batches: QC5253, NB1219, BU72474, JP6066, EQ72491, ZZ085117, JN75014, YX770723, SHW8646, ZZ0073. Grand total 45741.00.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 2030,
+    "output_tokens": 383,
+    "thinking_tokens": null,
+    "latency_ms": 1654.7
+  }
+}

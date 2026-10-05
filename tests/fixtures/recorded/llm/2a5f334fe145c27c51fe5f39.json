@@ -1,0 +1,14 @@
+{
+  "key": "2a5f334fe145c27c51fe5f39cc2fb16506b4f9c6fbac12333c370ebf6deb92e9",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"10 units of Metformin Tablets IP 500mg were billed on invoice SRP/26-27/28005.\",\n  \"citations\": [\n    {\n      \"passage\": 3,\n      \"quote\": \"Sl Product: 1 Metformin Tablets IP 500mg | Pack: 10x15 | HSN: 30049099 | Batch: QC5253 | Mfg: 12/25 | Exp: 12/27 | Qty: 10 | Free: 1 | MRP: 45.28 | PTR: 31.70 | Disc%: 2 | Taxable: 310.66 | GST%: 5 | Amount: 326.20\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1478,
+    "output_tokens": 201,
+    "thinking_tokens": null,
+    "latency_ms": 1804.1
+  }
+}

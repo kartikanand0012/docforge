@@ -90,6 +90,8 @@ class SearchHit:
     text: str
     score: float
     boxes: tuple[dict[str, Any], ...]
+    # Each block of the chunk with its text, page and box: where a quote from it is shown.
+    blocks: tuple[dict[str, Any], ...] = ()
 
 
 class SearchHits(list[SearchHit]):
@@ -231,19 +233,26 @@ class SearchService:
         k: int = 10,
         mode: Mode = "hybrid",
         doc_type: str | None = None,
+        document_id: uuid.UUID | None = None,
     ) -> "SearchHits":
         # The question itself is not recorded: it may name a patient, a price or a supplier.
         with traced("search.query") as span:
             span.set_attribute("docforge.search.mode", mode)
             span.set_attribute("docforge.search.k", k)
             span.set_attribute("docforge.search.doc_type", doc_type or "")
-            hits = self._search(tenant_id, query, k, mode, doc_type)
+            hits = self._search(tenant_id, query, k, mode, doc_type, document_id)
             span.set_attribute("docforge.search.hits", len(hits))
             span.set_attribute("docforge.search.words_only", hits.words_only)
             return hits
 
     def _search(
-        self, tenant_id: uuid.UUID, query: str, k: int, mode: Mode, doc_type: str | None
+        self,
+        tenant_id: uuid.UUID,
+        query: str,
+        k: int,
+        mode: Mode,
+        doc_type: str | None,
+        document_id: uuid.UUID | None = None,
     ) -> SearchHits:
         ranked: list[list[uuid.UUID]] = []
         # Embedded before a connection is taken, so a slow embedding holds no database session.
@@ -268,9 +277,9 @@ class SearchService:
 
         with self._sessions() as session:
             if mode in ("keyword", "hybrid"):
-                ranked.append(self._keyword(session, tenant_id, query, doc_type))
+                ranked.append(self._keyword(session, tenant_id, query, doc_type, document_id))
             if vector is not None:
-                ranked.append(self._vector(session, tenant_id, vector, doc_type))
+                ranked.append(self._vector(session, tenant_id, vector, doc_type, document_id))
             # A question naming a code is answered by the documents that print it: their
             # words count double against documents that are only similar in meaning.
             weights = [2.0 if mode == "hybrid" and _codes(_words(query)) else 1.0, 1.0]
@@ -296,7 +305,9 @@ class SearchService:
             self._cache.pop(next(iter(self._cache)))
         return cached
 
-    def _filters(self, tenant_id: uuid.UUID, doc_type: str | None) -> list[Any]:
+    def _filters(
+        self, tenant_id: uuid.UUID, doc_type: str | None, document_id: uuid.UUID | None = None
+    ) -> list[Any]:
         # Only each document's newest indexed version: a reprocessed document's old text is
         # not current, though its chunks are kept (the record is append-only). The document
         # names that version, so this is part of the join every query makes.
@@ -306,10 +317,17 @@ class SearchService:
         ]
         if doc_type is not None:
             filters.append(Document.doc_type == doc_type)
+        if document_id is not None:
+            filters.append(Document.id == document_id)
         return filters
 
     def _keyword(
-        self, session: Session, tenant_id: uuid.UUID, query: str, doc_type: str | None
+        self,
+        session: Session,
+        tenant_id: uuid.UUID,
+        query: str,
+        doc_type: str | None,
+        document_id: uuid.UUID | None = None,
     ) -> list[uuid.UUID]:
         words = _words(query)
         if not words:
@@ -332,7 +350,7 @@ class SearchService:
             select(ChunkRow.id)
             .join(Document, Document.id == ChunkRow.document_id)
             .where(
-                *self._filters(tenant_id, doc_type),
+                *self._filters(tenant_id, doc_type, document_id),
                 literal_column("chunks.tsv").op("@@")(tsquery),
                 *required,
             )
@@ -342,21 +360,31 @@ class SearchService:
         return [row[0] for row in rows]
 
     def _vector(
-        self, session: Session, tenant_id: uuid.UUID, vector: list[float], doc_type: str | None
+        self,
+        session: Session,
+        tenant_id: uuid.UUID,
+        vector: list[float],
+        doc_type: str | None,
+        document_id: uuid.UUID | None = None,
     ) -> list[uuid.UUID]:
         # When the approximate index is used, keep scanning until enough rows pass the tenant
         # filter (pgvector 0.8), rather than filtering a fixed handful of nearest rows.
         _approximate(session)
-        return list(session.scalars(self._vector_query(tenant_id, vector, doc_type)))
+        query = self._vector_query(tenant_id, vector, doc_type, document_id)
+        return list(session.scalars(query))
 
     def _vector_query(
-        self, tenant_id: uuid.UUID, vector: list[float], doc_type: str | None
+        self,
+        tenant_id: uuid.UUID,
+        vector: list[float],
+        doc_type: str | None,
+        document_id: uuid.UUID | None = None,
     ) -> Select[uuid.UUID]:
         return (
             select(ChunkRow.id)
             .join(Document, Document.id == ChunkRow.document_id)
             .where(
-                *self._filters(tenant_id, doc_type),
+                *self._filters(tenant_id, doc_type, document_id),
                 ChunkRow.embedding_model == self._embedder.model,
             )
             .order_by(ChunkRow.embedding.cosine_distance(vector), *_TIE_BREAK)
@@ -402,7 +430,19 @@ class SearchService:
                 ParseOutput.document_version_id.in_(versions)
             )
         ):
-            blocks[version_id] = {block["id"]: block for block in data["blocks"]}
+            sizes = {p["number"]: (p["width"], p["height"]) for p in data["pages"]}
+            # Each box carries its page's size, so it can be drawn on the page image alone.
+            blocks[version_id] = {
+                block["id"]: {
+                    **block,
+                    "bbox": {
+                        **block["bbox"],
+                        "page_width": sizes.get(block["page"], (0, 0))[0],
+                        "page_height": sizes.get(block["page"], (0, 0))[1],
+                    },
+                }
+                for block in data["blocks"]
+            }
         hits = []
         for chunk_id in chunk_ids:
             chunk, document = rows[chunk_id]
@@ -418,6 +458,16 @@ class SearchService:
                     score=round(scores[chunk_id], 6),
                     boxes=tuple(
                         {"page": found[b]["page"], **found[b]["bbox"]}
+                        for b in chunk.block_ids
+                        if b in found
+                    ),
+                    blocks=tuple(
+                        {
+                            "id": b,
+                            "text": found[b]["text"],
+                            "page": found[b]["page"],
+                            **found[b]["bbox"],
+                        }
                         for b in chunk.block_ids
                         if b in found
                     ),

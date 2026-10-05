@@ -26,7 +26,7 @@ def test_a_quote_too_short_to_mean_anything_is_not_a_citation() -> None:
 
 
 def test_fullwidth_brackets_used_to_fence_passages_match_the_original() -> None:
-    assert normalise("a ＜b＞ c") == normalise("a <b> c")
+    assert normalise("a \uff1cb\uff1e c") == normalise("a <b> c")
 
 
 def block(block_id: str, text: str) -> dict[str, object]:

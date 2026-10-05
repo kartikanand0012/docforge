@@ -1,0 +1,14 @@
+{
+  "key": "fe822188b47a1f731ead3b61f4f7b9f5326dace68dfd8f6e99c38d967669c6e1",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"The grand total of invoice SRP/26-27/40002 is 25263.00.\",\n  \"citations\": [\n    {\n      \"passage\": 2,\n      \"quote\": \"Grand total 25263.00.\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1952,
+    "output_tokens": 87,
+    "thinking_tokens": null,
+    "latency_ms": 1803.6
+  }
+}

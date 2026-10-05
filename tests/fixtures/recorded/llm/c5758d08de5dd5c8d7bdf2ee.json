@@ -1,0 +1,14 @@
+{
+  "key": "c5758d08de5dd5c8d7bdf2eeefb90fad5b188a7dcef8e9f3a741f1b3682ec80a",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-1",
+  "response": {
+    "text": "{\n  \"answer\": \"20 units of Amoxicillin Capsules IP 250mg were billed on invoice NVM/26-27/32001.\",\n  \"citations\": [\n    {\n      \"passage\": 1,\n      \"quote\": \"Invoice NVM/26-27/32001 dated 2 September 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Jalaram Pharmacy (GSTIN 24AAHFJ1196Q1ZU), against purchase order PO-JPH-12001. Products: Amoxicillin Capsules IP 250mg\"\n    },\n    {\n      \"passage\": 7,\n      \"quote\": \"Sl Product: 1 Amoxicillin Capsules IP 250mg | Pack: 10x10 | HSN: 30041030 | Batch: XGX944068 | Mfg: 06/26 | Exp: 06/28 | Qty: 20 | Free: 0 | MRP: 86.24 | PTR: 59.51 | Disc%: 2 | Taxable: 1166.40 | GST%: 12 | Amount: 1306.36\"\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1497,
+    "output_tokens": 327,
+    "thinking_tokens": null,
+    "latency_ms": 1603.2
+  }
+}
