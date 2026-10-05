@@ -2,6 +2,548 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C9 Ship (2026-10-03): built and tried locally; not deployed (needs an AWS account)
+
+Branch `c9-ship`, PR #10 (stacked on C8).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Demo URL works from a clean browser | **Not yet** | Everything to deploy it is built and was run end to end on a local copy of the production stack, over HTTPS behind Caddy: migrate, seed 60 synthetic documents, all processed, sign in as the demo reviewer, review queue (17), search, nightly reset, ops check. A public URL needs the owner's AWS account (`docs/runbook.md`, about 20 minutes once it exists) |
+| The three published metrics come from C8 measurements | Pass | README "Three numbers": 98.1% of values on poor scans, 15 of 15 seeded defects caught, $0.0135 and p95 26.6 s per invoice. Each is reproduced offline by `make eval` and held by the gate |
+
+### What was built
+
+- **Images.** Both images run as non-root users. They carry no secrets: no `.env`, and nothing shaped like an API key. Base images are pinned by digest.
+  - API/worker (2.9 GB, mostly CPU PyTorch for OCR). It includes the recorded documents, so the demo needs no model key and costs nothing in model calls.
+  - Web: a Next.js standalone server (404 MB).
+- **`deploy/`.**
+  - A Compose stack for one host: Postgres, API, worker, review app and Caddy for HTTPS (Let's Encrypt; `<ip>.sslip.io` if there is no domain).
+  - Settings are split three ways, so the API and worker never hold the database owner's password.
+  - Memory limits, dropped capabilities and log rotation.
+  - Host scripts: bootstrap from SSM and ECR (the Compose download checked against its published checksum), a nightly reset, and the ops check reported to CloudWatch every five minutes.
+- **`infra/` (Terraform, never applied).**
+  - **Network:** one arm64 host in its own VPC; only 80 and 443 open; no SSH (Session Manager instead).
+  - **Instance:** IMDSv2 with hop limit 1, so containers cannot reach the host role; encrypted disk.
+  - **Storage:** private, versioned S3. Originals expire after 7 days. Deploy files sit in a bucket the host can only read.
+  - **Images:** ECR with scanning and immutable tags.
+  - **Identity:** a least-privilege host role; a key for the app scoped to one bucket.
+  - **Secrets:** three SecureString settings.
+  - **Alerts and cost:** CloudWatch alarms on the ops status and the instance; a monthly budget alert.
+  - **CI:** GitHub OIDC for image pushes, with no long-lived keys.
+  - **Checks:** validated in the `hashicorp/terraform` image; checkov 127 passed, 0 failed, 19 skipped (each with its reason in the code); tflint clean.
+- **The demo.**
+  - `python -m docforge.demo seed` adds an organisation, a shared reviewer and the synthetic documents.
+  - The sign-in page shows the shared account only when `DOCFORGE_DEMO_PIN` is set.
+  - Hybrid search answers from words alone, and says so, when there is no model key.
+- **Documents.**
+  - The runbook: deploy, redeploy, rotate, turn off. Cost about $40 a month, from third-party price data.
+  - `docs/validation/`: intended use, requirements traced to tests, a risk assessment, and a Part 11 / Annex 11 mapping with gaps.
+  - The README, with a diagram and the three numbers.
+  - A portfolio card, and a release checklist for going public.
+
+### Departures from the plan
+
+- **Not deployed.** It needs the owner's AWS account, region, budget and, optionally, a domain.
+- **No Loom.** It needs the owner to record it.
+- **History rewrite not run.** It needs the owner's go-ahead.
+- **One host instead of ECS and RDS:** about $40 a month against about $100. A real deployment needs RDS with backups and two hosts; the runbook says so.
+
+### Honest limits
+
+- **Never run on AWS.** Things that only show up there are untested: the IAM policies, the Let's Encrypt challenge, and the S3 key working from inside the containers.
+- **Demo sign-in limit, partly verified.** The per-address limit now sees each visitor's address through Caddy and the review app. That forwarding is covered by unit tests, but locally every request comes from one address, so separate counting was not observed.
+- **Webhooks have no per-organisation cap.** Demo visitors cannot create them, but a real organisation could loop the test endpoint.
+- **No WAF and no global rate limit in front of the demo.** Uploads are not open to visitors, and search is limited per caller.
+
+### Review (ECC security-reviewer, python-reviewer, react-reviewer)
+
+Fixed, each with a failing test first where the change was code:
+
+- **Demo lockout.** One visitor could lock the shared demo account for everyone with five wrong PINs, or trip the sign-in limit for all visitors at once, since every request appeared to come from the review app. The shared account now never locks (migration 0013, `reviewers.shared`). The review app passes on Caddy's client address where `DOCFORGE_TRUST_PROXY=1`.
+- **Owner credentials.** The API and worker held the database owner's credentials, which defeats the restricted role and row-level security. The settings are now split, and one-shot tasks run in an `admin` service.
+- **S3 from the containers.** With metadata hop limit 1 they could not have reached the host role, so uploads to S3 would have failed on AWS. Raising the limit would have handed every container the host role. The app now has its own key for one bucket.
+- **The demo account was an admin**, able to upload without limit (filling S3) and to make webhooks (a spam relay). It is now a reviewer.
+- **Request sizes.** No cap at the front proxy, and the review app read whole bodies into memory. Caddy now refuses bodies over 12 MB and the review app over 11 MB.
+- **The host role could write the files the host runs as root.** They now live in a read-only bucket.
+- **Unpinned images and an unchecked Compose download.**
+- **Words-only answers.** A search that fell back to words alone said nothing about it. A rejected model key was reported as "over quota" and hidden by the fallback. A busy service was retried on every question.
+- **Seeding with no documents** reported success.
+- **The remembered email** on the sign-in page would differ between the server and the browser.
+- **An intermittent test since C6:** a token's secret can contain `_`.
+
+## C8 Operations (2026-10-03): gate passed
+
+Branch `c8-operations`, PR #9 (stacked on C7).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| CI blocks a deliberately worse prompt | Pass | Two edits to the invoice prompt, each run live once on the 20 synthetic invoices and replayed in CI (`evals/demos/`, `test_eval_gate_demo.py`). A prompt that "tidies" values for a downstream system (ISO dates, plain numbers) lost 56 of 334 dates and is blocked on five floors. A shortened prompt showed no measurable difference in that one run and passes every quality floor; only its prompt-version pin asks for the change to be declared. The gate runs after the offline replay in CI (`make gate`, 35 checks), and on pull requests again against the base branch: no gated metric worse than there, no floor loosened or removed, unless the pull request carries a `gate-change` label |
+| The load test gives real p95 latency and cost numbers | Pass | `scripts/load.sh` on a laptop (`evals/load/load.json`, environment recorded): 300 uploads from 5 organisations at concurrency 16, all processed, no errors. Upload p95 134 ms; keyword search p95 138 ms, hybrid 155 ms (target 300 ms). Model replies are replayed in this run, so model time is not in these numbers: it is 14.4 s p50 and 26.6 s p95 per invoice, measured live in the C1 eval. Cost per one-page invoice $0.0135 at Gemini 3.5 Flash-Lite's paid price (checked 2026-10-03), from the live run's tokens |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 1,547 Python (1,184 unit, 321 integration, 42 real-parser), 29 web unit, 7 browser steps |
+| Coverage | 93% |
+| Cost per one-page invoice | $0.0135 (2,091 tokens in, 5,166 out; output is 92% of the cost, because every value carries its block ids) |
+| Cost per page of a long invoice | $0.048 |
+| Vector search, 50,000 chunks in 10 organisations | p95 21 ms (was 195 ms), recall@10 0.999 against exact, no results across organisations |
+| Vector search, 50,000 chunks in one organisation | p95 96 ms, recall@10 1.00 |
+| Search on held-out questions (hybrid) | hit@1 0.83, recall@5 0.88, MRR 0.86 (the tuned question set: 1.00) |
+| Review queue under load | p50 704 ms over 5 requests (too few for a p95) |
+
+### What was built
+
+- **Eval gate** (`python -m docforge.evals.gate`, `evals/gate.json`).
+  - Every report has floors, and the dataset, model and prompt version are pinned.
+  - Field classes are gated separately, because a loss in one class hides in the total. A wrong value and an invented value are each held at zero.
+  - Cost is gated on tokens.
+  - A missing report or metric fails, and so does a metric that is not a number.
+  - On a pull request the gate also compares every gated metric with the base branch and names any floor that was loosened. CODEOWNERS covers `evals/` and the recordings.
+- **Tracing with OpenTelemetry.**
+  - Spans cover each processing stage, each model call (with tokens), each document (with model calls, tokens and cost), each search (mode, count) and each request (by route template).
+  - Nothing that could hold content goes on a span: no document text, question, path, query string or credential. An error is recorded by type only, because its message can carry a SQL statement's parameters or part of a model reply.
+  - FastAPI's own tracing is switched off, because it records query strings.
+  - Exporting over OTLP happens only when configured.
+- **Alerts** (`make ops-check`).
+  - It reports no live worker, a stalled queue, a backlog, failed jobs by queue, and a high document failure rate.
+  - It prints one JSON line of counts and exits 0, 1 or 2. A database it cannot read is critical.
+- **Load test** (`make load`): the real API (two processes) and worker on recorded documents, plus vector search measured at 50,000 chunks under the application's role and row-level security.
+- **Held-out search questions** (`evals/baselines/search_heldout.json`): a set not used for tuning, frozen.
+- **Performance fixes found by measuring.**
+  - The "newest version" filter in search ran a subquery per chunk. Each document now names its indexed version (migration 0012), which made vector search 9 times faster.
+  - The review queue's text matching built a regex per value and overflowed Python's pattern cache. It now uses string search, giving the same answers on 40,000 generated cases.
+  - The review queue also worked out each invoice-and-order pair twice.
+
+### Departures from the plan
+
+- **No Langfuse.** Traces are standard OpenTelemetry, so any backend works. The eval reports already hold datasets and cost per prompt version.
+- **No HNSW tuning.**
+  - Postgres never uses the HNSW index at these sizes: it filters to the organisation and sorts exactly, with full recall.
+  - Forcing the index first (a two-step query) was five times faster but found 18% of the true nearest neighbours on random vectors. Random vectors are the index's worst case; real embeddings cluster.
+  - Whether the index pays off needs a large set of real embeddings, so exact search stays.
+  - Until then, exact search grows with the organisation's size: 96 ms at 50,000 chunks, and roughly 2 s at a million, extrapolated rather than measured.
+
+### Honest limits
+
+- **The gate catches accidents, not a determined author.**
+  - Whoever records the replies and sets the floors can pass anything above the floors. The base-branch comparison and CODEOWNERS narrow this; review still has to cover it.
+  - Recorded replies are not signed, and nothing re-runs the model live on a schedule. A nightly live run needs a paid key in CI.
+- **Small samples.**
+  - The invoice floors rest on 20 synthetic documents in two layouts, effectively 20 samples rather than 2,472 fields: a 95% upper bound of about 14% on the document failure rate.
+  - Each prompt was recorded once, so run-to-run variation is unmeasured.
+  - "No measurable difference" for the shortened prompt is one run on 20 documents.
+- **Held-out search questions.**
+  - They are held out in wording only; the documents are the same.
+  - Their slices are small: 19 OCR-misread codes and 10 unanswerable questions.
+  - Hybrid search never says "no answer". A similarity floor is the fix to try, on a new question set.
+- **Load numbers.**
+  - They come from one run on one laptop, with the model replayed.
+  - Searches ran after ingestion had finished, so the two did not compete for resources.
+  - `replay_documents_per_minute` (1,233) is the system's ceiling without the model, not capacity.
+  - Live search adds a query-embedding call, which is not in these numbers.
+- **The review queue is still the slowest endpoint.** It builds each document's state with about 7 queries. Storing that state when it changes is the fix.
+- **Keyword search's full-text index has no tenant column.** At large sizes a common word reads other organisations' index entries before row-level security filters them.
+
+### Review (ECC security-reviewer, database-reviewer, python-reviewer, mle-reviewer)
+
+Fixed, each with a failing test first:
+
+- **Errors on spans.** A failing search or a malformed model reply put the question or document text on a span, through the recorded exception's message and stack.
+- **Migration 0012 locking.** It held an exclusive lock on `documents` for its whole backfill. It now adds the column alone, fills it in batches, builds indexes concurrently and validates a NOT VALID key.
+- **The indexed-version pointer.**
+  - It could point at another document's version. The key now ties it to its own document.
+  - It could not repair itself after the migration window. Indexing an already-indexed version now puts it right.
+  - A version with no chunks would have hidden its document. It no longer moves the pointer.
+- **Missing indexes** for the review queue and the ops check. The ops check also counted every failure there had ever been; it now reads the last hour's events.
+- **Ops check exit code.** It exited 1 (warning) when the database was unreachable. It now exits 2 (critical).
+- **Load run.**
+  - It passed when every request failed, and one lost poll ended it. It now fails on any failure and retries a lost poll.
+  - Its p95 from five samples was the maximum. Tail percentiles now need at least 20 samples.
+  - Its throughput figure read as capacity. It is now named `replay_documents_per_minute`.
+- **Eval helpers** left database pools open on failure.
+- **The gate** accepted `true` as a number, did not pin the dataset, and compared only with fixed floors.
+- **Database cleanup.**
+  - The load and end-to-end scripts' cleanup had never dropped their databases, because Postgres will not drop the database a connection is using.
+  - A remote owner URL could have been used for temporary databases.
+
+Not changed: the remaining limits above, and logs that still print exception chains (as before C8).
+
+## C7 Search and certificates of analysis (2026-10-03): gate passed
+
+Branch `c7-search`, PR #8 (stacked on C6).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Retrieval recall measured on a labelled question set, with and without the tenant filter | Pass | 124 generated questions over 60 documents in two organisations, through the real upload, extraction, indexing and search services. Recall@5 within the asker's organisation: hybrid 1.00, keyword 0.99, vector 0.87. With every organisation's documents as candidates: hybrid 0.996, keyword 0.98, vector 0.84 (hybrid read 0.992 on some runs until C8 made equal scores order the same way every time). Results from the other organisation: 0 in every mode (`evals/baselines/search.json`, `test_eval_search.py` replays it with floors) |
+| Out-of-limit CoA results are flagged | Pass | 20 synthetic certificates: 511 of 511 values read; 6 of 6 seeded out-of-limit results caught; 3 of 3 certificates that still claim compliance flagged as contradictory; 0 of 14 clean certificates flagged (`evals/baselines/coa.json`). An invoice whose batch has an out-of-limit certificate is held back (`test_coa_link.py`) |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 1,480 Python (1,148 unit, 290 integration, 42 real-parser), 29 web unit, 7 browser steps |
+| Coverage | 93% |
+
+### What was built
+
+- Certificate of analysis as a third document type (`coa`): specifications read into limits
+  (not less than, not more than, ranges, "complies"), each result checked against its limit, and
+  anything that cannot be read with certainty (a compound or partial specification, a
+  conclusion that is neither "complies" nor "does not comply") left as not evaluated rather than
+  passed. A conclusion that claims compliance next to a failed result is flagged.
+- An invoice is linked to the newest certificate for each of its batches (batch numbers compared
+  without case or spacing, and the product must agree). Out of limit holds the invoice back;
+  a certificate that could not be fully checked is shown as such and goes to a person.
+- Search: each document is cut into a summary, one chunk per table row (with its column headers)
+  and text chunks, each citing its blocks. Embeddings (`gemini-embedding-001`, 768 dimensions)
+  and full text in Postgres (migration 0011, row-level security as for every tenant table).
+  Keyword, vector and hybrid (reciprocal rank fusion) modes; a code in the question (a batch,
+  invoice number or GSTIN) must appear in a keyword hit. Only the newest version of a document
+  is searched. Indexing is a queue job after extraction.
+- `GET /v1/search`, limited per caller (60 a minute by default; vector search is a paid call),
+  503 when the embedding service is unavailable. A search page in the review app.
+- Synthetic certificates for the invoices' batches; a certificate eval and a search eval, both
+  recorded live once and replayed offline in CI.
+
+### Departures from the plan
+
+- pgvector tuning is limited to switching on iterative scans and a wider candidate list. At 60
+  documents Postgres sorts exactly and never uses the approximate index, so its behaviour with
+  the tenant filter at scale is unmeasured; that is part of the C8 load test.
+
+### Honest limits
+
+- The question set is generated from the same documents and the search was tuned against it
+  (codes must match, keyword hits weigh double). The recall figures are an upper bound until C8
+  adds a held-out set with near-duplicates, questions that have no answer, and OCR noise.
+- Chunks of superseded versions are kept (the record is append-only) and filtered out at query
+  time. Deleting an organisation's data on request is not yet built for chunks or anything else.
+
+### Review (ECC rag-pipeline-reviewer, security-reviewer, database-reviewer, python-reviewer)
+
+Fixed, each with a failing test first:
+
+- A specification such as "NLT 98.0% and NMT 102.0%" or "≤ 0.5% (each)" was read as only its
+  first half, so a result could pass on half a limit. Anything not fully understood is now not
+  evaluated.
+- A conclusion worded other than "complies" or "does not comply" counted as compliance.
+- A certificate that could not be fully checked showed as within limits; batch numbers written
+  in another case or with spaces did not link; the same batch number for another product did.
+- A reprocessed document was found twice, once with its old text.
+- "Code" detection treated years, strengths and pack sizes (2026, 500mg, 10x10) as codes that
+  had to match, so ordinary questions returned nothing.
+- The summary chunk printed "None" for unread values and cited every line of the document.
+- Search had no per-caller limit, and a missing embedding was a 500. The query is now embedded
+  before a database connection is taken, and repeats are cached.
+- Two jobs indexing one version could both insert; the second now waits and finds the chunks.
+- The search eval used a fixed database name, so two runs at once dropped each other's.
+
+## C6 Multi-tenant product surface (2026-10-03): gate passed
+
+Branch `c6-tenancy`, PR #7 (stacked on C5).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Cross-tenant access tests all fail closed | Pass | Every /v1 route refuses a missing or bad credential (401); another tenant's credential gets 404 on each document route and an empty queue and audit log (`tests/integration/test_auth.py`, run with no ambient tenant). In Postgres, the application's role sees no rows without a tenant and only that tenant's with one, cannot write another tenant's rows, and cannot lift the protections (`test_rls.py`, `test_privileges.py`). The whole integration suite runs its services as that role |
+| Webhook retries are idempotent | Pass | A delivery that fails is retried with the same `DocForge-Event-Id`; once delivered it is not sent again; the same event emitted twice is one delivery; events are derived from what they describe, so a redelivered job emits nothing new (`test_webhooks.py`, including a run through the real queue and worker) |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 1,348 Python (1,044 unit, 262 integration, 42 real-parser), 29 web unit, 6 browser steps |
+| Coverage | 93% |
+
+No load test of row-level security yet (C8).
+
+### What was built
+
+- API keys for systems and sessions for reviewers (sign-in with organisation, email and PIN), both
+  stored only as hashes; roles (integrator, reviewer, admin); the tenant taken from the
+  credential on every route; corrections and signatures only by a signed-in person, as
+  themselves. Wrong PINs lock a reviewer after five, whether at sign-in or when signing, and are
+  also limited per client address.
+- Row-level security on every table with a tenant (migrations 0008, 0010). The API and worker
+  connect as `docforge_app`, which reads and writes only the current tenant's rows, cannot delete,
+  truncate or alter, holds no UPDATE on append-only tables, cannot create or rename organisations,
+  and owns nothing. Migrations run as the owner. Three narrow owner functions find a tenant from a
+  key prefix, a session prefix or a document version.
+- The review screen signs in with an HttpOnly, SameSite=Strict cookie; the browser never holds a
+  token. A same-origin route on the web server adds it to API calls. Pages without a session go
+  to sign-in. Security headers and a content security policy.
+- Webhooks (`document.processed`, `review.signed`, `webhook.test`): written in the same
+  transaction as the change, signed (HMAC-SHA256 over timestamp and body, with a per-webhook
+  secret derived from a server key and never stored), retried with backoff and the same event
+  id, delivered to the address that was checked (HTTPS, public addresses only), with no database
+  lock held while the receiver answers. A worker per queue, so webhooks never wait behind a long
+  document.
+- Export of signed records as CSV (formula-safe) and JSON.
+- The audit chain's head anchored to object storage per tenant (`python -m docforge.anchors`)
+  and checked on verification: a log rewritten with recomputed hashes is caught.
+- `python -m docforge.admin` for organisations and keys; `python -m docforge.db.roles` for the
+  application's login.
+
+### Departures from the plan
+
+- Users and roles are reviewers with a role and API keys with a role, not a separate user
+  directory or single sign-on.
+- CSV and JSON export only signed records.
+
+### Review (ECC security-reviewer, database-reviewer, python-reviewer)
+
+No path across tenants was found. Fixed, each with a failing test first:
+
+- Sign-in had no per-reviewer lockout, and the per-address limit could be dodged with a forged
+  X-Forwarded-For, which the web server passed on and the API trusted from localhost. Sign-in now
+  counts wrong PINs per reviewer; client forwarding headers are ignored.
+- A webhook host could be resolved once to pass the check and again, differently, to connect
+  (DNS rebinding); NAT64 addresses reached internal hosts; a proxy in the environment would have
+  bypassed the checks. Connections now go to the checked address.
+- Retry waits grew tenfold each time (a misread of the queue library's setting): the eighth try
+  would have come months later.
+- A delivery held a row lock and a transaction open while the receiver answered.
+- The application's role could truncate the queue, create or rename organisations, call trigger
+  functions, and held UPDATE on append-only tables (the triggers refused it, but the right existed).
+- A reviewer could test, and lock, another reviewer's PIN through the signing endpoints.
+- The test endpoint ignored which webhook it named; emitting outside a tenant scope recorded
+  nothing silently; a stop signal ended only one of the two workers; one storage failure stopped
+  anchoring for every later tenant; CSV export altered negative numbers; a backslash in the
+  sign-in `next` path was an open redirect.
+- Tests: the automatic default-tenant scope could hide a missing scope in an API route; the
+  authentication and webhook API tests now run without it.
+
+Recorded, not fixed (C9 deployment):
+
+- The per-address limit is per process and needs the front proxy to pass the real client
+  address; a shared limit is needed with several API processes.
+- Anchors are written with the same storage credentials as the originals. They catch a rewrite by
+  someone with database owner rights but not storage rights. For more, a separate bucket with
+  object lock and its own write-only credential.
+- The webhook signing key cannot be rotated per webhook through the API yet; receivers must check
+  the signature timestamp themselves.
+- `review.signed` carries the payment approval draft (payee, amounts) to the receiver by design.
+- The content security policy allows inline scripts (a nonce policy is the next step). The
+  session cookie's Secure flag trusts the proxy's X-Forwarded-Proto.
+- Queue jobs are not tenant-scoped: the application's role can see job arguments (ids) of every
+  tenant. Expired sessions and old deliveries are not pruned.
+- One integration run out of six failed once, in a test not recorded; the next three runs and the
+  full suite passed. Not explained.
+
+### Not verified
+
+- Row-level security under concurrent load; behaviour behind a real reverse proxy.
+
+## C5 Review (2026-10-03): gate passed
+
+Branch `c5-review`, PR #6 (stacked on C4).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| A reviewer can resolve a flagged document end to end | Pass | `scripts/e2e.sh` (in CI): a browser uploads an order and an invoice, finds the flagged invoice in the queue, sees the doubtful value outlined on the page image, confirms it with a reason and PIN, is refused on a wrong PIN, signs the approval, gets the payment approval draft, and reopens the document to the signed review. Real API, worker and Postgres; recorded parses and model replies, no key |
+| Every action appears in the audit log | Pass | Same test: `document.received`, `extraction.created`, `assessment.created`, `match.created`, `review.corrected`, `review.signed` in order, actor `reviewer:<id>` on the review actions, chain verifies. Failed PINs are logged as `reviewer.pin_failed` (`tests/integration/test_review.py`) |
+
+### Measured
+
+| Measure | Value |
+| --- | --- |
+| Tests | 1,247 Python (1,011 unit, 194 integration, 42 real-parser), 14 web unit, 5 browser steps |
+| Coverage | 94% (Python) |
+| End-to-end run | about 7 s for the five browser steps, after the stack is up |
+
+No usability study or timing of real reviewers was done.
+
+### What was built
+
+- Review service (`review/`): a queue of documents that need a person; corrections applied to the
+  model's reply and read again by the same normaliser and checks (a reviewer's typing mistake is
+  caught like a model's); confirming a value by re-entering it; approval or rejection under a
+  signature; a payment approval draft for an approved invoice.
+- E-signature: the reviewer re-enters a PIN (scrypt-hashed) for every correction and signature;
+  the signature has a fixed meaning per outcome ("I approve this invoice for payment"), binds to
+  the hash of the record the reviewer was shown, and covers the record, who, which document and
+  version, the reasons and the time. Five wrong PINs lock the reviewer for 15 minutes.
+- Migration 0006: reviewers, corrections and reviews (append-only), the model's reply kept with
+  each extraction, and database guards: no correction to a signed version, no approval over open
+  checks without an override reason, no deleting or renaming a reviewer.
+- API: queue, review detail, corrections, signing, page images of the original, an eval summary.
+- `web/`: a Next.js review screen (queue, upload, review with the page image and outlined
+  sources, correction and signing forms, signed review with the draft) and an evals and cost page.
+- `make e2e`, `make web`, `make web-check`; CI runs the web checks and the browser test.
+
+### What the e-signature is and is not
+
+Designed to support an organisation's own electronic-signature controls: each signature names
+the person, requires their PIN at that moment, states its meaning, and is bound to a hash of
+exactly what was signed. It is not a qualified electronic signature, and until accounts exist
+(C6) the PIN is the only identity check.
+
+### Departures from the plan
+
+- Identity is a reviewer row with a PIN, not a user account: accounts and roles are C6.
+- Corrections are stored per field in `corrections`, and the corrected record is recomputed, not
+  stored as a new extraction. The extraction stays exactly what the model returned.
+- No cost figure is shown until model prices are configured: a price not checked against the
+  provider's current list is not invented.
+
+### Review (ECC python-reviewer, security-reviewer, database-reviewer, react-reviewer)
+
+Fixed, tests first (each reproduced by a failing test):
+
+- A signature was not bound to what the reviewer saw: a correction from another tab, or a new
+  version from reprocessing, could change the record between viewing and signing. Signing now
+  sends the hash of the record shown; a different record is refused.
+- A superseded version could be corrected and signed while a newer one was being processed.
+- When checking an invoice against its order, corrections to the order were ignored.
+- The signature hash covered only the record, outcome and meaning; now also the signer, document,
+  version, reasons and time. Meanings were free text; now fixed per outcome.
+- A locked account answered differently from a wrong PIN, telling an attacker the email exists.
+  Failed PINs left no trail.
+- The queue took the 200 oldest documents before filtering, so accepted documents could crowd
+  out newer ones that needed a person.
+- Rules only in code are now also in the database (see migration 0006); a reviewer's name could
+  have been edited after they signed.
+- A correction path such as `lines[00].qty` was accepted but never matched its field.
+- Internal lookup errors were reported as "no such document".
+- In the review screen: opening a second correction kept the first field's typed value (it would
+  have been saved under the second field); a brief API outage stopped polling for good; a failed
+  signature left a stale screen; contrast failures in dark mode and on the page marks; no
+  location given to screen-reader users.
+
+Found while testing: the end-to-end script left the web server running after a run (it stopped
+the wrapper shell, not the server), so the next run talked to a stale build. It now stops whole
+process groups and refuses to start on busy ports.
+
+Recorded, not fixed (C6 or C9):
+
+- No authentication on any route: anyone who can reach the API can read documents and page
+  images, and try PINs. The API binds to 127.0.0.1 locally; it must not be exposed before C6.
+- No per-IP or global rate limit on PIN attempts; the lockout itself can be used to keep a known
+  reviewer locked out.
+- No PIN reset or rotation; no content security policy on the web app.
+- Rendering page images shares the PDF library lock with extraction in the same process.
+
+### Not verified
+
+- Use by real reviewers; the screen with long multi-page documents in a browser (only one page
+  is exercised end to end).
+- Accessibility with a screen reader or an automated audit; the review was by reading the code.
+
+## C4 Scans and tables (2026-10-03): gate passed
+
+Branch `c4-scans-tables`, PR #5 (stacked on C3).
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Accuracy on the scanned variants is measured and reported next to the clean baseline | Pass | `evals/baselines/scans.json`, replayed offline in CI with floors (`tests/unit/test_eval_scans.py`) |
+| A 300-page file does not exhaust memory | Pass | 301 pages parsed in the isolated process, peak 3.4 GB against an 8 GB limit (`python -m docforge.evals.long_document`, one local run) |
+
+### Measured
+
+| Variant (20 invoices) | Fields correct | Fully correct | Sent to review by own checks | Wrong value accepted by own checks | ...and also agreeing with its order |
+| --- | --- | --- | --- | --- | --- |
+| Clean PDF | 2472 / 2472 | 20 | 8 | 0 | 0 |
+| Good scan (150 dpi) | 2471 / 2472 | 19 | 11 | 0 | 0 |
+| Poor scan (110 dpi, 1.8°, blur, noise) | 2424 / 2472 (98.06%) | 4 | 12 | 5 | 0 |
+
+Poor-scan errors: 23 of 48 are a letter in a product name ("Tabiets", "Insufin"), the rest
+addresses, pack sizes, free quantities read as blank, two discounts read as "25" for "2.5", one
+batch number ("E00589" for "EO0589"). Citations stay above 99% on every variant.
+
+| Long documents | Result |
+| --- | --- |
+| 3 invoices, 45 / 80 / 120 lines, 2 / 2 / 4 pages | 45 and 80 lines fully correct; 120 lines: one line lost where the parser merged two table rows, every later line shifted; the checks sent it to review |
+| Model calls | 8 (one per page); output about 6,000 tokens per page; p50 140 s per document |
+| 301-page born-digital invoice, 155,000 blocks | 24 min, peak 3.4 GB in batches of 10 pages; 23 min, 4.2 GB unbatched |
+| 31-page scan | 7 min (about 14 s a page), peak 4.0 GB |
+
+Tests: 1,188 passed (996 unit, 150 integration, 42 real-parser), coverage 94%.
+
+These are synthetic documents with known degradations. Real scans (photos, stamps, handwriting,
+fax artefacts, rotated pages) are not measured.
+
+### What was built
+
+- Scanned variants of the 20 invoices in two profiles (`synth/scans.py`), with label boxes moved
+  by the page rotation; the rotation maths is checked against pixels.
+- OCR path in `DoclingParser`: a PDF without a text layer on every page is rendered at 200 dpi,
+  each page's skew estimated from its text lines and corrected, read by OCR, and its boxes mapped
+  back to the page as uploaded. Without deskewing, the crooked scan's table rows were scrambled.
+- Conversion in page batches; long invoices and orders in the generator (`--multipage`).
+- Page-by-page extraction for documents of more than one page, merged in code; one-page
+  requests are unchanged, so existing recordings still replay.
+- `IsolatedParser`: the parser in a spawned child process with a time limit, a memory limit,
+  recycling after 50 documents, JSON replies and no credentials in its environment. A limit
+  exceeded fails that document with a reason the uploader can read.
+- Scan, multi-page and long-document measurements (`make eval`, `python -m docforge.evals.long_document`).
+
+### Departures from the plan
+
+- Table-by-table extraction became page-by-page: simpler, and it bounds each reply.
+- Batching was expected to be what keeps memory bounded. Measured, Docling already streams pages:
+  batching lowered the peak from 4.2 to 3.4 GB, and time did not change. The isolation limits are
+  what protect the worker.
+- No per-block OCR confidence: Docling does not expose it in the form used here.
+
+### Review (ECC python-reviewer and security-reviewer)
+
+Fixed, tests first:
+
+- A page with a huge declared size would have been rendered into gigabytes of pixels. Pages are
+  now checked from their declared size before rendering and refused above 60 megapixels.
+- Replies from the parser process were unpickled; a process taken over through a native-code bug
+  could have run code in the parent, which holds the credentials. Replies are JSON now, and the
+  child starts with secrets removed from its environment.
+- Merging pages took the first value printed on any page, so a carried-forward subtotal on page 1
+  would have become the grand total. Pages that disagree on a field now send the document to
+  review; licence numbers from several pages are all kept.
+- A retry per malformed page could double the cost of a long document; retries are now counted
+  per document (two).
+- An interrupted exchange could leave a reply in the pipe to be read as the next document's;
+  `close()` waited for a parse of up to 15 minutes. Both fixed.
+- Boxes mapped back from a crooked scan were the upright box around the turned line, several
+  lines tall; they now keep their size around the moved centre.
+- The scan eval counted a document whose extraction failed as "sent to review", and an order that
+  could not be read aborted the run.
+- `has_text_layer` counted spaces as text.
+
+Found while testing: a real-parser test failed intermittently because a new converter asked the
+model hub whether its files were current. Tests now use the models on disk; the service can do the
+same with `PARSER_OFFLINE=true` after `make models`.
+
+Recorded, not fixed:
+
+- The text-layer decision trusts any text layer of 10 or more printed characters per page. A PDF
+  whose hidden text differs from its visible image would be read from the hidden text, and a scan
+  with a text footer would not be OCRed. A cross-check (OCR a sample, compare) is the fix; until
+  then the review screen (C5) must show the rendered page, not the extracted text.
+- Pages rotated by 90 or 180 degrees are not detected; skew beyond 5 degrees is not corrected.
+- The memory limit is polled every 0.2 s; fast allocation can outrun it. The deployed worker
+  needs a container memory limit as the hard stop (C9).
+- One slow document holds the worker's parser for up to the time limit.
+- No per-tenant limit on documents or pages (C6).
+- A line item split across a page break would become two partial lines; the rules would flag the
+  incomplete one, but nothing merges them.
+
+### Not verified
+
+- Real scans, phone photos, rotated pages.
+- OCR and parser throughput on server CPUs or GPUs; all timings are one laptop CPU.
+- The isolated parser under the real worker for long periods (only tests and single runs).
+
 ## C3 Trust layer (2026-10-03): gate passed
 
 Branch `c3-trust-layer`, PR #4.

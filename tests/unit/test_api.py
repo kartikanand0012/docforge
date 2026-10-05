@@ -15,8 +15,9 @@ from docforge.extraction.pipeline import InvoicePipeline
 from docforge.extraction.prompt import PROMPT_VERSION
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import ParsedDocument
+from docforge.parsing.isolation import IsolatedParser
 from docforge.wiring import build_pipeline
-from fakes import PARSED, FakeParser, ScriptedProvider
+from fakes import PARSED, FakeParser, ScriptedProvider, signed_in
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
 PDF = (FIXTURES / "pair_001" / "invoice.pdf").read_bytes()
@@ -28,7 +29,9 @@ RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 def client(replies: list[str | Exception], **options: int) -> TestClient:
     max_pages = options.pop("max_pages", 20)
     pipeline = InvoicePipeline(FakeParser(), ScriptedProvider(replies), max_pages=max_pages)
-    return TestClient(create_app(pipeline, options.pop("max_upload_bytes", 10 * 1024 * 1024)))
+    return TestClient(
+        signed_in(create_app(pipeline, options.pop("max_upload_bytes", 10 * 1024 * 1024)))
+    )
 
 
 def upload(api: TestClient, data: bytes = PDF, query: str = "") -> Any:
@@ -171,6 +174,8 @@ def test_build_pipeline_uses_the_configured_model_and_limits() -> None:
     assert pipeline.provider.model == "gemini-test"
     assert pipeline.parser.name == "docling"
     assert pipeline.max_pages == 7
+    # The real parser runs in a child process; nothing is started until a document arrives.
+    assert isinstance(pipeline.parser, IsolatedParser)
 
 
 def test_a_pdf_without_a_text_layer_is_rejected_with_a_clear_message() -> None:
@@ -178,15 +183,12 @@ def test_a_pdf_without_a_text_layer_is_rejected_with_a_clear_message() -> None:
         def parse(self, pdf: bytes) -> ParsedDocument:
             return PARSED.model_copy(update={"blocks": ()})
 
-    api = TestClient(create_app(InvoicePipeline(EmptyParser(), ScriptedProvider([]))))
+    api = TestClient(signed_in(create_app(InvoicePipeline(EmptyParser(), ScriptedProvider([])))))
 
     response = upload(api)
 
     assert response.status_code == 422
-    assert (
-        response.json()["detail"]
-        == "The PDF has no text layer. Scanned documents are not supported yet."
-    )
+    assert response.json()["detail"] == "No text could be read from the PDF."
 
 
 def test_an_oversized_request_is_refused_from_its_declared_length() -> None:
@@ -219,9 +221,30 @@ def test_an_unexpected_failure_is_a_plain_500_without_internals(perfect_reply: s
             raise RuntimeError("secret internal detail /Users/someone")
 
     pipeline = InvoicePipeline(BrokenParser(), ScriptedProvider([perfect_reply]))
-    api = TestClient(create_app(pipeline), raise_server_exceptions=False)
+    api = TestClient(signed_in(create_app(pipeline)), raise_server_exceptions=False)
 
     response = upload(api)
 
     assert response.status_code == 500
     assert response.json() == {"detail": "Internal error."}
+
+
+def test_the_replay_factory_extracts_a_recorded_document_offline() -> None:
+    """The end-to-end test runs the real service on recorded parses and replies: no key."""
+    from pathlib import Path
+
+    from docforge.wiring import build_replay_pipelines
+
+    repo = Path(__file__).resolve().parents[2]
+    settings = Settings(
+        _env_file=None,
+        gemini_api_key=None,
+        recordings_dir=str(repo / "tests" / "fixtures" / "recorded"),
+    )
+    pipelines = build_replay_pipelines(settings)
+
+    pdf = (repo / "tests" / "fixtures" / "synthetic" / "pair_002" / "invoice.pdf").read_bytes()
+    result = pipelines["invoice"].run(pdf)
+
+    assert set(pipelines) == {"invoice", "purchase_order", "coa"}
+    assert result.responses[0].model == settings.gemini_model

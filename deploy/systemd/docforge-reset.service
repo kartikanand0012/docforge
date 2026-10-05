@@ -1,0 +1,8 @@
+[Unit]
+Description=Reset the DocForge public demo to its seeded state
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/docforge/reset-demo.sh

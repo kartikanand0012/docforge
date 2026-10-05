@@ -1,0 +1,121 @@
+# The demo on one host: Postgres, the API, the worker, the review app and Caddy for HTTPS.
+# Settings come from three files that bootstrap.sh writes from SSM Parameter Store:
+#   .env       images, domain and demo PIN (no secrets beyond the public PIN)
+#   app.env    what the API and worker need: the restricted database login, S3, keys
+#   owner.env  the database owner: only Postgres and the one-shot `admin` service see it
+# Only Caddy publishes ports. The `local` profile adds MinIO, for trying this on a laptop.
+name: docforge-demo  # not "docforge": that is the development stack
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-hardened: &hardened
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging: *logging
+  restart: unless-stopped
+
+services:
+  postgres:
+    # pgvector/pgvector:pg16 (PostgreSQL 16.15, pgvector 0.8.7), pinned by digest.
+    image: pgvector/pgvector@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+    environment:
+      POSTGRES_USER: docforge
+      POSTGRES_DB: docforge
+    env_file: owner.env  # POSTGRES_PASSWORD
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U docforge -d docforge"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    mem_limit: 2g
+    logging: *logging
+    restart: unless-stopped
+
+  api:
+    <<: *hardened
+    image: ${APP_IMAGE:?set in .env}
+    env_file: app.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    mem_limit: 1536m
+
+  worker:
+    <<: *hardened
+    image: ${APP_IMAGE:?set in .env}
+    command: ["python", "-m", "docforge.worker"]
+    env_file: app.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 3g  # the parser's own limit (PARSER_MAX_RSS_MB) is set below this
+
+  # Migrations, the database login, the demo seed and the ops check: run, then gone.
+  admin:
+    profiles: ["tools"]
+    image: ${APP_IMAGE:?set in .env}
+    env_file: [app.env, owner.env]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+
+  web:
+    <<: *hardened
+    image: ${WEB_IMAGE:?set in .env}
+    environment:
+      DOCFORGE_API_URL: http://api:8000
+      # Caddy is the only way in and overwrites X-Forwarded-For: its value can be passed on.
+      DOCFORGE_TRUST_PROXY: "1"
+      # The public demo shows its shared sign-in on the sign-in page; unset elsewhere.
+      DOCFORGE_DEMO_PIN: ${DEMO_PIN:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 512m
+
+  caddy:
+    <<: *hardened
+    # caddy:2.10-alpine, pinned by digest.
+    image: caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    cap_add: [NET_BIND_SERVICE]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - web
+    mem_limit: 256m
+
+  minio:
+    profiles: ["local"]
+    image: cgr.dev/chainguard/minio@sha256:0f95aa412a12351a95bb43c3b54b66440eb0aa022bb3f3458942678a489e915b
+    environment:
+      MINIO_ROOT_USER: docforge
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-docforge-local-secret}
+      MC_CONFIG_DIR: /tmp/.mc
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /data/docforge-originals && exec minio server /data"]
+    volumes:
+      - miniodata:/data
+
+volumes:
+  pgdata:
+  caddy_data:
+  miniodata:

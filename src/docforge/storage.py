@@ -42,14 +42,19 @@ class S3ObjectStore:
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "S3ObjectStore":
-        client = boto3.client(
-            "s3",
-            endpoint_url=settings.s3_endpoint_url,
-            aws_access_key_id=settings.s3_access_key,
-            aws_secret_access_key=settings.s3_secret_key.get_secret_value(),
-            region_name="us-east-1",
-            config=Config(connect_timeout=5, read_timeout=30, retries={"max_attempts": 3}),
-        )
+        config = Config(connect_timeout=5, read_timeout=30, retries={"max_attempts": 3})
+        if settings.s3_endpoint_url is None:
+            # AWS: credentials from the default chain (the instance's role), never a key here.
+            client = boto3.client("s3", region_name=settings.s3_region, config=config)
+        else:
+            client = boto3.client(
+                "s3",
+                endpoint_url=settings.s3_endpoint_url,
+                aws_access_key_id=settings.s3_access_key,
+                aws_secret_access_key=settings.s3_secret_key.get_secret_value(),
+                region_name=settings.s3_region,
+                config=config,
+            )
         return cls(client, settings.s3_bucket)
 
     def put(self, key: str, data: bytes, content_type: str) -> None:

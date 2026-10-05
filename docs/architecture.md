@@ -6,7 +6,7 @@ Inputs: `docs/research/01`–`05`. Where this document departs from a research r
 ## 1. What DocForge is
 
 A document-intelligence service for regulated, document-heavy operations. It turns PDFs and scans into
-validated, structured records where every value can be traced to the place on the page it came from,
+checked, structured records where every value can be traced to the place on the page it came from,
 and nothing AI-extracted becomes a record until a rule or a person accepts it.
 
 **Demo scope (v1)**
@@ -53,11 +53,11 @@ upload ─▶ ingest ─▶ classify ─▶ parse ─▶ extract ─▶ validate
 | Parse | Produces `blocks`: text, type (paragraph, table cell, key-value), page, bounding box, OCR confidence | Docling for born-digital. Scans go through the OCR adapter. Runs in subprocess workers recycled every N documents (parser memory leaks). |
 | Extract | One schema per document type (Pydantic). LLM returns each field with the block IDs it came from | Per-document-type prompts. Line items extracted table-by-table, not whole-document. Structured output for shape; our validators for truth. |
 | Verify | Every numeric and identifier field is compared to the text of its cited blocks | Mismatch means the field is flagged, never silently corrected. |
-| Validate | Deterministic rules in code | GSTIN checksum, HSN format, dates (expiry after invoice date), line arithmetic, tax totals, scheme quantity ("10+1"), PTR ≤ MRP, drug licence format, CoA result vs limit. |
+| Validate | Deterministic rules in code | GSTIN checksum, HSN format, dates (expiry after invoice date), line arithmetic, tax totals, scheme quantity ("10+1"), PTR ≤ MRP, drug licence format, CoA result vs limit (a limit or conclusion not fully understood is "not evaluated", never passed). |
 | Match | Invoice ↔ PO ↔ CoA on batch, product, quantity, price | Produces a discrepancy list with severity. |
 | Score | Field confidence from OCR confidence, block-alignment, rule results and cross-document agreement | Thresholds per field class, set from the eval set, not guessed. |
 | Route | Accept, or create a review task | A random 1–2% of accepted documents also goes to audit review (silent-error detection). |
-| Index | Chunk by layout blocks, embed, write `tsvector` | Hybrid search with reciprocal rank fusion. |
+| Index | Chunk by layout blocks (a summary, one chunk per table row with its headers, text), embed, write `tsvector` | A queue job after extraction. Hybrid search with reciprocal rank fusion; a code in the question must match a keyword hit; only each document's newest version is searched. Built in C7. |
 
 ## 4. Components and stack
 
@@ -74,7 +74,7 @@ upload ─▶ ingest ─▶ classify ─▶ parse ─▶ extract ─▶ validate
 | Object storage | S3 with Object Lock for originals (MinIO locally) | | Unaltered originals |
 | Review UI | Next.js + TypeScript | | Page image with highlighted source box beside the field |
 | Auth | API keys for machines; OIDC sessions for people; roles in Postgres | | RBAC + row-level security |
-| Observability | OpenTelemetry + Langfuse (self-hosted) | Audit tables only | Traces, cost, datasets |
+| Observability | OpenTelemetry (any OTLP backend); `python -m docforge.ops check` for alerts; eval reports for datasets and cost | Langfuse if prompt-level analysis is needed | Built in C8: spans carry ids, counts, tokens and cost, never content |
 | PII | Presidio before logging and before LLM calls where configured | regex | Redaction |
 | Infra | Docker Compose locally; AWS ECS Fargate + RDS + S3 by Terraform | Kubernetes when a client needs it | Smallest thing that scales horizontally |
 
@@ -110,6 +110,27 @@ holding its discrepancies. Both are immutable. The per-field `fields`, `validati
 history. The decision has two levels with reasons; there is no numeric confidence until there are
 reviewer outcomes to calibrate one against.
 
+As built in C6: every request carries an API key or a reviewer session (both stored as hashes);
+the tenant comes from it. Postgres row-level security on every tenant table, keyed on a
+transaction-local setting, under a role with no DELETE, TRUNCATE, ownership or bypass; migrations
+run as the owner. Webhooks from an outbox written with each change, signed and retried with a
+fixed event id. The audit chain's head is anchored in object storage.
+
+As built in C5: reviewers (with a scrypt-hashed PIN), corrections and signed reviews are their own
+tables, append-only; the record a reviewer sees is the model's reply with the corrections applied,
+read again by the normaliser and checks. A signature stores the SHA-256 of the record and of who,
+what, why and when; the database refuses corrections to a signed version and approvals over open
+checks without an override reason. The review screen is a Next.js app calling the API from the
+browser.
+
+As built in C4: the parser runs in a child process started fresh (not forked), replaced after
+50 documents and stopped if one document exceeds a time or memory limit; replies cross the pipe
+as JSON, and the child gets no credentials. A file whose every page has a text layer is read from
+it; otherwise every page is rendered at 200 dpi, straightened, and read by OCR (RapidOCR through
+Docling), and block boxes are mapped back onto the page as uploaded. Documents of more than one
+page are sent to the model one page per request and merged in code; a field that two pages give
+differently is flagged for review.
+
 `audit_log` is append-only and hash-chained per tenant. As built in C2: database triggers reject
 UPDATE, DELETE and TRUNCATE, each entry may have only one successor, and each entry stores the hash
 of the one before it, so an entry edited or removed from the middle is evident when the chain is
@@ -127,7 +148,7 @@ tamper-evident against ordinary access, not tamper-proof.
 | Table errors across pages | Table-aware parser, header carry-over across pages, line-arithmetic checks |
 | Parser memory leaks | Subprocess workers recycled per N documents, page streaming, page cap |
 | Duplicates and retry storms | Content-hash idempotency, jittered backoff honouring Retry-After, permanent vs transient error classes, dead-letter state |
-| pgvector recall with tenant filter | Tenant-partitioned or partial HNSW indexes, iterative scan, measured recall in evals |
+| pgvector recall with tenant filter | Measured in C8: Postgres filters to the tenant and sorts exactly (full recall; p95 21 ms at 50,000 chunks in 10 tenants, 96 ms at 50,000 in one). The HNSW index is kept with iterative scan on, but is unproven on real embeddings at scale; tenant partitions are the next step if one tenant grows large |
 | Prompt injection in documents | Document text is passed as data; text layer compared to OCR; no tool access in the extraction call |
 | Cost blow-ups | Cheap path for simple pages, batch API for bulk, caching by content hash, per-tenant cost caps |
 | Prompt or model regressions | Pinned model IDs, versioned prompts, eval gate in CI before any change ships |
@@ -137,9 +158,17 @@ worker pools (parse, extract), one Postgres. Stage two: read replica, per-stage 
 queue depth, self-hosted OCR on GPU. Stage three (only if measured need): move queue to SQS and search
 to OpenSearch. Each move is a swap behind an existing interface.
 
-**Speed targets (to be measured at the load-test checkpoint; they are goals, not results).**
-Born-digital 3-page invoice end to end p95 under 15 s; scanned under 40 s; API reads p95 under 200 ms;
-search p95 under 300 ms. Upload returns immediately with a job ID.
+**Speed targets (set before C8) and what C8 measured.**
+- **Born-digital 3-page invoice, end to end, p95 under 15 s:** not met as set. The model alone has a p95 of 26.6 s for a one-page invoice, measured live. The target assumed a faster model call.
+- **API reads p95 under 200 ms:** upload p95 was 134 ms under load.
+- **Search p95 under 300 ms:** search p95 was 155 ms under load.
+- **Upload returns immediately with a job ID:** as designed.
+
+**Deployment (C9).**
+- **Demo:** one arm64 EC2 host in its own VPC runs the same Compose services behind Caddy (HTTPS), with originals in S3 under the host's IAM role. Settings live in one SSM SecureString; the alarms and the budget are in CloudWatch.
+- **Infrastructure:** Terraform in `infra/`.
+- **Operations:** `docs/runbook.md`.
+- **Production:** would move Postgres to RDS with backups and run the services on two or more hosts behind a load balancer. The application does not change.
 
 ## 7. Compliance-supporting features
 

@@ -14,8 +14,13 @@ from docforge.evals.scoring import (
     score_invoice,
     summarize,
 )
-from docforge.extraction.pipeline import ExtractionError, InvoicePipeline
-from docforge.extraction.prompt import PROMPT_VERSION
+from docforge.extraction.pipeline import (
+    ExtractionError,
+    ExtractionPipeline,
+    InvoicePipeline,
+    PipelineResult,
+)
+from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMResponse
 from docforge.llm.gemini import GeminiProvider
 from docforge.llm.replay import RecordingProvider
@@ -77,8 +82,10 @@ def _percentile(values: list[float], fraction: float) -> float:
 
 def run_eval(
     fixtures: Path,
-    pipeline: InvoicePipeline,
+    pipeline: ExtractionPipeline[InvoiceExtraction],
     on_document: Callable[[DocumentScore], None] | None = None,
+    on_result: Callable[[DocumentScore, PipelineResult[InvoiceExtraction] | None], None]
+    | None = None,
 ) -> EvalReport:
     """Extract every `pair_*/invoice.pdf` under `fixtures` and score it against its label.
 
@@ -105,14 +112,18 @@ def run_eval(
         except ExtractionError as error:
             calls = error.responses
             score = score_invoice(label, None, parsed, error=str(error))
+            outcome = None
         else:
             calls = result.responses
             score = score_invoice(label, result.extraction, parsed)
+            outcome = result
         responses.extend(calls)
         latencies.append(sum(call.latency_ms for call in calls))
         scores.append(score)
         if on_document is not None:
             on_document(score)
+        if on_result is not None:
+            on_result(score, outcome)
 
     return EvalReport(
         dataset=DatasetInfo(seed=manifest["seed"], count=len(scores)),
@@ -120,7 +131,7 @@ def run_eval(
         # From the replies themselves, so a replayed run names the provider that produced them.
         provider=responses[0].provider if responses else pipeline.provider.name,
         model=pipeline.provider.model,
-        prompt_version=PROMPT_VERSION,
+        prompt_version=pipeline.spec.prompt_version,
         schema_version=SCHEMA_VERSION,
         summary=summarize(scores),
         usage=Usage(

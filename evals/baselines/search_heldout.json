@@ -1,0 +1,138 @@
+{
+  "embedding_model": "gemini-embedding-001",
+  "documents": 60,
+  "questions": 98,
+  "modes": {
+    "keyword": {
+      "hit_at_1": 0.4659,
+      "recall_at_5": 0.7642,
+      "mrr": 0.6136,
+      "by_kind": {
+        "code_variant": {
+          "recall_at_5": 1.0,
+          "mrr": 1.0
+        },
+        "multi": {
+          "recall_at_5": 0.8056,
+          "mrr": 0.5833
+        },
+        "natural": {
+          "recall_at_5": 1.0,
+          "mrr": 0.7188
+        },
+        "ocr_code": {
+          "recall_at_5": 0.0,
+          "mrr": 0.0
+        }
+      },
+      "abstained_when_no_answer": 1.0,
+      "cross_tenant_hits": 0,
+      "missed": [
+        "pair_001-ocr-batch",
+        "pair_002-ocr-batch",
+        "pair_003-ocr-batch",
+        "pair_004-ocr-batch",
+        "pair_005-ocr-batch",
+        "pair_006-ocr-batch",
+        "pair_007-ocr-batch",
+        "pair_008-ocr-batch",
+        "pair_009-ocr-batch",
+        "pair_010-ocr-batch",
+        "pair_011-ocr-batch",
+        "pair_013-ocr-batch",
+        "pair_014-ocr-batch",
+        "pair_015-ocr-batch",
+        "pair_016-ocr-batch",
+        "pair_017-ocr-batch",
+        "pair_018-ocr-batch",
+        "pair_019-ocr-batch",
+        "pair_020-ocr-batch",
+        "gstin-24AABFN7754K1Z0-a",
+        "gstin-27AAKCS4821M1ZW-a",
+        "gstin-07AAECD6612R1Z8-b",
+        "gstin-29AAGCK3390P1ZS-b"
+      ]
+    },
+    "vector": {
+      "hit_at_1": 0.6705,
+      "recall_at_5": 0.8343,
+      "mrr": 0.7594,
+      "by_kind": {
+        "code_variant": {
+          "recall_at_5": 1.0,
+          "mrr": 0.9375
+        },
+        "multi": {
+          "recall_at_5": 0.8241,
+          "mrr": 0.6455
+        },
+        "natural": {
+          "recall_at_5": 0.95,
+          "mrr": 0.8625
+        },
+        "ocr_code": {
+          "recall_at_5": 0.4211,
+          "mrr": 0.4089
+        }
+      },
+      "abstained_when_no_answer": 0.0,
+      "cross_tenant_hits": 0,
+      "missed": [
+        "pair_001-ocr-batch",
+        "pair_003-ocr-batch",
+        "pair_004-ocr-batch",
+        "pair_005-ocr-batch",
+        "pair_007-ocr-batch",
+        "pair_009-ocr-batch",
+        "pair_010-natural",
+        "pair_011-ocr-batch",
+        "pair_014-ocr-batch",
+        "pair_014-natural",
+        "pair_015-ocr-batch",
+        "pair_016-ocr-batch",
+        "pair_018-ocr-batch",
+        "gstin-24AABFN7754K1Z0-a",
+        "gstin-33AADFC9047H1ZJ-a",
+        "gstin-29AAGCK3390P1ZS-b"
+      ]
+    },
+    "hybrid": {
+      "hit_at_1": 0.8295,
+      "recall_at_5": 0.875,
+      "mrr": 0.861,
+      "by_kind": {
+        "code_variant": {
+          "recall_at_5": 1.0,
+          "mrr": 1.0
+        },
+        "multi": {
+          "recall_at_5": 1.0,
+          "mrr": 1.0
+        },
+        "natural": {
+          "recall_at_5": 1.0,
+          "mrr": 0.975
+        },
+        "ocr_code": {
+          "recall_at_5": 0.4211,
+          "mrr": 0.4089
+        }
+      },
+      "abstained_when_no_answer": 0.0,
+      "cross_tenant_hits": 0,
+      "missed": [
+        "pair_001-ocr-batch",
+        "pair_003-ocr-batch",
+        "pair_004-ocr-batch",
+        "pair_005-ocr-batch",
+        "pair_007-ocr-batch",
+        "pair_009-ocr-batch",
+        "pair_011-ocr-batch",
+        "pair_014-ocr-batch",
+        "pair_015-ocr-batch",
+        "pair_016-ocr-batch",
+        "pair_018-ocr-batch"
+      ]
+    }
+  }
+}

@@ -15,6 +15,8 @@ ORDER_FILE = "purchase_order.pdf"
 LABEL_FILE = "label.json"
 MANIFEST_FILE = "manifest.json"
 MAX_COUNT = 999  # pair ids are three digits
+# Pair number -> invoice lines, for the set whose tables run over two, three and four pages.
+MULTIPAGE_LINE_COUNTS = {101: 45, 102: 80, 103: 120}
 
 _PAIR_DIR = re.compile(r"pair_\d{3}")
 
@@ -36,8 +38,8 @@ def _remove_previous_pairs(out_dir: Path) -> None:
             shutil.rmtree(path)
 
 
-def _build(index: int, seed: int) -> tuple[PairLabel, bytes, bytes]:
-    pair = build_pair(index, seed)
+def _build(index: int, seed: int, line_count: int | None = None) -> tuple[PairLabel, bytes, bytes]:
+    pair = build_pair(index, seed, line_count)
     invoice = render_invoice(pair.invoice, pair.layout)
     order = render_purchase_order(pair.purchase_order, pair.layout)
     label = PairLabel(
@@ -64,8 +66,18 @@ def generate_dataset(
     """
     if not 1 <= count <= MAX_COUNT:
         raise ValueError(f"count must be between 1 and {MAX_COUNT}")
-    built = [_build(index, seed) for index in range(1, count + 1)]
+    return _write(out_dir, seed, [_build(index, seed) for index in range(1, count + 1)])
 
+
+def generate_multipage(out_dir: Path, seed: int = DEFAULT_SEED) -> list[PairLabel]:
+    """The long pairs of `MULTIPAGE_LINE_COUNTS`, written like `generate_dataset` writes."""
+    built = [_build(index, seed, lines) for index, lines in MULTIPAGE_LINE_COUNTS.items()]
+    return _write(out_dir, seed, built)
+
+
+def _write(
+    out_dir: Path, seed: int, built: list[tuple[PairLabel, bytes, bytes]]
+) -> list[PairLabel]:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / MANIFEST_FILE).unlink(missing_ok=True)  # written last, so its presence means done
     _remove_previous_pairs(out_dir)
@@ -80,7 +92,7 @@ def generate_dataset(
     manifest = {
         "schema_version": "1",
         "seed": seed,
-        "count": count,
+        "count": len(labels),
         "pairs": [label.pair_id for label in labels],
     }
     (out_dir / MANIFEST_FILE).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

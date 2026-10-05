@@ -19,8 +19,10 @@ import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any, Literal, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
+from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.dialects.postgresql import insert
@@ -39,13 +41,23 @@ from docforge.db.models import (
     ParseOutput,
 )
 from docforge.db.session import SessionFactory
+from docforge.db.tenancy import scoped, tenant_scope
 from docforge.extraction.pipeline import ExtractionError, PipelineResult
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError
-from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParseError
+from docforge.parsing.base import (
+    DocumentTooLarge,
+    NoTextLayer,
+    ParseError,
+    ParserLimitExceeded,
+)
 from docforge.storage import ObjectNotFound, ObjectStore, StorageUnavailable, original_key
+from docforge.telemetry import current_prices, document_cost, traced
 from docforge.trust.match import match_invoice_to_order
+
+if TYPE_CHECKING:
+    from docforge.anchors import AnchoredReport, AnchorStore
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +91,27 @@ class QueueFull(Exception):
 
 class TransientProcessingError(Exception):
     """Processing failed in a way that may succeed later; the queue should retry the job."""
+
+
+class EventSink(Protocol):
+    def emit(
+        self,
+        session: Session,
+        tenant_id: uuid.UUID,
+        event_type: str,
+        data: dict[str, Any],
+        *,
+        event_id: uuid.UUID | None = None,
+    ) -> uuid.UUID: ...
+
+
+_EVENTS = uuid.UUID("6f1c3c0e-8a51-4c3a-9a4f-2f0d9d6b7c11")
+
+
+def event_id(event_type: str, subject: uuid.UUID) -> uuid.UUID:
+    """The same event for the same subject always has the same id, so a job delivered twice
+    emits it once."""
+    return uuid.uuid5(_EVENTS, f"{event_type}:{subject}")
 
 
 class Pipeline(Protocol):
@@ -136,6 +169,41 @@ class ExtractionDetail:
     model_runs: list[ModelRun]
 
 
+def current_match(
+    session: Session, tenant_id: uuid.UUID, version_id: uuid.UUID
+) -> tuple[MatchRecord | None, uuid.UUID | None]:
+    """The newest comparison of this version, and the counterpart's document id.
+
+    A comparison counts only while the other side is still that document's newest version:
+    once the counterpart is read again, the old comparison is history.
+    """
+    other = aliased(DocumentVersion)
+    newer = aliased(DocumentVersion)
+    found = session.execute(
+        select(MatchRecord, other.document_id)
+        .join(
+            other,
+            other.id
+            == case(
+                (MatchRecord.invoice_version_id == version_id, MatchRecord.order_version_id),
+                else_=MatchRecord.invoice_version_id,
+            ),
+        )
+        .where(
+            MatchRecord.tenant_id == tenant_id,
+            (MatchRecord.invoice_version_id == version_id)
+            | (MatchRecord.order_version_id == version_id),
+            other.version_no
+            == select(func.max(newer.version_no))
+            .where(newer.document_id == other.document_id)
+            .scalar_subquery(),
+        )
+        .order_by(MatchRecord.created_at.desc())
+        .limit(1)
+    ).first()
+    return (found[0], found[1]) if found is not None else (None, None)
+
+
 _MATCH_CANDIDATES = 20
 
 
@@ -160,8 +228,14 @@ class DocumentService:
         *,
         max_attempts: int = 5,
         max_pending: int = 1000,
+        events: EventSink | None = None,
+        anchors: "AnchorStore | None" = None,
+        index: Enqueue | None = None,
     ) -> None:
+        self._index = index  # queues the search indexing of a finished version
         self._sessions = sessions
+        self._events = events
+        self._anchors = anchors
         self._store = store
         self._pipelines = pipelines  # one per document type
         self._enqueue = enqueue
@@ -174,6 +248,7 @@ class DocumentService:
 
     # --- ingest -----------------------------------------------------------------------------
 
+    @scoped
     def ingest(
         self, *, tenant_id: uuid.UUID, doc_type: str, filename: str, data: bytes, actor: str
     ) -> IngestResult:
@@ -239,6 +314,7 @@ class DocumentService:
             self._enqueue(session, version)
             return IngestResult(document, version, created=True)
 
+    @scoped
     def reprocess(
         self, *, tenant_id: uuid.UUID, document_id: uuid.UUID, actor: str
     ) -> DocumentVersion:
@@ -272,6 +348,21 @@ class DocumentService:
 
         Raises `TransientProcessingError` when the queue should deliver the job again.
         """
+        # The job carries only the version; its tenant is looked up before anything is read.
+        with self._sessions() as session:
+            tenant_id = session.scalar(select(func.docforge_version_tenant(version_id)))
+        if tenant_id is None:
+            raise DocumentNotFound(version_id)
+        with traced("document.process") as span, tenant_scope(tenant_id):
+            span.set_attribute("docforge.version_id", str(version_id))
+            span.set_attribute("docforge.tenant_id", str(tenant_id))
+            outcome = self._process(version_id)
+            span.set_attribute("docforge.outcome", outcome)
+            if outcome == "failed":
+                span.set_status(Status(StatusCode.ERROR))
+            return outcome
+
+    def _process(self, version_id: uuid.UUID) -> Outcome:
         with self._sessions.begin() as session:
             document, version = self._locked(session, version_id)
             if version.status not in IN_FLIGHT:
@@ -300,6 +391,9 @@ class DocumentService:
             doc_type, storage_key, sha256 = document.doc_type, document.storage_key, document.sha256
 
         final = turn >= self._max_attempts
+        span = trace.get_current_span()
+        span.set_attribute("docforge.doc_type", doc_type)
+        span.set_attribute("docforge.attempt", turn)
         pipeline = self._pipelines.get(doc_type)
         if pipeline is None:
             return self._fail(version_id, turn, "No pipeline is registered for this document type.")
@@ -315,9 +409,11 @@ class DocumentService:
         except ObjectNotFound:
             return self._fail(version_id, turn, "The stored original is missing.")
         except NoTextLayer:
-            return self._fail(version_id, turn, "The PDF has no text layer.")
+            return self._fail(version_id, turn, "No text could be read from the PDF.")
         except DocumentTooLarge as error:
             return self._fail(version_id, turn, f"The {error}.")
+        except ParserLimitExceeded as error:
+            return self._fail(version_id, turn, str(error))
         except ParseError:
             return self._fail(version_id, turn, "The file could not be read as a PDF.")
         except ExtractionError:
@@ -333,10 +429,21 @@ class DocumentService:
         except Exception as error:
             logger.exception("unexpected error processing version %s", version_id)
             return self._retry_or_fail(version_id, turn, "Internal error.", error, final)
+        calls = [
+            (r.input_tokens or 0, r.output_tokens or 0, r.thinking_tokens or 0)
+            for r in result.responses
+        ]
+        span.set_attribute("docforge.model_calls", len(calls))
+        span.set_attribute("docforge.input_tokens", sum(c[0] for c in calls))
+        span.set_attribute("docforge.output_tokens", sum(c[1] + c[2] for c in calls))
+        cost = document_cost(calls, current_prices())
+        if cost is not None:
+            span.set_attribute("docforge.cost_usd", cost)
         outcome = self._complete(version_id, turn, result)
         if outcome == "succeeded":
             try:
-                self._match(version_id)
+                with traced("document.match"):
+                    self._match(version_id)
             except Exception:
                 # The extraction is stored; a failed comparison must not fail the job.
                 logger.exception("could not match version %s with its counterpart", version_id)
@@ -366,6 +473,7 @@ class DocumentService:
                     schema_version=result.schema_version,
                     data=data,
                     sha256=sha256,
+                    raw=result.raw.model_dump(mode="json"),
                 )
             )
             for call_no, response in enumerate(result.responses, start=1):
@@ -424,6 +532,23 @@ class DocumentService:
                     for rule in assessment.rules
                 ),
             )
+            if self._index is not None:
+                self._index(session, version)
+            if self._events is not None:
+                # In this transaction: the event exists if and only if the extraction does.
+                self._events.emit(
+                    session,
+                    document.tenant_id,
+                    "document.processed",
+                    {
+                        "document_id": str(document.id),
+                        "doc_type": document.doc_type,
+                        "version_no": version.version_no,
+                        "decision": assessment.decision,
+                        "reasons": list(assessment.reasons),
+                    },
+                    event_id=event_id("document.processed", version.id),
+                )
         return "succeeded"
 
     def _match(self, version_id: uuid.UUID) -> None:
@@ -565,6 +690,7 @@ class DocumentService:
 
     # --- reads ------------------------------------------------------------------------------
 
+    @scoped
     def detail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> DocumentDetail:
         with self._sessions() as session:
             document = self._document(session, tenant_id, document_id)
@@ -575,6 +701,7 @@ class DocumentService:
             )
             return DocumentDetail(document, list(versions))
 
+    @scoped
     def latest_extraction(
         self, tenant_id: uuid.UUID, document_id: uuid.UUID
     ) -> ExtractionDetail | None:
@@ -601,6 +728,7 @@ class DocumentService:
             )
             return ExtractionDetail(version, extraction, list(runs))
 
+    @scoped
     def assessment(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> AssessmentDetail | None:
         """The checks on the newest version that succeeded, with its match if there is one."""
         with self._sessions() as session:
@@ -618,38 +746,10 @@ class DocumentService:
             if row is None:
                 return None
             version, record = row
-            # A comparison counts only while the other side is still that document's newest
-            # version: once the counterpart is read again, the old comparison is history.
-            other = aliased(DocumentVersion)
-            newer = aliased(DocumentVersion)
-            found = session.execute(
-                select(MatchRecord, other.document_id)
-                .join(
-                    other,
-                    other.id
-                    == case(
-                        (
-                            MatchRecord.invoice_version_id == version.id,
-                            MatchRecord.order_version_id,
-                        ),
-                        else_=MatchRecord.invoice_version_id,
-                    ),
-                )
-                .where(
-                    MatchRecord.tenant_id == tenant_id,
-                    (MatchRecord.invoice_version_id == version.id)
-                    | (MatchRecord.order_version_id == version.id),
-                    other.version_no
-                    == select(func.max(newer.version_no))
-                    .where(newer.document_id == other.document_id)
-                    .scalar_subquery(),
-                )
-                .order_by(MatchRecord.created_at.desc())
-                .limit(1)
-            ).first()
-            match, counterpart = found if found is not None else (None, None)
+            match, counterpart = current_match(session, tenant_id, version.id)
             return AssessmentDetail(version, record, match, counterpart, document.doc_type)
 
+    @scoped
     def audit_trail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> list[AuditEntry]:
         with self._sessions() as session:
             document = self._document(session, tenant_id, document_id)
@@ -664,9 +764,18 @@ class DocumentService:
             )
             return list(entries)
 
-    def verify_audit_chain(self, tenant_id: uuid.UUID) -> audit.ChainReport:
+    @scoped
+    def verify_audit_chain(self, tenant_id: uuid.UUID) -> "AnchoredReport":
+        """The chain, and, where anchors are kept, the chain against its latest anchor."""
+        from docforge.anchors import AnchoredReport, verify_with_anchors
+
         with self._sessions() as session:
-            return audit.verify_chain(session, tenant_id)
+            if self._anchors is not None:
+                return verify_with_anchors(session, tenant_id, self._anchors)
+            chain = audit.verify_chain(session, tenant_id)
+            return AnchoredReport(
+                chain.consistent, chain.entries, chain.first_bad_id, chain.reason, 0
+            )
 
     # --- helpers ----------------------------------------------------------------------------
 

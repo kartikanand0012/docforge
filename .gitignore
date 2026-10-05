@@ -29,3 +29,9 @@ data/
 .ecc/
 .idea/
 .vscode/
+/.deploytest/
+
+# Terraform: local state and the real variables never committed
+infra/.terraform/
+infra/*.tfstate*
+infra/terraform.tfvars

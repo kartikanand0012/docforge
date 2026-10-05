@@ -1,0 +1,431 @@
+"""Search: documents indexed in chunks, found by words and by meaning, cited, per tenant."""
+
+import uuid
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
+
+from docforge.api.app import create_app
+from docforge.db import DEFAULT_TENANT_ID
+from docforge.db.session import SessionFactory
+from docforge.parsing.cache import CachingParser
+from docforge.search.embeddings import EmbeddingMissing, FakeEmbedder, RecordingEmbedder
+from docforge.search.service import Mode, SearchService
+from fakes import reprint, signed_in
+from worlds import World
+
+pytestmark = pytest.mark.integration
+
+RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
+RECORDED = Path(__file__).resolve().parents[1] / "fixtures" / "recorded" / "parsed"
+
+
+@pytest.fixture
+def indexed(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> tuple[World, SearchService, uuid.UUID, uuid.UUID]:
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    # The real parse of the invoice (recorded), so its table rows are cells, as in use.
+    world.invoice_parsed = CachingParser(RECORDED).parse(world.invoice_pdf)
+    search = SearchService(sessions, FakeEmbedder())
+    order_id = world.process("purchase_order")
+    invoice_id = world.process("invoice")
+    for document_id in (order_id, invoice_id):
+        search.index_document(DEFAULT_TENANT_ID, document_id)
+    return world, search, invoice_id, order_id
+
+
+def test_a_batch_number_finds_its_invoice_and_the_row_that_prints_it(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID],
+) -> None:
+    world, search, invoice_id, _ = indexed
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    (top, *_) = search.search(DEFAULT_TENANT_ID, batch, mode="keyword")
+
+    assert top.document_id == invoice_id
+    assert top.kind == "table_row" and batch in top.text
+    assert top.boxes and top.boxes[0]["page"] == 1  # where to show it on the page
+
+
+@pytest.mark.parametrize("mode", ["keyword", "vector", "hybrid"])
+def test_every_mode_finds_the_document_a_question_is_about(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], mode: Mode
+) -> None:
+    world, search, _, order_id = indexed
+    po_no = world.order_raw["po_no"]["text"]
+
+    results = search.search(DEFAULT_TENANT_ID, f"purchase order {po_no}", mode=mode)
+
+    assert order_id in [r.document_id for r in results[:5]]
+
+
+def test_indexing_the_same_version_twice_adds_nothing(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], owner_engine: Engine
+) -> None:
+    _, search, invoice_id, _ = indexed
+    with owner_engine.connect() as conn:
+        before = conn.execute(text("SELECT count(*) FROM chunks")).scalar_one()
+
+    search.index_document(DEFAULT_TENANT_ID, invoice_id)
+
+    with owner_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM chunks")).scalar_one() == before
+
+
+def test_another_tenant_finds_nothing_of_this_ones(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], other_tenant: uuid.UUID
+) -> None:
+    world, search, _, _ = indexed
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    for mode in ("keyword", "vector", "hybrid"):
+        assert search.search(other_tenant, batch, mode=mode) == []
+
+
+def test_chunks_are_protected_by_row_level_security(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], engine: Engine
+) -> None:
+    with engine.connect() as conn:  # the application's role, no tenant set
+        assert conn.execute(text("SELECT count(*) FROM chunks")).scalar_one() == 0
+
+
+def test_the_search_api_returns_cited_results(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID],
+) -> None:
+    world, search, invoice_id, _ = indexed
+    client = TestClient(signed_in(create_app(None, search=search), role="integrator"))
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    response = client.get("/v1/search", params={"q": batch, "k": 3})
+
+    assert response.status_code == 200
+    top = response.json()["results"][0]
+    assert top["document_id"] == str(invoice_id)
+    assert top["doc_type"] == "invoice" and top["boxes"]
+    assert client.get("/v1/search", params={"q": ""}).status_code == 422
+
+
+def test_a_processed_document_is_queued_for_indexing_with_its_extraction(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    queued: list[uuid.UUID] = []
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    world.index = lambda session, version: queued.append(version.id)
+
+    world.process("invoice")
+
+    assert len(queued) == 1
+
+
+def test_the_index_job_runs_through_the_real_queue(
+    sessions: SessionFactory,
+    engine: Engine,
+    owner_engine: Engine,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    import asyncio
+
+    from docforge.queue import JobQueue
+    from docforge.worker import run_worker
+
+    queue = JobQueue(engine.url)
+    search = SearchService(sessions, FakeEmbedder())
+    queue.bind_search(search)
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    world.index = queue.defer_index
+
+    world.process("invoice")
+    asyncio.run(run_worker(queue, wait=False))
+
+    with owner_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM chunks")).scalar_one() > 0
+
+
+def test_a_question_naming_a_code_finds_every_document_that_prints_it_first(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    """Generic words ("purchase order") must not outrank the code the question names."""
+    search = SearchService(sessions, FakeEmbedder())
+    documents: dict[str, uuid.UUID] = {}
+    for pair in [f"pair_{n:03d}" for n in range(1, 11)]:  # as many as one organisation in the eval
+        world = World(sessions, raw_invoice_from_label, raw_order_from_label, pair)
+        documents[f"{pair}/po"] = world.process("purchase_order")
+        documents[f"{pair}/invoice"] = world.process("invoice")
+        if pair == "pair_001":
+            po_no = world.order_raw["po_no"]["text"]
+    for document_id in documents.values():
+        search.index_document(DEFAULT_TENANT_ID, document_id)
+
+    hits = search.search(DEFAULT_TENANT_ID, f"purchase order {po_no}", mode="keyword")
+
+    first_two = {hit.document_id for hit in hits[:2]}
+    assert first_two == {documents["pair_001/po"], documents["pair_001/invoice"]}
+
+
+def test_a_number_written_with_slashes_is_found_by_its_parts(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    """Full-text parsing reads NVM/26-27/32001 as one path-like word; questions split it."""
+    search = SearchService(sessions, FakeEmbedder())
+    invoices: dict[str, uuid.UUID] = {}
+    numbers: dict[str, str] = {}
+    for pair in [f"pair_{n:03d}" for n in range(1, 6)]:
+        world = World(sessions, raw_invoice_from_label, raw_order_from_label, pair)
+        invoices[pair] = world.process("invoice")
+        numbers[pair] = world.invoice_raw["invoice_no"]["text"]
+        search.index_document(DEFAULT_TENANT_ID, invoices[pair])
+    assert "/" in numbers["pair_003"]
+
+    hits = search.search(DEFAULT_TENANT_ID, f"invoice number {numbers['pair_003']}", mode="keyword")
+
+    assert hits and hits[0].document_id == invoices["pair_003"]
+
+
+def test_in_hybrid_search_a_named_code_outweighs_a_merely_similar_document(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    from docforge.search.embeddings import FakeEmbedder as Base
+
+    class OrdersLookAlike(Base):
+        """Embeds every purchase order as the best match for any question about one."""
+
+        def embed(self, texts: list[str], task: str) -> list[list[float]]:
+            return super().embed(
+                [
+                    "purchase order"
+                    if "Purchase order" in t or "purchase order" in t.lower()[:40]
+                    else t
+                    for t in texts
+                ],
+                task,
+            )
+
+    search = SearchService(sessions, OrdersLookAlike())
+    documents: dict[str, uuid.UUID] = {}
+    for pair in [f"pair_{n:03d}" for n in range(1, 6)]:
+        world = World(sessions, raw_invoice_from_label, raw_order_from_label, pair)
+        documents[f"{pair}/po"] = world.process("purchase_order")
+        documents[f"{pair}/invoice"] = world.process("invoice")
+        if pair == "pair_001":
+            po_no = world.order_raw["po_no"]["text"]
+    for document_id in documents.values():
+        search.index_document(DEFAULT_TENANT_ID, document_id)
+
+    hits = search.search(DEFAULT_TENANT_ID, f"purchase order {po_no}", mode="hybrid")
+
+    found: list[uuid.UUID] = []
+    for hit in hits:
+        if hit.document_id not in found:
+            found.append(hit.document_id)
+    assert {documents["pair_001/po"], documents["pair_001/invoice"]} <= set(found[:5])
+
+
+def test_only_the_newest_indexed_version_of_a_document_is_searched(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    search = SearchService(sessions, FakeEmbedder())
+    invoice_id = world.process("invoice")
+    search.index_document(DEFAULT_TENANT_ID, invoice_id)
+    old = world.invoice_raw["invoice_no"]["text"]
+
+    world.invoice_parsed = reprint(
+        world.invoice_parsed, world.invoice_raw, "invoice_no", "ZZQ-777777"
+    )
+    service = world.build()
+    version = service.reprocess(tenant_id=DEFAULT_TENANT_ID, document_id=invoice_id, actor="api:x")
+    assert service.process(version.id) == "succeeded"
+    search.index_document(DEFAULT_TENANT_ID, invoice_id)
+
+    assert [h.document_id for h in search.search(DEFAULT_TENANT_ID, "ZZQ-777777", mode="keyword")][
+        :1
+    ] == [invoice_id]
+    assert search.search(DEFAULT_TENANT_ID, old, mode="keyword") == []
+
+
+@pytest.mark.parametrize(
+    ("query", "codes"),
+    [
+        ("invoices in 2026", []),
+        ("10x10 tablets", []),
+        ("500mg strips batch 32001", ["32001"]),
+        ("invoice NVM/26-27/32001", ["32001"]),
+        ("batch XGX944068", ["xgx944068"]),
+        ("GSTIN 24AABFN7754K1Z0", ["24aabfn7754k1z0"]),
+    ],
+)
+def test_only_distinctive_codes_count_as_codes(query: str, codes: list[str]) -> None:
+    from docforge.search.service import _codes, _words
+
+    assert _codes(_words(query)) == codes
+
+
+def test_searches_are_limited_per_caller_and_a_missing_embedding_is_unavailable_not_an_error(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], sessions: SessionFactory
+) -> None:
+    from docforge.search.embeddings import RecordingEmbedder
+
+    _, search, _, _ = indexed
+    limited = TestClient(
+        signed_in(create_app(None, search=search, searches_per_minute=3), role="integrator")
+    )
+    statuses = [limited.get("/v1/search", params={"q": "invoice"}).status_code for _ in range(4)]
+    replay_only = SearchService(sessions, RecordingEmbedder(Path("/nonexistent"), None, model="m"))
+    unavailable = TestClient(
+        signed_in(create_app(None, search=replay_only), role="integrator"),
+        raise_server_exceptions=False,
+    ).get("/v1/search", params={"q": "never recorded", "mode": "vector"})
+
+    assert statuses == [200, 200, 200, 429]
+    assert unavailable.status_code == 503
+
+
+@pytest.mark.parametrize("mode", ["keyword", "vector", "hybrid"])
+def test_identical_chunks_in_two_documents_come_back_in_the_same_order_every_time(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], owner_engine: Engine, mode: Mode
+) -> None:
+    """The same file uploaded twice (or in two organisations) gives chunks with equal scores.
+    The older document's chunk comes first, whatever order the rows sit in on disk."""
+    world, search, invoice_id, _ = indexed
+    with owner_engine.begin() as conn:
+        copy = conn.execute(
+            text(
+                "INSERT INTO documents (tenant_id, doc_type, sha256, storage_key, filename, "
+                "size_bytes) SELECT tenant_id, doc_type, :sha, storage_key, filename, size_bytes "
+                "FROM documents WHERE id = :id RETURNING id"
+            ),
+            {"sha": "c" * 64, "id": invoice_id},
+        ).scalar_one()
+        version = conn.execute(
+            text(
+                "INSERT INTO document_versions (tenant_id, document_id, version_no) "
+                "VALUES (:tenant, :document, 1) RETURNING id"
+            ),
+            {"tenant": DEFAULT_TENANT_ID, "document": copy},
+        ).scalar_one()
+        # Written after the original's chunks, but dated a day earlier.
+        conn.execute(
+            text(
+                "INSERT INTO chunks (tenant_id, document_id, document_version_id, chunk_no, kind, "
+                "page, block_ids, text, embedding_model, embedding, created_at) "
+                "SELECT tenant_id, :copy, :version, chunk_no, kind, page, block_ids, text, "
+                "embedding_model, embedding, created_at - interval '1 day' "
+                "FROM chunks WHERE document_id = :id"
+            ),
+            {"copy": copy, "version": version, "id": invoice_id},
+        )
+        conn.execute(
+            text("UPDATE documents SET indexed_version_id = :version WHERE id = :copy"),
+            {"version": version, "copy": copy},
+        )
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    hits = search.search(DEFAULT_TENANT_ID, batch, mode=mode, k=20)
+    pairs = [h.document_id for h in hits if h.text == hits[0].text]
+
+    assert pairs[:2] == [copy, invoice_id]
+
+
+def test_indexing_an_already_indexed_version_repairs_a_missing_pointer(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], owner_engine: Engine
+) -> None:
+    """Old code running just after the migration indexes without setting the pointer; the
+    next indexing of that document must put it right."""
+    world, search, invoice_id, _ = indexed
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE documents SET indexed_version_id = NULL WHERE id = :d"), {"d": invoice_id}
+        )
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+    assert search.search(DEFAULT_TENANT_ID, batch, mode="keyword") == []
+
+    assert search.index_document(DEFAULT_TENANT_ID, invoice_id) == 0
+    assert search.search(DEFAULT_TENANT_ID, batch, mode="keyword")
+
+
+def test_a_pointer_to_another_documents_version_is_refused(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], owner_engine: Engine
+) -> None:
+    from sqlalchemy.exc import IntegrityError
+
+    _, _, invoice_id, order_id = indexed
+    with pytest.raises(IntegrityError), owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "UPDATE documents SET indexed_version_id = "
+                "(SELECT indexed_version_id FROM documents WHERE id = :other) WHERE id = :d"
+            ),
+            {"other": order_id, "d": invoice_id},
+        )
+
+
+def test_hybrid_search_falls_back_to_words_when_the_question_cannot_be_embedded(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], sessions: SessionFactory
+) -> None:
+    """With no model key (the demo) or the embedding quota used up, a question that was
+    never embedded still finds what it names; only a search by meaning alone fails."""
+    world, _, invoice_id, _ = indexed
+    replay_only = SearchService(sessions, RecordingEmbedder(Path("/nonexistent"), None, model="m"))
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    hits = replay_only.search(DEFAULT_TENANT_ID, batch, mode="hybrid")
+
+    assert hits and hits[0].document_id == invoice_id
+    with pytest.raises(EmbeddingMissing):
+        replay_only.search(DEFAULT_TENANT_ID, batch, mode="vector")
+
+
+def test_a_fallback_to_words_is_said_in_the_answer_and_not_retried_for_a_minute(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID], sessions: SessionFactory
+) -> None:
+    world, _, _, _ = indexed
+    calls: list[str] = []
+
+    class Busy(FakeEmbedder):
+        def embed(self, texts: list[str], task: str) -> list[list[float]]:
+            calls.append(task)
+            from docforge.search.embeddings import EmbeddingUnavailable
+
+            raise EmbeddingUnavailable("quota")
+
+    search = SearchService(sessions, Busy())
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    first = search.search(DEFAULT_TENANT_ID, batch, mode="hybrid")
+    second = search.search(DEFAULT_TENANT_ID, "another question " + batch, mode="hybrid")
+
+    assert first.words_only and second.words_only
+    assert calls == ["query"]  # the second question did not wait on a busy service
+    response = TestClient(signed_in(create_app(None, search=search), role="integrator")).get(
+        "/v1/search", params={"q": batch}
+    )
+    assert response.json()["words_only"] is True
+
+
+def test_a_normal_hybrid_search_is_not_words_only(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID],
+) -> None:
+    world, search, _, _ = indexed
+
+    hits = search.search(DEFAULT_TENANT_ID, world.invoice_raw["lines"][0]["batch_no"]["text"])
+
+    assert hits and not hits.words_only

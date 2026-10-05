@@ -1,0 +1,8 @@
+[Unit]
+Description=DocForge ops check, reported to CloudWatch
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/docforge/ops-check.sh

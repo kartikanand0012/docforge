@@ -6,16 +6,23 @@
 
 import hashlib
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
+from pathlib import Path
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 
 from docforge import __version__
+from docforge.api.auth import require, sessions_router
 from docforge.api.documents import documents_router
+from docforge.api.exports import exports_router
+from docforge.api.review import review_router
+from docforge.api.search import search_router
 from docforge.api.uploads import (
     DEFAULT_MAX_UPLOAD_BYTES,
     MULTIPART_OVERHEAD,
@@ -23,11 +30,17 @@ from docforge.api.uploads import (
     safe_filename,
     too_large_message,
 )
+from docforge.api.webhooks import webhooks_router
+from docforge.auth import Authenticator, FailureLimiter, Principal
 from docforge.documents import DocumentService
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, InvoicePipeline
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
+from docforge.review.service import ReviewService
+from docforge.search.service import SearchService
+from docforge.telemetry import traced
+from docforge.webhooks import WebhookService
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +94,34 @@ def create_app(
     *,
     service: DocumentService | None = None,
     max_pages: int = DEFAULT_MAX_PAGES,
+    review: ReviewService | None = None,
+    evals_dir: Path | None = None,
+    prices: tuple[float, float] | None = None,
+    cors_origins: Sequence[str] = (),
+    authenticator: Authenticator | None = None,
+    webhooks: WebhookService | None = None,
+    search: SearchService | None = None,
+    searches_per_minute: int = 60,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
-    app = FastAPI(title="DocForge", version=__version__)
+    # FastAPI's own telemetry is off: its request spans record the query string (a search
+    # question) and it would configure exporters from the environment. Requests are traced
+    # below, by route only.
+    app = FastAPI(
+        title="DocForge",
+        version=__version__,
+        telemetry={"tracing": False, "metrics": False, "logs": False, "auto_configure": False},
+    )
+    # Without an authenticator every /v1 route answers 401: there is no anonymous mode.
+    app.state.authenticator = authenticator
+    if cors_origins:
+        # Only the review screen's own origin; credentials are not sent by cookie.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(cors_origins),
+            allow_methods=["GET", "POST", "DELETE"],
+            allow_headers=["Content-Type", "Authorization"],
+        )
 
     @app.middleware("http")
     async def refuse_oversized_requests(
@@ -95,6 +133,26 @@ def create_app(
         if declared.isdigit() and int(declared) > max_upload_bytes + MULTIPART_OVERHEAD:
             return JSONResponse({"detail": too_large_message(max_upload_bytes)}, status_code=413)
         return await call_next(request)
+
+    @app.middleware("http")
+    async def trace_requests(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # Named by route template, never by path or query: a path can hold an id, a query a
+        # question, and neither belongs in a third-party trace store.
+        with traced(request.method) as span:
+            span.set_attribute("http.request.method", request.method)
+            status = 500  # unless a response comes back: an error escaping here becomes a 500
+            try:
+                response = await call_next(request)
+                status = response.status_code
+                return response
+            finally:
+                route = request.scope.get("route")
+                template = getattr(route, "path", None) or "unmatched"
+                span.update_name(f"{request.method} {template}")
+                span.set_attribute("http.route", template)
+                span.set_attribute("http.response.status_code", status)
 
     @app.exception_handler(OperationalError)
     async def database_unavailable(request: Request, error: OperationalError) -> JSONResponse:
@@ -116,6 +174,17 @@ def create_app(
         app.include_router(
             documents_router(service, max_upload_bytes=max_upload_bytes, max_pages=max_pages)
         )
+    limiter = authenticator.limiter if authenticator else FailureLimiter(20, 300)
+    if authenticator is not None:
+        app.include_router(sessions_router(authenticator))
+    if review is not None:
+        app.include_router(review_router(review, evals_dir, prices, limiter))
+    if webhooks is not None:
+        app.include_router(webhooks_router(webhooks))
+    if review is not None:
+        app.include_router(exports_router(review))
+    if search is not None:
+        app.include_router(search_router(search, searches_per_minute))
     if pipeline is not None:
         _add_preview_endpoint(app, pipeline, max_upload_bytes)
     return app
@@ -124,7 +193,9 @@ def create_app(
 def _add_preview_endpoint(app: FastAPI, pipeline: InvoicePipeline, max_upload_bytes: int) -> None:
     @app.post("/v1/extractions", response_model=ExtractionResponse, responses=_ERRORS)
     async def create_extraction(
-        file: UploadFile, include_blocks: bool = False
+        file: UploadFile,
+        principal: Annotated[Principal, Depends(require("documents:write"))],
+        include_blocks: bool = False,
     ) -> ExtractionResponse:
         """Extract one born-digital invoice PDF in the request. Nothing is stored."""
         data = await read_pdf_upload(file, max_upload_bytes)
@@ -135,9 +206,7 @@ def _add_preview_endpoint(app: FastAPI, pipeline: InvoicePipeline, max_upload_by
         except DocumentTooLarge as error:
             raise HTTPException(413, f"The {error}.") from error
         except NoTextLayer as error:
-            raise HTTPException(
-                422, "The PDF has no text layer. Scanned documents are not supported yet."
-            ) from error
+            raise HTTPException(422, "No text could be read from the PDF.") from error
         except ParseError as error:
             logger.warning("unreadable upload: %s", error)
             raise HTTPException(422, "The file could not be read as a PDF.") from error

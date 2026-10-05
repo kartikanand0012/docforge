@@ -54,8 +54,17 @@ def assess[E: BaseModel](
     extraction: E,
     parsed: ParsedDocument,
     rules: Sequence[Callable[[E], Iterable[RuleResult]]],
+    confirmed: frozenset[str] = frozenset(),
 ) -> Assessment:
-    checks = verify_extraction(extraction, parsed)
+    """`confirmed` are paths whose value a reviewer entered or confirmed: they count as
+    settled, whatever their citation says. Rules still run on them.
+    """
+    checks = [
+        check.model_copy(update={"status": "confirmed", "found_in": ()})
+        if check.path in confirmed
+        else check
+        for check in verify_extraction(extraction, parsed)
+    ]
     results = run_rules(rules, extraction)
     issues: tuple[Issue, ...] = tuple(getattr(extraction, "issues", ()))
 
@@ -68,7 +77,7 @@ def assess[E: BaseModel](
 
     fields = []
     for check in checks:
-        reasons = [_UNVERIFIED[check.status]] if check.status != "verified" else []
+        reasons = [_UNVERIFIED[check.status]] if check.status in _UNVERIFIED else []
         reasons += failed_by_path.get(check.path, [])
         fields.append(
             FieldAssessment(
@@ -81,7 +90,7 @@ def assess[E: BaseModel](
             )
         )
 
-    unverified = sum(check.status != "verified" for check in checks)
+    unverified = sum(check.status in _UNVERIFIED for check in checks)
     reasons_for_review = []
     if unverified:
         verb = "was" if unverified == 1 else "were"

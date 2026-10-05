@@ -1,0 +1,992 @@
+{
+  "schema_version": "1",
+  "pair_id": "pair_010",
+  "seed": 20261002,
+  "layout": "B",
+  "invoice": {
+    "invoice_no": "NVM/26-27/04010",
+    "invoice_date": "2026-04-25",
+    "po_no": "PO-UMS-22010",
+    "po_date": "2026-04-19",
+    "seller": {
+      "name": "Navjivan Medical Agencies",
+      "address": "3 Relief Road, Ahmedabad 380001",
+      "state": "Gujarat",
+      "state_code": "24",
+      "gstin": "24AABFN7754K1Z0",
+      "drug_licence_nos": [
+        "GJ-20B-208831",
+        "GJ-21B-208832"
+      ]
+    },
+    "buyer": {
+      "name": "Umiya Medical Store",
+      "address": "9 Station Road, Surat 395003",
+      "state": "Gujarat",
+      "state_code": "24",
+      "gstin": "24ACDPU8840L1Z3",
+      "drug_licence_nos": [
+        "GJ-20-634519",
+        "GJ-21-634520"
+      ]
+    },
+    "place_of_supply": "Gujarat",
+    "place_of_supply_code": "24",
+    "supply_type": "intra_state",
+    "lines": [
+      {
+        "sl_no": 1,
+        "product_name": "Omeprazole Capsules IP 20mg",
+        "pack": "10x10",
+        "hsn": "30049099",
+        "batch_no": "XKZ91109",
+        "mfg": "2025-06",
+        "expiry": "2028-06",
+        "qty": 50,
+        "free_qty": 0,
+        "mrp": "65.59",
+        "ptr": "44.60",
+        "discount_pct": "2",
+        "taxable_value": "2185.40",
+        "gst_rate": "12",
+        "cgst": "131.12",
+        "sgst": "131.12",
+        "igst": "0.00",
+        "amount": "2447.64"
+      },
+      {
+        "sl_no": 2,
+        "product_name": "Ibuprofen Tablets IP 400mg",
+        "pack": "10x10",
+        "hsn": "30049099",
+        "batch_no": "JZN43739",
+        "mfg": "2025-06",
+        "expiry": "2028-06",
+        "qty": 20,
+        "free_qty": 0,
+        "mrp": "28.89",
+        "ptr": "19.65",
+        "discount_pct": "2.5",
+        "taxable_value": "383.18",
+        "gst_rate": "12",
+        "cgst": "22.99",
+        "sgst": "22.99",
+        "igst": "0.00",
+        "amount": "429.16"
+      },
+      {
+        "sl_no": 3,
+        "product_name": "Vitamin C Tablets 500mg",
+        "pack": "1x15",
+        "hsn": "30045090",
+        "batch_no": "MTQ471261",
+        "mfg": "2025-08",
+        "expiry": "2027-08",
+        "qty": 50,
+        "free_qty": 0,
+        "mrp": "56.70",
+        "ptr": "38.56",
+        "discount_pct": "0",
+        "taxable_value": "1928.00",
+        "gst_rate": "18",
+        "cgst": "173.52",
+        "sgst": "173.52",
+        "igst": "0.00",
+        "amount": "2275.04"
+      }
+    ],
+    "totals": {
+      "taxable_value": "4496.58",
+      "cgst": "327.63",
+      "sgst": "327.63",
+      "igst": "0.00",
+      "round_off": "0.16",
+      "grand_total": "5152.00"
+    }
+  },
+  "purchase_order": {
+    "po_no": "PO-UMS-22010",
+    "po_date": "2026-04-19",
+    "buyer": {
+      "name": "Umiya Medical Store",
+      "address": "9 Station Road, Surat 395003",
+      "state": "Gujarat",
+      "state_code": "24",
+      "gstin": "24ACDPU8840L1Z3",
+      "drug_licence_nos": [
+        "GJ-20-634519",
+        "GJ-21-634520"
+      ]
+    },
+    "supplier_name": "Navjivan Medical Agencies",
+    "supplier_gstin": "24AABFN7754K1Z0",
+    "lines": [
+      {
+        "sl_no": 1,
+        "product_name": "Omeprazole Capsules IP 20mg",
+        "pack": "10x10",
+        "qty": 50,
+        "scheme": null,
+        "rate": "44.60"
+      },
+      {
+        "sl_no": 2,
+        "product_name": "Ibuprofen Tablets IP 400mg",
+        "pack": "10x10",
+        "qty": 20,
+        "scheme": null,
+        "rate": "19.65"
+      },
+      {
+        "sl_no": 3,
+        "product_name": "Vitamin C Tablets 500mg",
+        "pack": "1x15",
+        "qty": 50,
+        "scheme": null,
+        "rate": "38.56"
+      }
+    ]
+  },
+  "documents": {
+    "invoice": {
+      "file": "invoice.pdf",
+      "page_width": 595.2755905511812,
+      "page_height": 841.8897637795277,
+      "boxes": [
+        {
+          "path": "seller.name",
+          "text": "Navjivan Medical Agencies",
+          "page": 1,
+          "x0": 295.28,
+          "y0": 806.15,
+          "x1": 410.52,
+          "y1": 818.08
+        },
+        {
+          "path": "seller.address",
+          "text": "3 Relief Road, Ahmedabad 380001",
+          "page": 1,
+          "x0": 295.68,
+          "y0": 795.67,
+          "x1": 397.35,
+          "y1": 804.88
+        },
+        {
+          "path": "seller.gstin",
+          "text": "24AABFN7754K1Z0",
+          "page": 1,
+          "x0": 320.68,
+          "y0": 785.45,
+          "x1": 379.73,
+          "y1": 793.32
+        },
+        {
+          "path": "seller.drug_licence_nos[0]",
+          "text": "GJ-20B-208831",
+          "page": 1,
+          "x0": 325.01,
+          "y0": 774.58,
+          "x1": 371.05,
+          "y1": 782.04
+        },
+        {
+          "path": "seller.drug_licence_nos[1]",
+          "text": "GJ-21B-208832",
+          "page": 1,
+          "x0": 375.67,
+          "y0": 776.17,
+          "x1": 421.72,
+          "y1": 783.63
+        },
+        {
+          "path": "invoice_no",
+          "text": "NVM/26-27/04010",
+          "page": 1,
+          "x0": 56.84,
+          "y0": 779.16,
+          "x1": 109.75,
+          "y1": 786.83
+        },
+        {
+          "path": "invoice_date",
+          "text": "25/04/2026",
+          "page": 1,
+          "x0": 47.8,
+          "y0": 767.87,
+          "x1": 80.5,
+          "y1": 774.91
+        },
+        {
+          "path": "po_no",
+          "text": "PO-UMS-22010",
+          "page": 1,
+          "x0": 52.47,
+          "y0": 757.01,
+          "x1": 98.88,
+          "y1": 764.48
+        },
+        {
+          "path": "po_date",
+          "text": "19/04/2026",
+          "page": 1,
+          "x0": 54.63,
+          "y0": 746.07,
+          "x1": 87.33,
+          "y1": 753.11
+        },
+        {
+          "path": "place_of_supply",
+          "text": "Gujarat (24)",
+          "page": 1,
+          "x0": 69.79,
+          "y0": 735.54,
+          "x1": 104.64,
+          "y1": 742.65
+        },
+        {
+          "path": "buyer.name",
+          "text": "Umiya Medical Store",
+          "page": 1,
+          "x0": 20.73,
+          "y0": 703.48,
+          "x1": 108.98,
+          "y1": 714.56
+        },
+        {
+          "path": "buyer.address",
+          "text": "9 Station Road, Surat 395003",
+          "page": 1,
+          "x0": 21.13,
+          "y0": 692.99,
+          "x1": 106.92,
+          "y1": 701.7
+        },
+        {
+          "path": "buyer.gstin",
+          "text": "24ACDPU8840L1Z3",
+          "page": 1,
+          "x0": 46.13,
+          "y0": 682.78,
+          "x1": 105.54,
+          "y1": 690.65
+        },
+        {
+          "path": "buyer.drug_licence_nos[0]",
+          "text": "GJ-20-634519",
+          "page": 1,
+          "x0": 50.46,
+          "y0": 671.91,
+          "x1": 92.17,
+          "y1": 679.23
+        },
+        {
+          "path": "buyer.drug_licence_nos[1]",
+          "text": "GJ-21-634520",
+          "page": 1,
+          "x0": 96.78,
+          "y0": 673.36,
+          "x1": 138.5,
+          "y1": 680.68
+        },
+        {
+          "path": "lines[0].sl_no",
+          "text": "1",
+          "page": 1,
+          "x0": 31.04,
+          "y0": 634.28,
+          "x1": 34.84,
+          "y1": 640.41
+        },
+        {
+          "path": "lines[0].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 38.64,
+          "y0": 634.52,
+          "x1": 67.74,
+          "y1": 641.44
+        },
+        {
+          "path": "lines[0].product_name",
+          "text": "Omeprazole Capsules IP 20mg",
+          "page": 1,
+          "x0": 75.75,
+          "y0": 635.68,
+          "x1": 166.2,
+          "y1": 644.54
+        },
+        {
+          "path": "lines[0].batch_no",
+          "text": "XKZ91109",
+          "page": 1,
+          "x0": 185.09,
+          "y0": 639.12,
+          "x1": 215.98,
+          "y1": 646.1
+        },
+        {
+          "path": "lines[0].expiry",
+          "text": "06/28",
+          "page": 1,
+          "x0": 230.0,
+          "y0": 640.53,
+          "x1": 246.45,
+          "y1": 647.06
+        },
+        {
+          "path": "lines[0].mfg",
+          "text": "06/25",
+          "page": 1,
+          "x0": 255.39,
+          "y0": 641.33,
+          "x1": 271.83,
+          "y1": 647.86
+        },
+        {
+          "path": "lines[0].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 280.78,
+          "y0": 642.13,
+          "x1": 298.66,
+          "y1": 648.7
+        },
+        {
+          "path": "lines[0].mrp",
+          "text": "65.59",
+          "page": 1,
+          "x0": 326.9,
+          "y0": 643.58,
+          "x1": 343.35,
+          "y1": 650.1
+        },
+        {
+          "path": "lines[0].qty",
+          "text": "50",
+          "page": 1,
+          "x0": 357.42,
+          "y0": 644.53,
+          "x1": 364.83,
+          "y1": 650.78
+        },
+        {
+          "path": "lines[0].free_qty",
+          "text": "0",
+          "page": 1,
+          "x0": 380.56,
+          "y0": 645.26,
+          "x1": 384.35,
+          "y1": 651.39
+        },
+        {
+          "path": "lines[0].ptr",
+          "text": "44.60",
+          "page": 1,
+          "x0": 403.05,
+          "y0": 645.97,
+          "x1": 419.51,
+          "y1": 652.5
+        },
+        {
+          "path": "lines[0].discount_pct",
+          "text": "2",
+          "page": 1,
+          "x0": 435.23,
+          "y0": 646.98,
+          "x1": 439.03,
+          "y1": 653.11
+        },
+        {
+          "path": "lines[0].gst_rate",
+          "text": "12",
+          "page": 1,
+          "x0": 453.09,
+          "y0": 647.54,
+          "x1": 460.51,
+          "y1": 653.78
+        },
+        {
+          "path": "lines[0].taxable_value",
+          "text": "2185.40",
+          "page": 1,
+          "x0": 483.71,
+          "y0": 648.5,
+          "x1": 507.37,
+          "y1": 655.26
+        },
+        {
+          "path": "lines[0].amount",
+          "text": "2447.64",
+          "page": 1,
+          "x0": 532.51,
+          "y0": 650.04,
+          "x1": 556.19,
+          "y1": 656.79
+        },
+        {
+          "path": "lines[1].sl_no",
+          "text": "2",
+          "page": 1,
+          "x0": 31.45,
+          "y0": 621.28,
+          "x1": 35.24,
+          "y1": 627.41
+        },
+        {
+          "path": "lines[1].hsn",
+          "text": "30049099",
+          "page": 1,
+          "x0": 39.05,
+          "y0": 621.52,
+          "x1": 68.15,
+          "y1": 628.45
+        },
+        {
+          "path": "lines[1].product_name",
+          "text": "Ibuprofen Tablets IP 400mg",
+          "page": 1,
+          "x0": 76.15,
+          "y0": 622.69,
+          "x1": 156.51,
+          "y1": 631.23
+        },
+        {
+          "path": "lines[1].batch_no",
+          "text": "JZN43739",
+          "page": 1,
+          "x0": 185.5,
+          "y0": 626.12,
+          "x1": 215.67,
+          "y1": 633.08
+        },
+        {
+          "path": "lines[1].expiry",
+          "text": "06/28",
+          "page": 1,
+          "x0": 230.41,
+          "y0": 627.54,
+          "x1": 246.86,
+          "y1": 634.06
+        },
+        {
+          "path": "lines[1].mfg",
+          "text": "06/25",
+          "page": 1,
+          "x0": 255.8,
+          "y0": 628.33,
+          "x1": 272.24,
+          "y1": 634.86
+        },
+        {
+          "path": "lines[1].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 281.18,
+          "y0": 629.13,
+          "x1": 299.06,
+          "y1": 635.7
+        },
+        {
+          "path": "lines[1].mrp",
+          "text": "28.89",
+          "page": 1,
+          "x0": 327.31,
+          "y0": 630.58,
+          "x1": 343.76,
+          "y1": 637.11
+        },
+        {
+          "path": "lines[1].qty",
+          "text": "20",
+          "page": 1,
+          "x0": 357.83,
+          "y0": 631.54,
+          "x1": 365.24,
+          "y1": 637.78
+        },
+        {
+          "path": "lines[1].free_qty",
+          "text": "0",
+          "page": 1,
+          "x0": 380.96,
+          "y0": 632.27,
+          "x1": 384.76,
+          "y1": 638.4
+        },
+        {
+          "path": "lines[1].ptr",
+          "text": "19.65",
+          "page": 1,
+          "x0": 403.46,
+          "y0": 632.97,
+          "x1": 419.91,
+          "y1": 639.5
+        },
+        {
+          "path": "lines[1].discount_pct",
+          "text": "2.5",
+          "page": 1,
+          "x0": 430.22,
+          "y0": 633.82,
+          "x1": 439.43,
+          "y1": 640.12
+        },
+        {
+          "path": "lines[1].gst_rate",
+          "text": "12",
+          "page": 1,
+          "x0": 453.5,
+          "y0": 634.55,
+          "x1": 460.91,
+          "y1": 640.79
+        },
+        {
+          "path": "lines[1].taxable_value",
+          "text": "383.18",
+          "page": 1,
+          "x0": 487.72,
+          "y0": 635.62,
+          "x1": 507.78,
+          "y1": 642.26
+        },
+        {
+          "path": "lines[1].amount",
+          "text": "429.16",
+          "page": 1,
+          "x0": 536.54,
+          "y0": 637.16,
+          "x1": 556.6,
+          "y1": 643.8
+        },
+        {
+          "path": "lines[2].sl_no",
+          "text": "3",
+          "page": 1,
+          "x0": 31.86,
+          "y0": 608.29,
+          "x1": 35.65,
+          "y1": 614.42
+        },
+        {
+          "path": "lines[2].hsn",
+          "text": "30045090",
+          "page": 1,
+          "x0": 39.46,
+          "y0": 608.53,
+          "x1": 68.56,
+          "y1": 615.45
+        },
+        {
+          "path": "lines[2].product_name",
+          "text": "Vitamin C Tablets 500mg",
+          "page": 1,
+          "x0": 76.56,
+          "y0": 609.69,
+          "x1": 149.69,
+          "y1": 618.0
+        },
+        {
+          "path": "lines[2].batch_no",
+          "text": "MTQ471261",
+          "page": 1,
+          "x0": 185.91,
+          "y0": 613.13,
+          "x1": 222.21,
+          "y1": 620.28
+        },
+        {
+          "path": "lines[2].expiry",
+          "text": "08/27",
+          "page": 1,
+          "x0": 230.82,
+          "y0": 614.54,
+          "x1": 247.27,
+          "y1": 621.07
+        },
+        {
+          "path": "lines[2].mfg",
+          "text": "08/25",
+          "page": 1,
+          "x0": 256.2,
+          "y0": 615.34,
+          "x1": 272.65,
+          "y1": 621.87
+        },
+        {
+          "path": "lines[2].pack",
+          "text": "1x15",
+          "page": 1,
+          "x0": 281.59,
+          "y0": 616.14,
+          "x1": 295.86,
+          "y1": 622.6
+        },
+        {
+          "path": "lines[2].mrp",
+          "text": "56.70",
+          "page": 1,
+          "x0": 327.72,
+          "y0": 617.59,
+          "x1": 344.17,
+          "y1": 624.12
+        },
+        {
+          "path": "lines[2].qty",
+          "text": "50",
+          "page": 1,
+          "x0": 358.23,
+          "y0": 618.55,
+          "x1": 365.65,
+          "y1": 624.79
+        },
+        {
+          "path": "lines[2].free_qty",
+          "text": "0",
+          "page": 1,
+          "x0": 381.37,
+          "y0": 619.27,
+          "x1": 385.17,
+          "y1": 625.4
+        },
+        {
+          "path": "lines[2].ptr",
+          "text": "38.56",
+          "page": 1,
+          "x0": 403.87,
+          "y0": 619.98,
+          "x1": 420.32,
+          "y1": 626.51
+        },
+        {
+          "path": "lines[2].discount_pct",
+          "text": "0",
+          "page": 1,
+          "x0": 436.05,
+          "y0": 620.99,
+          "x1": 439.84,
+          "y1": 627.12
+        },
+        {
+          "path": "lines[2].gst_rate",
+          "text": "18",
+          "page": 1,
+          "x0": 453.91,
+          "y0": 621.55,
+          "x1": 461.32,
+          "y1": 627.8
+        },
+        {
+          "path": "lines[2].taxable_value",
+          "text": "1928.00",
+          "page": 1,
+          "x0": 484.52,
+          "y0": 622.52,
+          "x1": 508.19,
+          "y1": 629.27
+        },
+        {
+          "path": "lines[2].amount",
+          "text": "2275.04",
+          "page": 1,
+          "x0": 533.33,
+          "y0": 624.05,
+          "x1": 557.01,
+          "y1": 630.8
+        },
+        {
+          "path": "totals.taxable_value",
+          "text": "4496.58",
+          "page": 1,
+          "x0": 170.85,
+          "y0": 593.1,
+          "x1": 194.52,
+          "y1": 599.85
+        },
+        {
+          "path": "totals.cgst",
+          "text": "327.63",
+          "page": 1,
+          "x0": 174.8,
+          "y0": 582.22,
+          "x1": 194.86,
+          "y1": 588.86
+        },
+        {
+          "path": "totals.sgst",
+          "text": "327.63",
+          "page": 1,
+          "x0": 175.15,
+          "y0": 571.22,
+          "x1": 195.21,
+          "y1": 577.86
+        },
+        {
+          "path": "totals.round_off",
+          "text": "0.16",
+          "page": 1,
+          "x0": 182.72,
+          "y0": 560.46,
+          "x1": 195.56,
+          "y1": 566.87
+        },
+        {
+          "path": "totals.grand_total",
+          "text": "5152.00",
+          "page": 1,
+          "x0": 172.23,
+          "y0": 549.12,
+          "x1": 195.9,
+          "y1": 555.87
+        }
+      ],
+      "unprinted": [
+        "buyer.state",
+        "buyer.state_code",
+        "lines[0].cgst",
+        "lines[0].igst",
+        "lines[0].sgst",
+        "lines[1].cgst",
+        "lines[1].igst",
+        "lines[1].sgst",
+        "lines[2].cgst",
+        "lines[2].igst",
+        "lines[2].sgst",
+        "place_of_supply_code",
+        "seller.state",
+        "seller.state_code",
+        "supply_type",
+        "totals.igst"
+      ]
+    },
+    "purchase_order": {
+      "file": "purchase_order.pdf",
+      "page_width": 595.2755905511812,
+      "page_height": 841.8897637795277,
+      "boxes": [
+        {
+          "path": "po_no",
+          "text": "PO-UMS-22010",
+          "page": 1,
+          "x0": 84.12,
+          "y0": 784.23,
+          "x1": 141.02,
+          "y1": 791.63
+        },
+        {
+          "path": "po_date",
+          "text": "19/04/2026",
+          "page": 1,
+          "x0": 321.98,
+          "y0": 784.23,
+          "x1": 362.01,
+          "y1": 791.63
+        },
+        {
+          "path": "buyer.name",
+          "text": "Umiya Medical Store",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 758.72,
+          "x1": 132.7,
+          "y1": 768.43
+        },
+        {
+          "path": "buyer.address",
+          "text": "9 Station Road, Surat 395003",
+          "page": 1,
+          "x0": 30.0,
+          "y0": 746.73,
+          "x1": 135.4,
+          "y1": 754.13
+        },
+        {
+          "path": "buyer.gstin",
+          "text": "24ACDPU8840L1Z3",
+          "page": 1,
+          "x0": 59.67,
+          "y0": 734.23,
+          "x1": 132.59,
+          "y1": 741.63
+        },
+        {
+          "path": "buyer.drug_licence_nos[0]",
+          "text": "GJ-20-634519",
+          "page": 1,
+          "x0": 64.57,
+          "y0": 721.73,
+          "x1": 115.7,
+          "y1": 729.13
+        },
+        {
+          "path": "buyer.drug_licence_nos[1]",
+          "text": "GJ-21-634520",
+          "page": 1,
+          "x0": 120.93,
+          "y0": 721.73,
+          "x1": 172.06,
+          "y1": 729.13
+        },
+        {
+          "path": "supplier_name",
+          "text": "Navjivan Medical Agencies",
+          "page": 1,
+          "x0": 80.0,
+          "y0": 701.23,
+          "x1": 182.26,
+          "y1": 708.63
+        },
+        {
+          "path": "supplier_gstin",
+          "text": "24AABFN7754K1Z0",
+          "page": 1,
+          "x0": 109.67,
+          "y0": 688.73,
+          "x1": 182.15,
+          "y1": 696.13
+        },
+        {
+          "path": "lines[0].sl_no",
+          "text": "1",
+          "page": 1,
+          "x0": 49.04,
+          "y0": 648.23,
+          "x1": 53.49,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[0].product_name",
+          "text": "Omeprazole Capsules IP 20mg",
+          "page": 1,
+          "x0": 57.49,
+          "y0": 648.23,
+          "x1": 168.64,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[0].qty",
+          "text": "50",
+          "page": 1,
+          "x0": 331.35,
+          "y0": 648.23,
+          "x1": 340.24,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[0].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 418.59,
+          "y0": 648.23,
+          "x1": 440.38,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[0].rate",
+          "text": "44.60",
+          "page": 1,
+          "x0": 543.26,
+          "y0": 648.23,
+          "x1": 563.28,
+          "y1": 655.63
+        },
+        {
+          "path": "lines[1].sl_no",
+          "text": "2",
+          "page": 1,
+          "x0": 49.04,
+          "y0": 634.23,
+          "x1": 53.49,
+          "y1": 641.63
+        },
+        {
+          "path": "lines[1].product_name",
+          "text": "Ibuprofen Tablets IP 400mg",
+          "page": 1,
+          "x0": 57.49,
+          "y0": 634.23,
+          "x1": 156.21,
+          "y1": 641.63
+        },
+        {
+          "path": "lines[1].qty",
+          "text": "20",
+          "page": 1,
+          "x0": 331.35,
+          "y0": 634.23,
+          "x1": 340.24,
+          "y1": 641.63
+        },
+        {
+          "path": "lines[1].pack",
+          "text": "10x10",
+          "page": 1,
+          "x0": 418.59,
+          "y0": 634.23,
+          "x1": 440.38,
+          "y1": 641.63
+        },
+        {
+          "path": "lines[1].rate",
+          "text": "19.65",
+          "page": 1,
+          "x0": 543.26,
+          "y0": 634.23,
+          "x1": 563.28,
+          "y1": 641.63
+        },
+        {
+          "path": "lines[2].sl_no",
+          "text": "3",
+          "page": 1,
+          "x0": 49.04,
+          "y0": 620.23,
+          "x1": 53.49,
+          "y1": 627.63
+        },
+        {
+          "path": "lines[2].product_name",
+          "text": "Vitamin C Tablets 500mg",
+          "page": 1,
+          "x0": 57.49,
+          "y0": 620.23,
+          "x1": 147.3,
+          "y1": 627.63
+        },
+        {
+          "path": "lines[2].qty",
+          "text": "50",
+          "page": 1,
+          "x0": 331.35,
+          "y0": 620.23,
+          "x1": 340.24,
+          "y1": 627.63
+        },
+        {
+          "path": "lines[2].pack",
+          "text": "1x15",
+          "page": 1,
+          "x0": 418.59,
+          "y0": 620.23,
+          "x1": 435.93,
+          "y1": 627.63
+        },
+        {
+          "path": "lines[2].rate",
+          "text": "38.56",
+          "page": 1,
+          "x0": 543.26,
+          "y0": 620.23,
+          "x1": 563.28,
+          "y1": 627.63
+        }
+      ],
+      "unprinted": [
+        "buyer.state",
+        "buyer.state_code",
+        "lines[0].scheme",
+        "lines[1].scheme",
+        "lines[2].scheme"
+      ]
+    }
+  }
+}

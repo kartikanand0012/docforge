@@ -1,0 +1,261 @@
+{
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "coa-v1",
+  "summary": {
+    "cases": 20,
+    "fields_total": 511,
+    "fields_correct": 511,
+    "seeded": 6,
+    "seeded_caught": 6,
+    "contradictions_expected": 3,
+    "contradictions_caught": 3,
+    "clean": 14,
+    "clean_flagged": 0
+  },
+  "cases": [
+    {
+      "case_id": "coa_001",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_002",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [
+        "Assay"
+      ],
+      "flagged": [
+        "Assay"
+      ],
+      "contradiction_expected": true,
+      "contradiction_flagged": true,
+      "decision": "review"
+    },
+    {
+      "case_id": "coa_003",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_004",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_005",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [
+        "Related substances"
+      ],
+      "flagged": [
+        "Related substances"
+      ],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "review"
+    },
+    {
+      "case_id": "coa_006",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_007",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_008",
+      "fields_total": 23,
+      "fields_correct": 23,
+      "wrong": [],
+      "seeded": [
+        "Assay"
+      ],
+      "flagged": [
+        "Assay"
+      ],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "review"
+    },
+    {
+      "case_id": "coa_009",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_010",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_011",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [
+        "Related substances"
+      ],
+      "flagged": [
+        "Related substances"
+      ],
+      "contradiction_expected": true,
+      "contradiction_flagged": true,
+      "decision": "review"
+    },
+    {
+      "case_id": "coa_012",
+      "fields_total": 23,
+      "fields_correct": 23,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_013",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_014",
+      "fields_total": 23,
+      "fields_correct": 23,
+      "wrong": [],
+      "seeded": [
+        "Assay"
+      ],
+      "flagged": [
+        "Assay"
+      ],
+      "contradiction_expected": true,
+      "contradiction_flagged": true,
+      "decision": "review"
+    },
+    {
+      "case_id": "coa_015",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_016",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_017",
+      "fields_total": 29,
+      "fields_correct": 29,
+      "wrong": [],
+      "seeded": [
+        "Related substances"
+      ],
+      "flagged": [
+        "Related substances"
+      ],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "review"
+    },
+    {
+      "case_id": "coa_018",
+      "fields_total": 23,
+      "fields_correct": 23,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_019",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    },
+    {
+      "case_id": "coa_020",
+      "fields_total": 26,
+      "fields_correct": 26,
+      "wrong": [],
+      "seeded": [],
+      "flagged": [],
+      "contradiction_expected": false,
+      "contradiction_flagged": false,
+      "decision": "accept"
+    }
+  ]
+}

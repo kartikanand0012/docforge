@@ -103,6 +103,87 @@ These lists are prep-industry content, partly SEO. Frequency claims are inferred
 
 ## Learned while building (tagged to the code)
 
+### C9 Ship (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+| --- | --- | --- |
+| How did you deploy it, and why not Kubernetes? | One arm64 host running the same Compose stack, Caddy for HTTPS, S3 and ECR, all in Terraform: about $40 a month for a demo, against about $100 for ECS and RDS. The application does not change for a bigger deployment; the runbook says what that needs. | `infra/`, `deploy/` |
+| A security review that changed the design | The API held the database owner's password, which defeats row-level security. Giving containers the host role (hop limit 2) would have handed the web container the right to read every secret. The fix: split the settings, one-shot tasks in their own service, and a key for one bucket. | `deploy/compose.yml`, `infra/secrets.tf` |
+| Public demos and abuse | A shared account with a public PIN plus lockout means one visitor can lock everyone out; so can a per-address limit when every request comes through one proxy. The shared account never locks; the client address is passed on only where the proxy is trusted; the demo account cannot upload or make webhooks. | `reviewers.shared`, `forwardedFor` |
+| Graceful degradation | With no model key, hybrid search would have failed every new question with a 503. It now answers from words alone, says so in the response, and stops asking a failing service for a minute. A rejected key is still an error, not "busy". | `search/service.py` |
+| Testing infrastructure you cannot apply | Validate and scan in containers (terraform, checkov, tflint, shellcheck), and run the production Compose stack locally with MinIO for S3. The trial found two bugs: a stale image, and a project-name clash that reused the dev database volume. | `.deploytest/` (gitignored) |
+| Writing for regulated buyers | "Designed to support" Part 11 and Annex 11, never "compliant": a control-by-control mapping that says what the organisation must still do, plus requirements traced to the tests that show them. | `docs/validation/` |
+
+### C8 Operations (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| How do you stop a prompt change from shipping a regression? | Recorded replies replayed in CI; floors per report, per field class, and zero wrong values; dataset, model and prompt pinned; on pull requests, no metric worse than the base branch and no floor loosened without a label. Proven with two live-recorded edits: one blocked, one let through. | `evals/gate.py`, `evals/demos/` |
+| What surprised you in evals? | A shortened prompt that dropped the rules I thought mattered showed no measurable difference: the reply schema already asks for block ids. A "helpful" prompt that normalised dates lost 56 of them, and the trust layer turned them into missing values, not wrong ones. | `test_eval_gate_demo.py` |
+| What can your gate not catch? | A determined author who re-records and lowers floors; run-to-run model variation (one run each); drift on the live model (no scheduled live run yet). 20 documents bound the document failure rate at about 14%. | `docs/progress.md` C8 |
+| Debugging slow search | Measured at 50,000 chunks: 180 ms, of which 170 was a per-chunk "newest version" subquery. Moved the fact onto the document; 21 ms. HNSW was never the issue: the planner sorted exactly. | `0012_indexed_version.py` |
+| HNSW and multi-tenancy | Postgres filters to the tenant and sorts exactly; forcing the index found 18% of true neighbours on random vectors. Exact keeps full recall; HNSW needs real embeddings at scale to judge. | `evals/vector_scale.py` |
+| A flaky eval that was really a bug | One search number flipped between runs: identical documents in two organisations tied, and Postgres ordered ties arbitrarily. I had attributed the change to my own edit. | `_TIE_BREAK` |
+| Tracing without leaking data | Spans carry ids, counts, tokens, cost; never content. Review found the leak I had missed: a recorded exception's message and stack (a SQL error's parameters, a validation error's input). FastAPI's own tracing recorded query strings, so it is off. | `telemetry.py::traced` |
+| Where does the cost go? | $0.0135 per one-page invoice; 92% is output tokens, because every value carries its block ids. That is the lever, not the prompt. | `evals/baselines/invoice.json` |
+| A profile that paid off | The review queue built a regex per value (12,000 per call) and overflowed Python's pattern cache; string search, proven equal on 40,000 cases. | `trust/verify.py::_contains` |
+| Running a migration on a busy table | Add the column alone with a lock timeout, fill in batches, build indexes concurrently, add the key NOT VALID and validate after. | `0012_indexed_version.py` |
+| Honest load numbers | Model replayed, so the numbers are the system's own; model latency is quoted separately; throughput is named `replay_documents_per_minute`; no p95 from five samples. | `load.py` |
+
+### C7 Search and certificates of analysis (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| How do you chunk documents with tables? | One chunk per table row with its column headers, so "batch X" lands on the line that has it; a summary chunk per document for "who sold what"; text chunks for the rest. Each cites the blocks it came from. | `search/chunking.py` |
+| Why hybrid and not just vectors? | Measured: vectors alone found 73% of exact-code questions (an embedding does not know 32001 from 32010); keyword alone missed certificates asked about in other words. Fused with reciprocal rank fusion, 100% on this set. | `evals/baselines/search.json` |
+| Debugging a wrong answer | Two real misses: Postgres read "NVM/26-27/32001" as a path, so 32001 was never a word (fixed with a second index over the text without punctuation); generic words outranked the code the person typed (codes now must match). Then review found years and "500mg" were being treated as codes. | `search/service.py::_codes` |
+| Tenant isolation in vector search | Row-level security and an explicit tenant filter. The eval counts results from the other organisation with and without the filter: 0. Caveat: with an approximate index, filtering after the nearest-neighbour step can lose results, so iterative scans are on; not yet measured at scale. | `_vector`, C8 load test |
+| Is your recall number honest? | Partly: the questions are generated from the same documents and the search was tuned on them. It is an upper bound; C8 adds a held-out set. | `evals/search.py` |
+| Never pass what you could not read | "NLT 98.0% and NMT 102.0%" was read as its first half, so a result could pass on half a limit. Anything not fully understood is now "not evaluated" and goes to a person. | `trust/limits.py` |
+| Recording paid calls for CI | Every embedding is recorded once, keyed by its text; CI replays and fails if a text was never recorded. Changing chunk text means re-recording, which made the summary fix visible. | `search/embeddings.py::RecordingEmbedder` |
+| Free-tier quotas | 100 embeddings a minute: indexing waits as long as the server says; a question someone is waiting on retries once and then answers 503. | `GeminiEmbedder._call` |
+
+### C6 Multi-tenant product surface (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| Multi-tenancy: app checks or database? | Both. Every query filters by tenant, and Postgres row-level security enforces it under a role that cannot lift it. The whole integration suite runs as that role, so every test also exercises isolation. | `migrations/versions/0008_row_level_security.py`, `db/tenancy.py` |
+| How do you pass the tenant to Postgres safely? | A context variable set by each service method; a listener runs `set_config(..., true)` at the start of every transaction, so it is local to the transaction and never stays on a pooled connection. | `db/tenancy.py` |
+| Finding the tenant before you know it | Three small owner functions return only a tenant id, from a key prefix, a session prefix or a version id. Nothing else crosses tenants. | `docforge_*_tenant` functions |
+| Least privilege, found by review | The app role could truncate the job queue, rename organisations and held UPDATE on append-only tables (refused by triggers, but held). Revoked, with a test per right. | `0010_tighter_rights.py`, `tests/integration/test_privileges.py` |
+| Keeping tokens out of the browser | Sign-in sets an HttpOnly, SameSite=Strict cookie; a same-origin route adds the bearer token server-side. A prefetch cache bug and a Secure cookie on plain HTTP both had to be found with a browser test. | `web/src/app/api/` |
+| Rate limiting that can be dodged | The per-address limit trusted X-Forwarded-For, which the web server passed straight from the browser. Fixed by counting per reviewer and ignoring client forwarding headers; the real client address must come from the front proxy. | `auth.py::login` |
+| Webhooks done properly | Outbox in the same transaction; a deterministic event id so a redelivered job emits nothing new; HMAC over timestamp and body; retries with the same id; secrets derived from a server key, never stored. | `webhooks.py` |
+| SSRF | HTTPS and public addresses only; review found DNS rebinding (resolve to check, resolve again to connect), NAT64, and an environment proxy bypass. Now the checked address is the one connected to. | `check_destination`, `_send` |
+| A misread library setting | `exponential_wait=10` meant 10, 100, 1000 seconds..., not doubling: the eighth webhook retry would have come months later. | `queue.py` |
+| Tamper evidence beyond the database | The chain's head is copied to object storage; a log rewritten with recomputed hashes still chains but no longer ends where the anchor saw it. Honest limit: same storage credentials as the app. | `anchors.py` |
+
+### C5 Review (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| Designing human-in-the-loop review | The queue holds only what needs a person, with the reasons. A correction is applied to the model's reply and re-read by the same code and checks, so a person's typo is caught like a model's. | `review/revise.py`, `review/service.py` |
+| What does an e-signature need? | The named person, re-authentication at that moment, a stated meaning, and binding to exactly what was signed. A review found the signature was not bound to what the reviewer saw; the client now sends the hash of the record shown. | `ReviewService.sign`, `review/signing.py` |
+| Time-of-check to time-of-use | Viewing and signing are two requests; another tab or a reprocess could change the record between them. Fixed by signing against the hash of what was displayed, refused otherwise. | `RecordChanged` |
+| Enforcing rules in the database as well as code | No correction after signing, no approval over open checks without a reason, reviewers never deleted or renamed: triggers and constraints, so a script or a bug cannot bypass them. | `migrations/versions/0006_review.py` |
+| Account enumeration and lockout | A locked account answered 423, a wrong PIN 401: that told an attacker the email exists. Now one answer. The lockout can still be abused to lock someone out; rate limiting belongs at the edge (C6/C9). | `api/review.py::_errors` |
+| A frontend bug only a review found | Opening a second correction form kept the first field's typed value in uncontrolled inputs; saving would have stored it under the other field, signed. Fixed with a `key` on the form. | `web/src/components/Review.tsx` |
+| Testing the whole thing | One browser test drives the real API, worker and database on recorded documents: upload, queue, highlight, correct, wrong PIN, sign, draft, audit chain. Runs in CI with no API key. | `scripts/e2e.sh`, `web/tests/e2e` |
+| A flaky test harness | The e2e script killed the shell that started the web server, not the server, so the next run hit a stale build. Process groups and a port check fixed it. | `scripts/e2e.sh` |
+
+### C4 Scans and tables (2026-10-03)
+
+| Question it answers | What happened in this project | Where to point |
+|---|---|---|
+| OCR vs vision model | Kept OCR plus the same text-only model: one pipeline, citations still point at boxes. Measured: 99.96% on a clean scan, 98.06% on a poor one. A vision model is the next thing to compare, on the misreads OCR makes. | `evals/baselines/scans.json` |
+| How do you handle skewed scans? | Estimate the angle from the sharpness of the row ink profile, rotate, OCR, then map boxes back. Without it the table rows of a 1.8° scan were scrambled; with it they were intact. | `parsing/raster.py`, `_read_scan` |
+| Does OCR error matter if the rules pass? | Yes: 5 poor scans had a misread product name that no rule on the invoice can see. Comparing with the order caught all 5. The metric reported is "wrong value accepted", not only accuracy. | `evals/scans.py` |
+| Long tables and output limits | One request per page bounds the reply (about 6,000 tokens a page). Fields given differently by two pages go to review rather than first-wins. | `_ask_by_page`, `merge_pages` |
+| Memory and backpressure for big files | Measured rather than assumed: batching cut the peak from 4.2 to 3.4 GB on 301 pages. The real protection is the parser in its own process with limits. | `parsing/isolation.py`, `evals/long_document.py` |
+| Isolating native code | Child process started fresh; JSON over the pipe (a review found pickle would let a compromised child attack the parent); secrets removed from its environment; killed on time or memory. | `parsing/isolation.py` |
+| A flaky test you tracked down | An intermittent real-parser failure was the model hub dropping a connection when a converter checked its files. Fixed by using the cached models, and an offline setting for production. | `tests/conftest.py`, `PARSER_OFFLINE` |
+| Decompression bombs | A PDF can declare a page of any size; rendering it at 200 dpi could take gigabytes. Pages are checked from their declared size first. | `render_pages` |
+
 ### C3 Trust layer (2026-10-03)
 
 | Question it answers | What happened in this project | Where to point |

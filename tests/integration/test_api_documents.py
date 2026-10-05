@@ -18,7 +18,7 @@ from docforge.db.session import SessionFactory
 from docforge.documents import DocumentService
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.storage import MemoryObjectStore, StorageUnavailable
-from fakes import FakeParser, ScriptedProvider
+from fakes import FakeParser, ScriptedProvider, signed_in
 
 pytestmark = pytest.mark.integration
 
@@ -38,7 +38,7 @@ class Api:
             {"invoice": InvoicePipeline(FakeParser(), ScriptedProvider(replies))},
             self._enqueue,
         )
-        self.client = TestClient(create_app(None, service=self.service, max_pages=20))
+        self.client = TestClient(signed_in(create_app(None, service=self.service, max_pages=20)))
 
     def _enqueue(self, session: Session, version: DocumentVersion) -> None:
         self.queued.append(version.id)
@@ -177,10 +177,16 @@ def test_audit_trail_lists_every_step_and_the_chain_verifies(api: Api) -> None:
         "extraction.created",
         "assessment.created",
     ]
-    assert trail[0]["actor"] == "api:anonymous"
+    assert trail[0]["actor"] == "key:00000000-0000-0000-0000-000000000001"
     assert trail[0]["prev_hash"] is None
     assert trail[1]["prev_hash"] == trail[0]["hash"]
-    assert verification == {"consistent": True, "entries": 4, "first_bad_id": None, "reason": None}
+    assert verification == {
+        "consistent": True,
+        "entries": 4,
+        "first_bad_id": None,
+        "reason": None,
+        "anchors_checked": 0,  # this service keeps no anchors
+    }
 
 
 @pytest.mark.parametrize(
