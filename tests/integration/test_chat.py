@@ -39,7 +39,7 @@ class Model:
     def __init__(self) -> None:
         self.requests: list[LLMRequest] = []
         self.reply: Callable[[dict[int, str]], dict[str, Any] | str] = lambda passages: {
-            "answer": "Not stated.", "citations": [], "unanswerable": True,
+            "statements": [], "unanswerable": True,
         }  # fmt: skip
 
     def generate(self, request: LLMRequest) -> LLMResponse:
@@ -63,7 +63,7 @@ def quoting(
         citations = [{"passage": n, "quote": target}]
         if also is not None:
             citations.append({"passage": n, "quote": also})
-        return {"answer": answer, "citations": citations, "unanswerable": False}
+        return {"statements": [{"text": answer, "citations": citations}], "unanswerable": False}
 
     return reply
 
@@ -121,8 +121,12 @@ def test_when_the_documents_do_not_say_it_says_so(setup: Setup) -> None:
 
 def test_an_answer_whose_quotes_are_not_in_the_passages_is_withheld(setup: Setup) -> None:
     setup.model.reply = lambda passages: {
-        "answer": "The total is 99,999.00.",
-        "citations": [{"passage": 1, "quote": "Grand total 99,999.00 approved"}],
+        "statements": [
+            {
+                "text": "The total is 99,999.00.",
+                "citations": [{"passage": 1, "quote": "Grand total 99,999.00 approved"}],
+            }
+        ],
         "unanswerable": False,
     }
 
@@ -135,9 +139,9 @@ def test_an_answer_whose_quotes_are_not_in_the_passages_is_withheld(setup: Setup
 
 def test_a_citation_naming_a_passage_that_was_not_given_is_not_a_citation(setup: Setup) -> None:
     setup.model.reply = lambda passages: {
-        "answer": "Yes.", "citations": [{"passage": 99, "quote": setup.invoice_no}],
+        "statements": [{"text": "Yes.", "citations": [{"passage": 99, "quote": setup.invoice_no}]}],
         "unanswerable": False,
-    }  # fmt: skip
+    }
 
     assert setup.ask("Is there an invoice?").status == "unsupported"
 
@@ -221,7 +225,7 @@ def test_an_organisation_has_a_daily_number_of_questions(setup: Setup) -> None:
 
 
 def test_a_malformed_reply_is_asked_again_once_then_fails(setup: Setup) -> None:
-    replies = iter(["not json", json.dumps({"answer": "x", "citations": [], "unanswerable": True})])
+    replies = iter(["not json", json.dumps({"statements": [], "unanswerable": True})])
     setup.model.reply = lambda passages: next(replies)
     assert setup.ask("What is the invoice number?").status == "not_found"
 
@@ -410,3 +414,30 @@ def test_a_question_naming_a_document_reads_that_documents_other_passages(
     )
 
     assert any(kwargs.get("document_id") == setup.invoice_id for _, kwargs in spy.calls)
+
+
+def test_a_statement_with_a_figure_its_quote_does_not_hold_is_dropped(setup: Setup) -> None:
+    """One real quote no longer carries a wrong figure: each statement is checked alone."""
+
+    def reply(passages: dict[int, str]) -> dict[str, Any]:
+        n = next(n for n, text in passages.items() if setup.batch in text)
+        return {
+            "statements": [
+                {
+                    "text": f"Batch {setup.batch} is on it.",
+                    "citations": [{"passage": n, "quote": setup.batch}],
+                },
+                {
+                    "text": "It billed 9,999 units.",
+                    "citations": [{"passage": n, "quote": setup.batch}],
+                },
+            ],
+            "unanswerable": False,
+        }
+
+    setup.model.reply = reply
+    answer = setup.ask(f"Which invoice billed batch {setup.batch}?")
+
+    assert answer.status == "partly_supported"
+    assert answer.text == f"Batch {setup.batch} is on it."
+    assert answer.dropped_statements == 1
