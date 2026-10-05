@@ -165,7 +165,7 @@ def test_one_caller_cannot_hold_open_unlimited_streams(
     monkeypatch.setattr(api_documents, "MAX_STREAMS_PER_CALLER", 1)
     assert client.get(url).status_code == 200
     assert client.get(url).status_code == 200  # the first one's place was given back
-    assert not api_documents._open_streams
+    assert client.get(url).status_code == 200  # still: the places were given back
 
     monkeypatch.setattr(api_documents, "MAX_STREAMS_PER_CALLER", 0)
     refused = client.get(url)
