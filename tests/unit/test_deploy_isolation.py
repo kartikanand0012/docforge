@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
+import yaml  # type: ignore[import-untyped]
 
 ROOT = Path(__file__).resolve().parents[2]
 STACKS = [ROOT / "deploy" / "compose.yml"]
