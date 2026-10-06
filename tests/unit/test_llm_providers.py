@@ -239,3 +239,47 @@ def test_openai_refusing_is_an_error_and_a_cut_off_reply_is_returned_as_it_is() 
         gpt(Recorder(openai_response("", refusal="I can't help"))).generate(REQUEST)
     cut = gpt(Recorder(openai_response('{"total": "9', status="incomplete"))).generate(REQUEST)
     assert cut.text == '{"total": "9'
+
+
+# --- review findings ---------------------------------------------------------------------------
+
+
+def test_a_call_stops_retrying_once_its_whole_time_is_spent() -> None:
+    """Each attempt has its own timeout; the call as a whole has one too: a slow provider
+    cannot hold a worker for four timeouts and their waits."""
+    import anthropic
+
+    times = iter([0.0, 30.0, 70.0, 200.0])
+    recorder = Recorder(*[claude_error(529, "overloaded_error")] * 4)
+    client = anthropic.Anthropic(api_key="test", max_retries=0, http_client=transport(recorder))
+    provider = AnthropicProvider(
+        "claude-x", client=client, sleep=lambda _: None, timeout_seconds=60.0,
+        clock=lambda: next(times),
+    )  # fmt: skip
+    with pytest.raises(LLMError, match="60"):
+        provider.generate(REQUEST)
+    assert len(recorder.sent) == 2  # the third would start after the call's minute
+
+
+def test_the_model_served_is_recorded_and_only_a_dated_snapshot_of_the_pin_is_quiet(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    import openai
+
+    def served(model: str) -> OpenAIProvider:
+        response = openai_response(json.dumps(ANSWER))
+        body = json.loads(response.content)
+        body["model"] = model
+        client = openai.OpenAI(
+            api_key="t",
+            max_retries=0,
+            http_client=transport(Recorder(httpx.Response(200, json=body))),
+        )
+        return OpenAIProvider("gpt-5", client=client, sleep=lambda _: None)
+
+    assert served("gpt-5-2026-08-07").generate(REQUEST).served_model == "gpt-5-2026-08-07"
+    assert "served" not in caplog.text
+    assert served("gpt-5-mini-2026-08-07").generate(REQUEST).served_model == "gpt-5-mini-2026-08-07"
+    assert "gpt-5-mini" in caplog.text
+    reply = claude(Recorder(claude_message(json.dumps(ANSWER), model="claude-y"))).generate(REQUEST)
+    assert (reply.model, reply.served_model) == ("claude-x", "claude-y")

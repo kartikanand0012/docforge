@@ -34,3 +34,7 @@ def test_each_call_is_priced_by_its_own_provider_and_model() -> None:
 def test_no_cost_is_shown_if_any_call_has_no_price() -> None:
     assert document_cost([("gemini", "flash", 1, 1, 0), ("openai", "o", 1, 1, 0)], PRICES) is None
     assert document_cost([("gemini", "flash", 1, 1, 0)], {}) is None
+
+
+def test_no_prices_means_no_cost_even_without_calls() -> None:
+    assert document_cost([], {}) is None

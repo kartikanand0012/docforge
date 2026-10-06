@@ -45,3 +45,20 @@ def test_suites_without_a_model_call_refuse_a_provider(
     with pytest.raises(SystemExit):
         main(["--suite", suite, "--provider", "anthropic"])
     assert "no model" in capsys.readouterr().err
+
+
+def test_a_moving_model_alias_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["--provider", "anthropic", "--model", "claude-sonnet-latest"])
+    assert "latest" in capsys.readouterr().err
+
+
+def test_another_gemini_model_does_not_overwrite_the_committed_reports() -> None:
+    base = Path("evals/baselines")
+    assert report_path(base, "gemini", "gemini-x", "invoice", default="gemini-y") == (
+        base / "gemini" / "gemini-x" / "invoice.json"
+    )
+    assert (
+        report_path(base, "gemini", "gemini-y", "invoice", default="gemini-y")
+        == base / "invoice.json"
+    )

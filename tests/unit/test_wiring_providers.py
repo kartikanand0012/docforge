@@ -61,3 +61,13 @@ def test_recordings_are_kept_per_provider(tmp_path: Path) -> None:
     assert (gemini.name, gemini.directory) == ("gemini", tmp_path / "llm")
     assert (claude.name, claude.directory) == ("anthropic", tmp_path / "llm-anthropic")
     assert claude.model == "claude-sonnet-5-5"
+
+
+def test_a_replay_deployment_never_calls_a_provider_even_with_a_key() -> None:
+    from docforge.wiring import chat_provider
+
+    replay = settings(GEMINI_API_KEY="g", PIPELINE_FACTORY="docforge.wiring:build_replay_pipelines")
+    assert isinstance(chat_provider(replay), RecordingProvider)
+    live = settings(GEMINI_API_KEY="g")
+    assert isinstance(chat_provider(live), GeminiProvider)
+    assert isinstance(chat_provider(settings()), RecordingProvider)  # no key: replay

@@ -369,3 +369,18 @@ def test_a_replay_deployment_needs_no_model_keys(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("PIPELINE_FACTORY", "docforge.wiring:build_replay_pipelines")
     monkeypatch.setenv("CHAT_PROVIDER", "anthropic")
     assert make_settings().provider_for("chat") == "anthropic"
+
+
+@pytest.mark.parametrize("seconds", ["0", "-1", "3601"])
+def test_a_model_timeout_must_be_sensible(seconds: str) -> None:
+    with pytest.raises(ValueError, match="llm_timeout_seconds"):
+        make_settings(LLM_TIMEOUT_SECONDS=seconds)
+
+
+@pytest.mark.parametrize(
+    "prices",
+    ['{"a/b": [true, 1]}', '{"a/b": [-1, 1]}', '{"a/b": [NaN, 1]}', '{"a/b": [1, Infinity]}'],
+)
+def test_prices_must_be_real_non_negative_numbers(prices: str) -> None:
+    with pytest.raises(ValueError, match="MODEL_PRICES"):
+        make_settings(MODEL_PRICES=prices)

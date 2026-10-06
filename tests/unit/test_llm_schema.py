@@ -5,7 +5,7 @@ closed (`additionalProperties: false`) and every property required. The same pyd
 still validate every reply; only what the provider is sent differs.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from pydantic import BaseModel, Field
@@ -68,3 +68,26 @@ def test_a_recursive_schema_or_a_keyword_strict_modes_reject_is_refused() -> Non
         strict_json_schema(Node)
     with pytest.raises(ValueError, match="minLength"):
         strict_json_schema(Bounded)
+
+
+class Named(BaseModel):
+    title: str
+    format: str
+    default: int
+
+
+def test_field_names_that_are_also_schema_words_are_fields() -> None:
+    strict = strict_json_schema(Named)
+    assert sorted(strict["properties"]) == ["default", "format", "title"]
+    assert sorted(strict["required"]) == ["default", "format", "title"]
+
+
+class Kinded(BaseModel):
+    kind: Literal["invoice"]
+
+
+def test_a_single_allowed_value_is_an_enum() -> None:
+    assert strict_json_schema(Kinded)["properties"]["kind"] == {
+        "type": "string",
+        "enum": ["invoice"],
+    }
