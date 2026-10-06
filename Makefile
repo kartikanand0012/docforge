@@ -73,6 +73,7 @@ eval: ## Re-run the invoice eval offline from recordings and rewrite the baselin
 	uv run python -m docforge.evals --suite search --mode replay
 	uv run python -m docforge.evals --suite search-heldout --mode replay
 	uv run python -m docforge.evals --suite answers --mode replay
+	uv run python -m docforge.evals --suite mcp --mode replay
 
 gate: ## Check the eval reports against the floors in evals/gate.json (CI blocks on a failure)
 	uv run python -m docforge.evals.gate

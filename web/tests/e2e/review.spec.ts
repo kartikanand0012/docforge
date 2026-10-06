@@ -212,3 +212,30 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     await expect(chat.getByRole("link", { name: "sop-goods-receipt.docx, page 1" })).toBeVisible();
   });
 });
+
+test("an administrator connects an AI agent with a read-only key, and revokes it", async ({ page, request }) => {
+  await signIn(page);
+  await expect(page.getByRole("heading", { name: "Review queue" })).toBeVisible();
+  await page.getByRole("link", { name: "AI agents" }).click();
+  await page.getByLabel("What it is for").fill("E2E agent");
+  await page.getByRole("button", { name: "Make key" }).click();
+
+  const command = await page.locator("pre.command").innerText();
+  expect(command).toContain("claude mcp add --transport http docforge");
+  expect(command).toContain("/v1/mcp");
+  const token = /Bearer (dfk_[0-9a-f]{12}_[A-Za-z0-9_-]{43})/.exec(command)![1];
+
+  // The key works against the API itself, as an agent would use it.
+  const list = () =>
+    request.post(`${API}/v1/mcp`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json, text/event-stream" },
+      data: { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+    });
+  const listed = await list();
+  expect(listed.status()).toBe(200);
+  expect(JSON.stringify(await listed.json())).toContain("search_documents");
+
+  await page.getByRole("button", { name: "Revoke E2E agent" }).click();
+  await expect(page.getByRole("row", { name: /E2E agent/ })).toContainText("Revoked");
+  expect((await list()).status()).toBe(401);
+});

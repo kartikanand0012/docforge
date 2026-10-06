@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 
 from docforge import __version__
+from docforge.api.agents import agents_router
 from docforge.api.auth import require, sessions_router
 from docforge.api.chat import chat_router
 from docforge.api.collections import collections_router
@@ -41,6 +42,8 @@ from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, Inv
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.limits import Limits, LocalLimits
 from docforge.llm.base import LLMError, LLMQuotaExhausted
+from docforge.mcp_server.server import mount as mount_mcp
+from docforge.mcp_server.tools import AgentTools
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
 from docforge.review.service import ReviewService
 from docforge.search.service import SearchService
@@ -111,6 +114,7 @@ def create_app(
     questions_per_minute: int = 20,
     collections: CollectionService | None = None,
     limits: Limits | None = None,
+    agents: AgentTools | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     # FastAPI's own telemetry is off: its request spans record the query string (a search
@@ -202,6 +206,10 @@ def create_app(
         app.include_router(chat_router(chat, questions_per_minute, caps))
     if collections is not None:
         app.include_router(collections_router(collections))
+    if agents is not None and authenticator is not None:
+        # AI agents, through the MCP server, with keys administrators make.
+        app.include_router(agents_router(authenticator, agents))
+        mount_mcp(app, agents, authenticator, list(cors_origins))
     if pipeline is not None:
         _add_preview_endpoint(app, pipeline, max_upload_bytes)
     return app

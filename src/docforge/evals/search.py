@@ -155,6 +155,8 @@ class Corpus:
     tenants: dict[str, uuid.UUID]  # a, b, and "all" (every document, for the unfiltered run)
     keys: dict[uuid.UUID, tuple[str, str]]  # document id -> (key, tenant name)
     documents: int
+    service: DocumentService | None = None  # what processed them, for readers of documents
+    owner_url: Any = None  # the database as its owner, for planting what an app may not
 
 
 @contextmanager
@@ -231,7 +233,7 @@ def indexed_corpus(
                     service.process(ingested.version.id)
                     search.index_document(tenants[name], ingested.document.id)
                     keys[ingested.document.id] = (key, name)
-        yield Corpus(search, sessions, tenants, keys, documents)
+        yield Corpus(search, sessions, tenants, keys, documents, service, owner_url)
 
 
 def run_search_eval(

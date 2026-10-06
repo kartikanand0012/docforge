@@ -4,7 +4,7 @@ from docforge.chat.injection import reads_as_instructions, shown
 
 
 def test_hidden_characters_are_removed_and_compatibility_forms_folded() -> None:
-    assert shown("Ig​nore\U000e0041 Ａ") == "Ignore A"
+    assert shown("Ig\u200bnore\U000e0041 \uff21") == "Ignore A"
 
 
 def test_instructions_to_a_model_are_recognised_and_ordinary_text_is_not() -> None:

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from docforge.config import get_settings
+from docforge.evals.agents import format_agent_report, run_agent_eval
 from docforge.evals.answers import (
     AnswerResult,
     Question,
@@ -46,7 +47,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m docforge.evals", description=__doc__)
     parser.add_argument(
         "--suite",
-        choices=("extraction", "trust", "scans", "coa", "search", "search-heldout", "answers"),
+        choices=(
+            "extraction",
+            "trust",
+            "scans",
+            "coa",
+            "search",
+            "search-heldout",
+            "answers",
+            "mcp",
+        ),
         default="extraction",
     )
     parser.add_argument("--mode", choices=("replay", "record"), default="replay")
@@ -67,10 +77,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "search": "search",
         "search-heldout": "search_heldout",
         "answers": "answers",
+        "mcp": "mcp",
     }
     out = args.out or Path(f"evals/baselines/{names[args.suite]}.json")
     if args.mode == "record" and settings.gemini_api_key is None:
         parser.error("record mode needs GEMINI_API_KEY")
+    if args.suite == "mcp":
+        return _agents(args, out, settings.embedding_model)
     if args.suite == "answers":
         secret = settings.gemini_api_key if args.mode == "record" else None
         return _answers(args, out, settings.embedding_model, secret)
@@ -192,6 +205,21 @@ def _answers(args: argparse.Namespace, out: Path, embedding_model: str, secret: 
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
     print(format_answer_report(report))
+    print(f"Report written to {out}")
+    return 0
+
+
+def _agents(args: argparse.Namespace, out: Path, embedding_model: str) -> int:
+    """The MCP server: no model is called, so recordings of the documents are enough."""
+    embedder = RecordingEmbedder(args.recordings / "embeddings", None, model=embedding_model)
+    try:
+        report = run_agent_eval(args.fixtures, args.coa, args.recordings, embedder)
+    except (EmbeddingMissing, ParseError, LLMError) as error:
+        print(f"Eval failed: {error}", file=sys.stderr)
+        return 1
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    print(format_agent_report(report))
     print(f"Report written to {out}")
     return 0
 

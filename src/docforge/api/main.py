@@ -10,6 +10,7 @@ from docforge.config import get_settings
 from docforge.db.session import make_engine, make_session_factory
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.limits import DatabaseLimits
+from docforge.mcp_server.tools import AgentTools
 from docforge.telemetry import configure_tracing, settings_prices
 from docforge.wiring import (
     build_authenticator,
@@ -32,6 +33,14 @@ def create_default_app() -> FastAPI:
     prices = settings_prices(settings)
     search = build_search(settings)
     sessions = make_session_factory(make_engine(settings.database_url.get_secret_value()))
+    chat = build_chat(settings, search)
+    collections = CollectionService(sessions)
+    limits = DatabaseLimits(sessions)
+    # AI agents read through the same services, under the same limits.
+    agents = AgentTools(
+        sessions, search=search, chat=chat, collections=collections, documents=service,
+        limits=limits,
+    )  # fmt: skip
     return create_app(
         preview if isinstance(preview, InvoicePipeline) else None,
         max_upload_bytes=settings.max_upload_bytes,
@@ -44,7 +53,8 @@ def create_default_app() -> FastAPI:
         authenticator=build_authenticator(settings),
         webhooks=webhooks,
         search=search,
-        chat=build_chat(settings, search),
-        collections=CollectionService(sessions),
-        limits=DatabaseLimits(sessions),
+        chat=chat,
+        collections=collections,
+        limits=limits,
+        agents=agents,
     )

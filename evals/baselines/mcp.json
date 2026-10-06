@@ -1,0 +1,15 @@
+{
+  "tools_listed": 6,
+  "write_tools": 0,
+  "calls": 16,
+  "calls_succeeded": 1.0,
+  "ask_matches_rest": 1.0,
+  "cross_tenant_leaks": 0,
+  "unauthenticated_accepted": 0,
+  "wrong_role_accepted": 0,
+  "planted_instructions_passed": 0,
+  "oversized_results": 0,
+  "limits_enforced": 1.0,
+  "audit_rows_match_calls": 1.0,
+  "audit_rows_with_text": 0
+}
