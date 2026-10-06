@@ -27,16 +27,19 @@ class RecordingProvider:
         model: str,
         inner: LLMProvider | None = None,
         *,
-        provider: str = "gemini",
+        provider: str | None = None,
         options: dict[str, Any] | None = None,
     ) -> None:
+        """`provider` names whose recordings these are; unnamed, they are keyed as Gemini's
+        always were, and served under the live provider's name (or "replay")."""
         if inner is not None and inner.model != model:
             raise ValueError(f"inner provider uses model {inner.model!r}, not {model!r}")
-        if inner is not None and inner.name != provider:
+        if inner is not None and provider is not None and inner.name != provider:
             raise ValueError(f"inner provider is {inner.name!r}, not {provider!r}")
-        self.name = provider
+        self.name = provider or (inner.name if inner is not None else "replay")
+        self._provider = provider
         self.model = model
-        self._directory = directory
+        self.directory = directory
         self._inner = inner
         self._options = options or {}
 
@@ -48,14 +51,14 @@ class RecordingProvider:
             "prompt": request.prompt,
             "schema": request.schema.model_json_schema(),
         }
-        if self.name != "gemini":  # Gemini's keys stay as they were: its recordings replay
-            identity |= {"provider": self.name, "options": self._options}
+        if self._provider not in (None, "gemini"):  # Gemini's keys stay as they were
+            identity |= {"provider": self._provider, "options": self._options}
         encoded = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 
     def generate(self, request: LLMRequest) -> LLMResponse:
         key = self._key(request)
-        path = self._directory / f"{key[:24]}.json"
+        path = self.directory / f"{key[:24]}.json"
         recorded = self._read(path, key)
         if recorded is not None:
             return recorded
@@ -65,7 +68,7 @@ class RecordingProvider:
                 "record one with a live provider"
             )
         response = self._inner.generate(request)
-        self._directory.mkdir(parents=True, exist_ok=True)
+        self.directory.mkdir(parents=True, exist_ok=True)
         recording = {
             "key": key,
             "model": self.model,

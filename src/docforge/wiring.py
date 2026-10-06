@@ -8,7 +8,7 @@ from pathlib import Path
 from docforge.anchors import AnchorStore
 from docforge.auth import Authenticator
 from docforge.chat.service import ChatService
-from docforge.config import Settings
+from docforge.config import Settings, Task
 from docforge.conversion import Converter, FileConverter, IsolatedConverter, RecordingConverter
 from docforge.conversion_service import RemoteConverter
 from docforge.db.session import make_engine, make_session_factory
@@ -30,11 +30,56 @@ from docforge.search.service import SearchService
 from docforge.storage import S3ObjectStore
 from docforge.webhooks import WebhookService
 
+_RECORDINGS = {"gemini": "llm", "anthropic": "llm-anthropic", "openai": "llm-openai"}
+
+
+def build_provider(settings: Settings, task: Task) -> LLMProvider:
+    """The live provider `task` is set to use, with its pinned model. Raises ValueError,
+    naming the key, if that provider's key is not set."""
+    name, model = settings.provider_for(task), settings.model_for(task)
+    keys = {
+        "gemini": settings.gemini_api_key,
+        "anthropic": settings.anthropic_api_key,
+        "openai": settings.openai_api_key,
+    }
+    key = keys[name]
+    if key is None:
+        raise ValueError(f"{name.upper()}_API_KEY is not set")
+    if name == "anthropic":
+        from docforge.llm.anthropic import AnthropicProvider
+
+        return AnthropicProvider(
+            model, key.get_secret_value(), timeout_seconds=settings.llm_timeout_seconds
+        )
+    if name == "openai":
+        from docforge.llm.openai import OpenAIProvider
+
+        return OpenAIProvider(
+            model,
+            key.get_secret_value(),
+            reasoning_effort=settings.openai_reasoning_effort,
+            timeout_seconds=settings.llm_timeout_seconds,
+        )
+    return GeminiProvider(model, key.get_secret_value())
+
+
+def recorded_provider(
+    settings: Settings, task: Task, live: LLMProvider | None = None
+) -> RecordingProvider:
+    """`task`'s provider through its recordings: replay only, or recording what `live` says.
+    Each provider's recordings are kept in a directory of their own."""
+    name, model = settings.provider_for(task), settings.model_for(task)
+    options = (
+        {"reasoning_effort": settings.openai_reasoning_effort}
+        if name == "openai" and settings.openai_reasoning_effort
+        else None
+    )
+    directory = Path(settings.recordings_dir) / _RECORDINGS[name]
+    return RecordingProvider(directory, model, live, provider=name, options=options)
+
 
 def build_pipeline(settings: Settings) -> InvoicePipeline:
-    if settings.gemini_api_key is None:
-        raise ValueError("GEMINI_API_KEY is not set")
-    provider = GeminiProvider(settings.gemini_model, settings.gemini_api_key.get_secret_value())
+    provider = build_provider(settings, "extraction")
     parser = IsolatedParser(
         partial(DoclingParser, batch_pages=settings.parser_batch_pages),
         name=DoclingParser.name,
@@ -69,7 +114,7 @@ def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
     """
     recordings = Path(settings.recordings_dir)
     parser = CachingParser(recordings / "parsed")
-    provider = RecordingProvider(recordings / "llm", settings.gemini_model)
+    provider = recorded_provider(settings, "extraction")
     order: ExtractionPipeline[PurchaseOrderExtraction] = ExtractionPipeline(
         parser, provider, PURCHASE_ORDER_SPEC, max_pages=settings.max_pages
     )
@@ -165,19 +210,15 @@ def build_search(settings: Settings) -> SearchService:
 
 
 def build_chat(settings: Settings, search: SearchService) -> ChatService:
-    """Answers with Gemini. With no key, recorded answers are replayed (the demo and the
-    browser test); `CHAT_RECORD=1` with a key records what is asked, for those replays."""
-    recordings = Path(settings.recordings_dir) / "llm"
+    """Answers with the chat provider. With no key, its recorded answers are replayed (the
+    demo and the browser test); `CHAT_RECORD=1` with a key records what is asked."""
     provider: LLMProvider
-    if settings.gemini_api_key is None:
-        provider = RecordingProvider(recordings, settings.gemini_model)
+    try:
+        live = build_provider(settings, "chat")
+    except ValueError:  # no key: replay, which production refuses at start-up
+        provider = recorded_provider(settings, "chat")
     else:
-        live = GeminiProvider(settings.gemini_model, settings.gemini_api_key.get_secret_value())
-        provider = (
-            RecordingProvider(recordings, settings.gemini_model, live)
-            if settings.chat_record
-            else live
-        )
+        provider = recorded_provider(settings, "chat", live) if settings.chat_record else live
     return ChatService(
         make_session_factory(make_engine(settings.database_url.get_secret_value())),
         search,
