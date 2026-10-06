@@ -292,6 +292,8 @@ class Settings(BaseSettings):
         token = self.converter_token.get_secret_value() if self.converter_token else ""
         if len(token) < 32:
             raise ValueError("CONVERTER_TOKEN must be set (32 characters or more)")
+        if self.pipeline_factory == "docforge.wiring:build_replay_pipelines":
+            return self  # the demo replays recorded replies and embeddings: no provider is called
         keys = {"anthropic": self.anthropic_api_key, "openai": self.openai_api_key}
         for provider in dict.fromkeys((self.extraction_provider, self.chat_provider)):
             if provider in keys and keys[provider] is None:

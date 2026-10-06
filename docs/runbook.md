@@ -98,10 +98,31 @@ The Postgres owner password is set when the volume is first created. Rotating it
 (`force_destroy = false`): empty it first with `aws s3 rm --recursive s3://<bucket>` if you
 mean to delete it.
 
+## Where documents go
+
+| What is sent | Where |
+| --- | --- |
+| Document text, to read its fields | The extraction provider (`EXTRACTION_PROVIDER`, Gemini by default) |
+| Passages, the question and the conversation, to answer | The chat provider (`CHAT_PROVIDER`, Gemini by default) |
+| Chunk text and every question, to search by meaning | Google (Gemini embeddings), always |
+| Traces and logs | No document content |
+
+- **Switching a provider on.** Record its evals first (`python -m docforge.evals --provider
+  anthropic --mode record`, suite by suite), commit the reports under
+  `evals/baselines/<provider>/<model>/`, and add their floors to `evals/gate.json`, the same as
+  Gemini's. Only then set `EXTRACTION_PROVIDER` or `CHAT_PROVIDER` and the provider's key.
+- **A new provider is a new sub-processor.** Tell customers before their documents go to it:
+  invoices hold names, addresses and GSTINs, personal data under India's DPDP Act.
+- **Keys:** use a key on a paid plan with a spend limit. OpenAI is always told not to store a
+  response (`store: false`); zero data retention is by agreement with Anthropic or OpenAI.
+- **A replay deployment** (the demo, `PIPELINE_FACTORY=docforge.wiring:build_replay_pipelines`)
+  calls no provider and needs no key. A live production deployment refuses to start without
+  the key of each selected provider, and Gemini's for search.
+
 ## Not covered here
 
 - No backups: the demo's data is synthetic and re-seeded every night. A real deployment needs
   RDS (or snapshots of the volume) and point-in-time recovery.
 - One host, one zone: a real deployment needs at least two, behind a load balancer.
-- Live extraction: set `GEMINI_API_KEY` and `PIPELINE_FACTORY=docforge.wiring:build_pipelines`
+- Live extraction: set `GEMINI_API_KEY` (and any other selected provider's key; see Where documents go) and `PIPELINE_FACTORY=docforge.wiring:build_pipelines`
   in the settings parameter, and size the host for the parser (`PARSER_MAX_RSS_MB`).
