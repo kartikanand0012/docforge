@@ -214,12 +214,18 @@ def test_openai_reasoning_is_thinking_not_output_and_a_reasoning_model_has_no_te
 
     (sent,) = recorder.sent
     assert "temperature" not in sent and sent["reasoning"] == {"effort": "low"}
-    assert (response.input_tokens, response.output_tokens, response.thinking_tokens) == (100, 18, 12)
+    assert (response.input_tokens, response.output_tokens, response.thinking_tokens) == (
+        100,
+        18,
+        12,
+    )
 
 
 def test_openai_rate_limits_are_retried_and_no_credit_is_a_quota_stop() -> None:
     sleeps: list[float] = []
-    recorder = Recorder(openai_error(429, "rate_limit_exceeded"), openai_response(json.dumps(ANSWER)))
+    recorder = Recorder(
+        openai_error(429, "rate_limit_exceeded"), openai_response(json.dumps(ANSWER))
+    )
     assert json.loads(gpt(recorder, sleeps=sleeps).generate(REQUEST).text) == ANSWER
     assert sleeps == [2.0]
     with pytest.raises(LLMQuotaExhausted, match="insufficient_quota"):
