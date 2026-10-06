@@ -15,7 +15,6 @@ A conversation belongs to the person who started it. Questions and answers are s
 
 import logging
 import re
-import unicodedata
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
@@ -26,6 +25,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
+from docforge.chat.injection import reads_as_instructions
 from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passage, build_prompt
 from docforge.chat.statements import CODE, RawStatement, check_statements
 from docforge.chat.verify import cited_blocks
@@ -460,7 +460,7 @@ class ChatService:
         data, and one that tries to direct the answer is not read as evidence. Its place goes
         to the next passage the search finds, so a planted passage cannot crowd out the rest.
         Held-back passages are logged, for an administrator to look at."""
-        held = [hit for hit in hits if _instructs(hit.text)]
+        held = [hit for hit in hits if reads_as_instructions(hit.text)]
         if not held:
             return hits, 0
         logger.warning(
@@ -468,7 +468,7 @@ class ChatService:
             len(held),
             [f"{hit.document_id}:p{hit.page}" for hit in held],
         )
-        kept = [hit for hit in hits if not _instructs(hit.text)]
+        kept = [hit for hit in hits if not reads_as_instructions(hit.text)]
         seen = {(hit.document_id, hit.page, hit.text) for hit in hits}
         more = self._search.search(
             tenant_id,
@@ -480,7 +480,8 @@ class ChatService:
         )
         for hit in more:
             key = (hit.document_id, hit.page, hit.text)
-            if len(kept) < self._passages and key not in seen and not _instructs(hit.text):
+            fresh = key not in seen and not reads_as_instructions(hit.text)
+            if len(kept) < self._passages and fresh:
                 seen.add(key)
                 kept.append(hit)
         return SearchHits(kept, words_only=hits.words_only or more.words_only), len(held)
@@ -750,37 +751,6 @@ class ChatService:
         if conversation is None:
             raise ConversationNotFound(conversation_id)
         return conversation
-
-
-# Wording that addresses the model, not a reader: "ignore the previous instructions", "you
-# are now an assistant that...", "reveal your system prompt". Ordinary letters ("you are now
-# entitled to a refund") and documents about AI ("the system prompt was reviewed") are not it.
-# A heuristic, not a guard: the quote and statement checks are what keep an answer honest.
-_INSTRUCTIONS = re.compile(
-    r"\b(?:ignore|disregard|forget|override)\s+(?:all\s+|any\s+|the\s+|your\s+)*"
-    r"(?:previous|prior|above|earlier|preceding|system|original)\s+"
-    r"(?:instructions|rules|prompts?|guidance|directions)\b"
-    r"|\b(?:reveal|print|show|repeat|output|ignore|override)\s+(?:the\s+|your\s+)?"
-    r"(?:system\s+prompt|developer\s+message|hidden\s+instructions)\b"
-    r"|\byou\s+(?:are|will\s+be)\s+now\s+(?:an?\s+)?(?:\w+\s+){0,2}"
-    r"(?:assistant|ai|model|chatbot|bot)\b"
-    r"|\byou\s+(?:must|will|should)\s+now\s+(?:say|answer|reply|respond|tell|state|write)\b"
-    r"|\b(?:as\s+an?\s+)?(?:ai|assistant|language\s+model),?\s+(?:you\s+)?(?:must|should)\b",
-    re.IGNORECASE,
-)
-# Characters that do not show, used to break a phrase up so a pattern misses it; the Unicode
-# tag characters (U+E0000 to U+E007F) can also carry whole hidden text.
-_INVISIBLE = re.compile(
-    "[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff\U000e0000-\U000e007f]"
-)
-
-
-def _instructs(text: str) -> bool:
-    """A passage that reads like instructions to the model rather than document content.
-    Read as shown: compatibility forms folded (full-width letters) and invisible
-    characters removed."""
-    shown = _INVISIBLE.sub("", unicodedata.normalize("NFKC", text))
-    return _INSTRUCTIONS.search(shown) is not None
 
 
 def _follow_up_query(question: str, history: Sequence[tuple[str, str]]) -> str:

@@ -25,13 +25,15 @@ from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
 from docforge.review.signing import verify_pin
 
-Role = Literal["integrator", "reviewer", "admin"]
+Role = Literal["integrator", "reviewer", "admin", "reader"]
 Kind = Literal["api_key", "session"]
 
 PERMISSIONS: dict[str, frozenset[str]] = {
     "integrator": frozenset({"documents:read", "documents:write"}),
     "reviewer": frozenset({"documents:read", "review"}),
     "admin": frozenset({"documents:read", "documents:write", "review", "admin"}),
+    # For AI agents (the MCP server): reads, and nothing else.
+    "reader": frozenset({"documents:read"}),
 }
 _TOKEN = re.compile(r"^(dfk|dfs)_([0-9a-f]{12})_([A-Za-z0-9_-]{43})$")
 _KINDS: dict[str, Kind] = {"dfk": "api_key", "dfs": "session"}
@@ -135,21 +137,36 @@ class Authenticator:
     # API keys
 
     @scoped
-    def create_api_key(self, tenant_id: uuid.UUID, *, name: str, role: str) -> str:
+    def create_api_key(
+        self, tenant_id: uuid.UUID, *, name: str, role: str, actor: str = "cli"
+    ) -> str:
         """A new key. The token is returned once and cannot be recovered later."""
         if role not in PERMISSIONS:
             raise ValueError(f"unknown role {role!r}")
+        if not name.strip():
+            raise ValueError("a key needs a name")
         token, prefix, digest = new_token("dfk")
         with self._sessions.begin() as session:
-            session.add(
-                ApiKey(
-                    tenant_id=tenant_id, prefix=prefix, digest=digest, name=name.strip(), role=role
-                )
+            key = ApiKey(
+                tenant_id=tenant_id,
+                prefix=prefix,
+                digest=digest,
+                name=name.strip(),
+                role=role,
+                created_by=None if actor == "cli" else actor,
             )
+            session.add(key)
+            session.flush()
+            audit.append(
+                session, tenant_id=tenant_id, actor=actor, action="api_key.created",
+                target_type="api_key", target_id=prefix, details={"name": key.name, "role": role},
+            )  # fmt: skip
         return token
 
     @scoped
-    def revoke_api_key(self, tenant_id: uuid.UUID, token_or_prefix: str) -> None:
+    def revoke_api_key(
+        self, tenant_id: uuid.UUID, token_or_prefix: str, actor: str = "cli"
+    ) -> None:
         parsed = parse_token(token_or_prefix)
         prefix = parsed[1] if parsed else token_or_prefix
         with self._sessions.begin() as session:
@@ -158,7 +175,24 @@ class Authenticator:
             )
             if key is None:
                 raise LookupError("no such key")
-            key.revoked_at = key.revoked_at or datetime.now(UTC)
+            if key.revoked_at is None:
+                key.revoked_at = datetime.now(UTC)
+                audit.append(
+                    session, tenant_id=tenant_id, actor=actor, action="api_key.revoked",
+                    target_type="api_key", target_id=prefix, details={"name": key.name},
+                )  # fmt: skip
+
+    @scoped
+    def api_keys(self, tenant_id: uuid.UUID) -> list[ApiKey]:
+        """The organisation's keys, newest first. Their secrets are not kept, so not shown."""
+        with self._sessions() as session:
+            return list(
+                session.scalars(
+                    select(ApiKey)
+                    .where(ApiKey.tenant_id == tenant_id)
+                    .order_by(ApiKey.created_at.desc())
+                )
+            )
 
     # Sessions
 

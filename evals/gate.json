@@ -341,5 +341,89 @@
     "op": ">=",
     "value": 1.0,
     "why": "every question the documents cannot answer says why: what was missing, or that nothing matched"
+  },
+  {
+    "report": "mcp",
+    "path": "tools_listed",
+    "op": "==",
+    "value": 6,
+    "why": "six tools: list knowledge bases and documents, search, ask, read a document, read a page"
+  },
+  {
+    "report": "mcp",
+    "path": "write_tools",
+    "op": "==",
+    "value": 0,
+    "why": "an agent's tools only read: none uploads, reviews or changes anything"
+  },
+  {
+    "report": "mcp",
+    "path": "calls_succeeded",
+    "op": "==",
+    "value": 1.0,
+    "why": "every tool answers each organisation's own key"
+  },
+  {
+    "report": "mcp",
+    "path": "ask_matches_rest",
+    "op": "==",
+    "value": 1.0,
+    "why": "ask gives the chat's own checked answer, with the same quotes, marked as data"
+  },
+  {
+    "report": "mcp",
+    "path": "cross_tenant_leaks",
+    "op": "==",
+    "value": 0,
+    "why": "another organisation's ids are 'Not found.' in every tool, and its text never appears"
+  },
+  {
+    "report": "mcp",
+    "path": "unauthenticated_accepted",
+    "op": "==",
+    "value": 0,
+    "why": "no key, a made-up key or a revoked key gets nothing"
+  },
+  {
+    "report": "mcp",
+    "path": "wrong_role_accepted",
+    "op": "==",
+    "value": 0,
+    "why": "only read-only keys: integrator, reviewer and admin keys are refused"
+  },
+  {
+    "report": "mcp",
+    "path": "planted_instructions_passed",
+    "op": "==",
+    "value": 0,
+    "why": "text that addresses an AI model is withheld from page text and search"
+  },
+  {
+    "report": "mcp",
+    "path": "oversized_results",
+    "op": "==",
+    "value": 0,
+    "why": "no result over 64 KB"
+  },
+  {
+    "report": "mcp",
+    "path": "limits_enforced",
+    "op": "==",
+    "value": 1.0,
+    "why": "a key over its calls a minute is told to wait"
+  },
+  {
+    "report": "mcp",
+    "path": "audit_rows_match_calls",
+    "op": "==",
+    "value": 1.0,
+    "why": "every call an agent makes is recorded"
+  },
+  {
+    "report": "mcp",
+    "path": "audit_rows_with_text",
+    "op": "==",
+    "value": 0,
+    "why": "the record of a call never holds its question, query or document text"
   }
 ]

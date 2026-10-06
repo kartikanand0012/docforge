@@ -111,7 +111,7 @@ def test_another_tenants_documents_do_not_exist_for_it(stack: Stack) -> None:
             assert stack.client.request(method, path, headers=theirs).status_code == 404, path
     assert stack.client.get("/v1/review/queue", headers=theirs).json() == []
     chain = stack.client.get("/v1/audit/verification", headers=theirs).json()
-    assert chain["entries"] == 0  # only its own audit log
+    assert chain["entries"] == 1  # only its own audit log: the making of its key
 
 
 def test_an_upload_belongs_to_the_tenant_of_the_key(stack: Stack, sessions: SessionFactory) -> None:

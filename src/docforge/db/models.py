@@ -254,6 +254,27 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = _created_at()
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str | None] = mapped_column(Text)  # who made it on the web, if anyone
+
+
+class AgentCall(Base):
+    """One call an AI agent made through the MCP server: which tool, on what, how it went.
+    Never the question, the query or any document text."""
+
+    __tablename__ = "agent_calls"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    key_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("api_keys.id"))
+    tool: Mapped[str] = mapped_column(Text)
+    scope: Mapped[str] = mapped_column(Text)  # organisation, document or collection
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    collection_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    outcome: Mapped[str] = mapped_column(Text)  # ok, not_found, limited, invalid, error
+    results: Mapped[int] = mapped_column(Integer, server_default="0")
+    message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # for `ask`
+    duration_ms: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _created_at()
 
 
 class SessionToken(Base):
