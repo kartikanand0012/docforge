@@ -390,11 +390,15 @@ def test_a_filename_that_reads_like_instructions_is_withheld(
 def test_a_cursor_this_tool_did_not_give_is_refused_not_an_error(setup: Setup) -> None:
     kb = setup.kb()
     with setup.app() as api:
-        for cursor in ("²", "9" * 5000):
-            failed, message = call(
-                api, setup.reader, "list_documents", knowledge_base_id=str(kb), cursor=cursor
-            )
-            assert failed and message == "That cursor is not one this tool gave."
+        failed, message = call(
+            api, setup.reader, "list_documents", knowledge_base_id=str(kb), cursor="²"
+        )
+        assert failed and message == "That cursor is not one this tool gave."
+        # So long the SDK refuses it before it arrives: refused all the same.
+        failed, _ = call(
+            api, setup.reader, "list_documents", knowledge_base_id=str(kb), cursor="9" * 5000
+        )
+        assert failed
 
 
 def test_an_organisation_has_at_most_twenty_keys_for_agents(setup: Setup) -> None:

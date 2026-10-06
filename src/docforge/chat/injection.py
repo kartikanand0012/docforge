@@ -24,21 +24,37 @@ _INSTRUCTIONS = re.compile(
     r"|\b(?:as\s+an?\s+)?(?:ai|assistant|language\s+model),?\s+(?:you\s+)?(?:must|should)\b",
     re.IGNORECASE,
 )
-# Characters that do not show, used to break a phrase up so a pattern misses it; the Unicode
-# tag characters (U+E0000 to U+E007F) can also carry whole hidden text.
-_INVISIBLE = re.compile(
-    "[\u00ad\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff\U000e0000-\U000e007f]"
+# Characters that do not show, used to break a phrase up so a pattern misses it: every format
+# character (Unicode category Cf: zero-width, bidi marks and isolates, the tag characters),
+# controls other than line breaks and tabs, variation selectors, and the fillers that render
+# as nothing. Combining marks are kept: Hindi and accented text need them.
+_FILLERS = frozenset("\u034f\u115f\u1160\u3164\uffa0")
+# Latin look-alikes in other scripts, read as the letters they show (for finding only).
+_LOOK_ALIKES = str.maketrans(
+    "\u0430\u0435\u043e\u0440\u0441\u0443\u0445\u0456\u0455\u0458\u04cf"
+    "\u0410\u0412\u0415\u041a\u041c\u041d\u041e\u0420\u0421\u0422\u0425"
+    "\u03bf\u03b1\u03b5\u03b9\u039f\u0391\u0395\u0399",
+    "aeopcyxisjlABEKMHOPCTXoaeiOAEI",
 )
 
 
+def _hidden(char: str) -> bool:
+    if char in "\n\t\r":
+        return False
+    if char in _FILLERS or "\ufe00" <= char <= "\ufe0f" or "\U000e0100" <= char <= "\U000e01ef":
+        return True
+    return unicodedata.category(char) in ("Cf", "Cc")
+
+
 def shown(text: str) -> str:
-    """The text as a reader sees it: compatibility forms folded (full-width letters) and
-    characters that do not show removed."""
-    return _INVISIBLE.sub("", unicodedata.normalize("NFKC", text))
+    """The text as printed, without the characters a reader cannot see. Nothing else changes:
+    units, exponents and symbols (m\u00b2, 10\u207b\u00b3, \u00b5g) are a document's data."""
+    return "".join(char for char in text if not _hidden(char))
 
 
 def reads_as_instructions(text: str) -> bool:
     """A passage that reads like instructions to the model rather than document content.
-    Read as shown: compatibility forms folded (full-width letters) and invisible
-    characters removed."""
-    return _INSTRUCTIONS.search(shown(text)) is not None
+    Read as a person would: hidden characters removed, compatibility forms folded (full-width
+    letters) and look-alike letters of other scripts read as Latin."""
+    folded = unicodedata.normalize("NFKC", shown(text)).translate(_LOOK_ALIKES)
+    return _INSTRUCTIONS.search(shown(folded)) is not None

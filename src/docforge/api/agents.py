@@ -17,6 +17,8 @@ from docforge.auth import Authenticator, Principal
 from docforge.mcp_server.tools import AgentTools
 
 Admin = Annotated[Principal, Depends(require("admin"))]
+# Each key an agent holds is a way in: few enough to know them all.
+MAX_AGENT_KEYS = 20
 
 
 class KeyIn(BaseModel):
@@ -70,16 +72,24 @@ def agents_router(authenticator: Authenticator, tools: AgentTools) -> APIRouter:
         ]
 
     @router.post("/api-keys", response_model=KeyMade, status_code=201)
-    async def make(body: KeyIn, principal: Admin) -> KeyMade:
+    async def make(body: KeyIn, principal: Admin, response: Response) -> KeyMade:
         """A read-only key for an AI agent. Its token is in this reply only."""
         name = body.name.strip()
         if not name:
             raise HTTPException(422, "A key needs a name.")
+        found = await run_in_threadpool(authenticator.api_keys, principal.tenant_id)
+        active = [k for k in found if k.role == "reader" and k.revoked_at is None]
+        if len(active) >= MAX_AGENT_KEYS:
+            raise HTTPException(
+                409, f"An organisation has at most {MAX_AGENT_KEYS} keys for agents. "
+                "Revoke one no longer used first.",
+            )  # fmt: skip
         token = await run_in_threadpool(
             lambda: authenticator.create_api_key(
                 principal.tenant_id, name=name, role="reader", actor=principal.actor
             )
         )
+        response.headers["Cache-Control"] = "no-store"
         return KeyMade(token=token, prefix=token.split("_")[1], name=name, role="reader")
 
     @router.delete("/api-keys/{prefix}", status_code=204)
