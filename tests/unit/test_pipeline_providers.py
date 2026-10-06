@@ -12,12 +12,12 @@ from typing import Any
 
 import httpx
 import pytest
+from test_llm_providers import Recorder, claude_message, openai_response, transport
 
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.llm.anthropic import AnthropicProvider
 from docforge.llm.openai import OpenAIProvider
 from fakes import FakeParser
-from test_llm_providers import Recorder, claude_message, openai_response, transport
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
 PDF = (FIXTURES / "pair_001" / "invoice.pdf").read_bytes()
@@ -28,14 +28,17 @@ RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 def claude(*replies: httpx.Response) -> AnthropicProvider:
     import anthropic
 
-    client = anthropic.Anthropic(api_key="t", max_retries=0, http_client=transport(Recorder(*replies)))
+    client = anthropic.Anthropic(
+        api_key="t", max_retries=0, http_client=transport(Recorder(*replies))
+    )
     return AnthropicProvider("claude-x", client=client, sleep=lambda _: None)
 
 
 def gpt(*replies: httpx.Response) -> OpenAIProvider:
     import openai
 
-    client = openai.OpenAI(api_key="t", max_retries=0, http_client=transport(Recorder(*replies)))
+    http = transport(Recorder(*replies))
+    client = openai.OpenAI(api_key="t", max_retries=0, http_client=http)
     return OpenAIProvider("o-x", client=client, sleep=lambda _: None)
 
 
