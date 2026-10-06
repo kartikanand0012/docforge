@@ -43,6 +43,17 @@ def _progress(score: DocumentScore) -> None:
     print(f"{score.pair_id}: {correct}/{len(score.scored)} fields correct{note}", flush=True)
 
 
+def _write(out: Path, report: Any) -> None:
+    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+
+def _stamped(report: Any, provider: str) -> Any:
+    """A report from a model, saying whose replies it scored."""
+    if "provider" in type(report).model_fields:
+        return report.model_copy(update={"provider": provider})
+    return report
+
+
 def report_path(
     base: Path, provider: str, model: str, name: str, *, default: str | None = None
 ) -> Path:
@@ -161,7 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_report(report))
     print(f"Report written to {out}")
     return 0
@@ -191,7 +202,7 @@ def _scans(args: argparse.Namespace, out: Path, pipeline: InvoicePipeline) -> in
             print("Recordings are missing or stale; run `make eval-record`.", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_scan_report(report))
     print(f"Report written to {out}")
     return 0
@@ -244,7 +255,7 @@ def _answers(args: argparse.Namespace, out: Path, embedding_model: str, secret: 
             print("Recordings are missing or stale; record the answer eval.", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_answer_report(report))
     print(f"Report written to {out}")
     return 0
@@ -259,7 +270,7 @@ def _agents(args: argparse.Namespace, out: Path, embedding_model: str) -> int:
         print(f"Eval failed: {error}", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_agent_report(report))
     print(f"Report written to {out}")
     return 0
@@ -281,7 +292,7 @@ def _coa(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
         print(f"Eval failed: {error}", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_coa_report(report))
     print(f"Report written to {out}")
     return 0
@@ -307,7 +318,7 @@ def _trust(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
             print("Recordings are missing or stale; run `make eval-record`.", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_trust_report(report))
     print(f"Report written to {out}")
     return 0

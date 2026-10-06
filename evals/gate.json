@@ -425,5 +425,110 @@
     "op": "==",
     "value": 0,
     "why": "the record of a call never holds its question, query or document text"
+  },
+  {
+    "report": "invoice",
+    "path": "provider",
+    "op": "==",
+    "value": "gemini",
+    "why": "whose replies these are: another provider is gated under its own name"
+  },
+  {
+    "report": "multipage",
+    "path": "provider",
+    "op": "==",
+    "value": "gemini",
+    "why": "whose replies these are: another provider is gated under its own name"
+  },
+  {
+    "report": "multipage",
+    "path": "model",
+    "op": "==",
+    "value": "gemini-3.5-flash-lite",
+    "why": "a model change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "multipage",
+    "path": "prompt_version",
+    "op": "==",
+    "value": "invoice-v1",
+    "why": "a prompt change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "trust",
+    "path": "provider",
+    "op": "==",
+    "value": "gemini",
+    "why": "whose replies these are: another provider is gated under its own name"
+  },
+  {
+    "report": "trust",
+    "path": "model",
+    "op": "==",
+    "value": "gemini-3.5-flash-lite",
+    "why": "a model change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "trust",
+    "path": "invoice_prompt_version",
+    "op": "==",
+    "value": "invoice-v1",
+    "why": "a prompt change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "trust",
+    "path": "order_prompt_version",
+    "op": "==",
+    "value": "purchase-order-v1",
+    "why": "a prompt change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "scans",
+    "path": "provider",
+    "op": "==",
+    "value": "gemini",
+    "why": "whose replies these are: another provider is gated under its own name"
+  },
+  {
+    "report": "scans",
+    "path": "model",
+    "op": "==",
+    "value": "gemini-3.5-flash-lite",
+    "why": "a model change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "scans",
+    "path": "prompt_version",
+    "op": "==",
+    "value": "invoice-v1",
+    "why": "a prompt change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "coa",
+    "path": "provider",
+    "op": "==",
+    "value": "gemini",
+    "why": "whose replies these are: another provider is gated under its own name"
+  },
+  {
+    "report": "coa",
+    "path": "model",
+    "op": "==",
+    "value": "gemini-3.5-flash-lite",
+    "why": "a model change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "coa",
+    "path": "prompt_version",
+    "op": "==",
+    "value": "coa-v1",
+    "why": "a prompt change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "answers",
+    "path": "provider",
+    "op": "==",
+    "value": "gemini",
+    "why": "whose replies these are: another provider is gated under its own name"
   }
 ]

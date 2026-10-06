@@ -24,6 +24,21 @@ from docforge.llm.schema import strict_json_schema
 logger = logging.getLogger(__name__)
 
 
+def request_shape(reasoning_effort: str | None) -> dict[str, Any]:
+    """How a request is made, beyond its prompt and schema: part of a recording's key."""
+    shape: dict[str, Any] = {
+        "api": "responses",
+        "format": "json_schema.strict",
+        "store": False,
+        "max_output_tokens": MAX_OUTPUT_TOKENS,
+    }
+    if reasoning_effort:
+        shape["reasoning_effort"] = reasoning_effort
+    else:
+        shape["temperature"] = 0
+    return shape
+
+
 class OpenAIProvider:
     name = "openai"
 

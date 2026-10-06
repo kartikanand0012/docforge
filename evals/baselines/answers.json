@@ -1,4 +1,5 @@
 {
+  "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
   "prompt_version": "chat-3",
   "questions": 104,

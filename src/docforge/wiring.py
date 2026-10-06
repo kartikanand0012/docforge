@@ -4,6 +4,7 @@ from functools import partial
 from importlib import import_module
 from importlib.metadata import version
 from pathlib import Path
+from typing import Any
 
 from docforge.anchors import AnchorStore
 from docforge.auth import Authenticator
@@ -69,11 +70,15 @@ def recorded_provider(
     """`task`'s provider through its recordings: replay only, or recording what `live` says.
     Each provider's recordings are kept in a directory of their own."""
     name, model = settings.provider_for(task), settings.model_for(task)
-    options = (
-        {"reasoning_effort": settings.openai_reasoning_effort}
-        if name == "openai" and settings.openai_reasoning_effort
-        else None
-    )
+    options: dict[str, Any] | None = None
+    if name == "anthropic":
+        from docforge.llm import anthropic
+
+        options = anthropic.request_shape()
+    elif name == "openai":
+        from docforge.llm import openai
+
+        options = openai.request_shape(settings.openai_reasoning_effort)
     directory = Path(settings.recordings_dir) / _RECORDINGS[name]
     return RecordingProvider(directory, model, live, provider=name, options=options)
 

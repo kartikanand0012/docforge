@@ -71,6 +71,7 @@ class TrustUsage(_Model):
 
 
 class TrustReport(_Model):
+    provider: str = "gemini"  # whose replies were scored
     model: str
     invoice_prompt_version: str
     order_prompt_version: str

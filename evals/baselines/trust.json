@@ -1,4 +1,5 @@
 {
+  "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
   "invoice_prompt_version": "invoice-v1",
   "order_prompt_version": "purchase-order-v1",

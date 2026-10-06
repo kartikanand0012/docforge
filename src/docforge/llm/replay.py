@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
+from docforge.llm.schema import strict_json_schema
 
 
 class RecordingProvider:
@@ -52,7 +53,13 @@ class RecordingProvider:
             "schema": request.schema.model_json_schema(),
         }
         if self._provider not in (None, "gemini"):  # Gemini's keys stay as they were
-            identity |= {"provider": self._provider, "options": self._options}
+            # What Claude and OpenAI are actually sent: the strict schema, and the request's
+            # shape (temperature, output limit, format) - a change to either is a miss.
+            identity |= {
+                "provider": self._provider,
+                "options": self._options,
+                "strict_schema": strict_json_schema(request.schema),
+            }
         encoded = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 

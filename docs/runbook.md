@@ -111,6 +111,24 @@ mean to delete it.
   anthropic --mode record`, suite by suite), commit the reports under
   `evals/baselines/<provider>/<model>/`, and add their floors to `evals/gate.json`, the same as
   Gemini's. Only then set `EXTRACTION_PROVIDER` or `CHAT_PROVIDER` and the provider's key.
+- **Before switching a provider on**, in this order:
+  1. Its reports for every suite (invoice, multipage, trust, scans, coa, answers) are committed
+     under `evals/baselines/<provider>/<model>/`. The gate then holds them to every Gemini
+     floor automatically; a missing report fails it. Record trust before scans (scans reads
+     trust's orders).
+  2. `python -m docforge.evals.compare` with the models' prices: the measures side by side,
+     each with its 95% interval, and the cost per invoice and per question in dollars. 72
+     correct of 72 means "no evidence of a problem", not "perfect".
+  3. One live call per task with the real key (an invoice and a question), to confirm the API
+     accepts the request as built.
+  4. A shadow run on real (not synthetic) documents beside Gemini, compared by a person.
+  5. Note the model's retirement date beside its pin, and re-record before it.
+- **Once on:** watch the log for "served" warnings (the provider answered with another model
+  than the pin), schema-validation retries, refusals and the review-queue rate, against the
+  eval's numbers. Each answer and document records its provider and model.
+- **Rolling back** is a settings change (`EXTRACTION_PROVIDER` or `CHAT_PROVIDER` back to
+  `gemini`) and a restart of the API and worker. Documents already read keep the provider and
+  model that read them.
 - **A new provider is a new sub-processor.** Tell customers before their documents go to it:
   invoices hold names, addresses and GSTINs, personal data under India's DPDP Act.
 - **Keys:** use a key on a paid plan with a spend limit. OpenAI is always told not to store a

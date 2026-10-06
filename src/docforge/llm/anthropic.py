@@ -24,6 +24,16 @@ from docforge.llm.schema import strict_json_schema
 logger = logging.getLogger(__name__)
 
 
+def request_shape() -> dict[str, Any]:
+    """How a request is made, beyond its prompt and schema: part of a recording's key."""
+    return {
+        "api": "messages",
+        "format": "output_config.json_schema",
+        "temperature": 0,
+        "max_tokens": MAX_OUTPUT_TOKENS,
+    }
+
+
 class AnthropicProvider:
     name = "anthropic"
 

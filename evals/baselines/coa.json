@@ -1,4 +1,5 @@
 {
+  "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
   "prompt_version": "coa-v1",
   "summary": {
