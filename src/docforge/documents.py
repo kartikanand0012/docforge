@@ -501,12 +501,12 @@ class DocumentService:
             logger.exception("unexpected error processing version %s", version_id)
             return self._retry_or_fail(version_id, turn, "Internal error.", error, final)
         calls = [
-            (r.input_tokens or 0, r.output_tokens or 0, r.thinking_tokens or 0)
+            (r.provider, r.model, r.input_tokens or 0, r.output_tokens or 0, r.thinking_tokens or 0)
             for r in result.responses
         ]
         span.set_attribute("docforge.model_calls", len(calls))
-        span.set_attribute("docforge.input_tokens", sum(c[0] for c in calls))
-        span.set_attribute("docforge.output_tokens", sum(c[1] + c[2] for c in calls))
+        span.set_attribute("docforge.input_tokens", sum(c[2] for c in calls))
+        span.set_attribute("docforge.output_tokens", sum(c[3] + c[4] for c in calls))
         cost = document_cost(calls, current_prices())
         if cost is not None:
             span.set_attribute("docforge.cost_usd", cost)

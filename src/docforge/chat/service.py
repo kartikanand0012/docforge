@@ -611,6 +611,7 @@ class ChatService:
                 message.dropped_statements = dropped_statements
                 message.reason = reason
                 message.reason_detail = detail or {}
+                message.provider = responses[-1].provider if responses else None
                 message.model = responses[-1].model if responses else None
                 message.input_tokens = input_tokens
                 message.output_tokens = output_tokens
