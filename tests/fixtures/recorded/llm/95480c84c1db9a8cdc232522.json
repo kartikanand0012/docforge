@@ -1,0 +1,14 @@
+{
+  "key": "95480c84c1db9a8cdc23252253a6b10d0d40fabf0ac65699e8894629cbf2d5bd",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the total microbial count for batch CD27015\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1222,
+    "output_tokens": 37,
+    "thinking_tokens": null,
+    "latency_ms": 1857.5
+  }
+}

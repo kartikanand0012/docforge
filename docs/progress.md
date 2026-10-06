@@ -2,6 +2,37 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## H2 Unanswered questions, and the rest of the limits (2026-10-06)
+
+Branch `h2-unanswered`. Owner's request: track why each question goes unanswered, and resolve the limits H1 recorded. Commits: RED `90bb907`, GREEN `33bd94d`; wording and labels RED `e85fc05`, GREEN `03ac593`; review findings RED `d4f3593`, GREEN `e0006e3`; tag characters RED `081276f`, GREEN `8e58298`.
+
+| Change | Evidence |
+| --- | --- |
+| **Why a question went unanswered**: each records its reason (nothing matched in its scope; not in the passages, with what the model says is missing and the documents read; quotes not found; figures not in its quotes; wording not in its passages; the model failed) and the chat says it in words. Administrators see the organisation's unanswered questions by reason (`GET /v1/questions/unanswered`, the Unanswered page). Migration 0021, prompt `chat-3` | Answer eval recorded live: 32 of 32 unanswerable questions declined, each with its reason (`explained_when_no_answer` 1.0, a new floor); integration tests per reason |
+| **Wording without figures** (H1 limit): a statement's own words must mostly be its passages' (or the question's) | Unit tests: "and it was paid in full" is dropped; answer eval 72 of 72 still correct |
+| **Figures pooled across quotes** (H1 limit): each figure must stand beside what the statement calls it: a table cell read with its row, a value on the line below its label, labels in their short forms (Qty, Amt, paid, units); the question names a figure only when the statement names nothing the passages label | Unit tests: "the discount is 500" no longer borrows the grand total, even when the question says "total" |
+| **Passages that read like instructions to the AI** are held back, their places refilled, the answer saying so; hidden characters and full-width forms seen through; ordinary letters ("you are now entitled...") not held back | Integration tests |
+| **Superseded converted PDFs deleted** (H1 limit); one deleted while another delivery reads it is made again | Integration tests; documents are unique per organisation and content, so no PDF is shared |
+| **The per-minute window slides** (H1 limit), counted without rounding down | Integration tests |
+
+Measured (answer eval, `gemini-3.5-flash-lite`, `chat-3`, recorded live then replayed identically): 72 of 72 answerable correct with the right document, 0 wrong, 32 of 32 unanswerable declined and explained, follow-ups 16 of 16, 0 cross-tenant, 0 outside a knowledge base. Tests: 1,819 Python; web 72; e2e 9/9; gate 49/49.
+
+Gate change, declared (`gate-change` label): the prompt pin `chat-2` to `chat-3`; input tokens per question 1,493 to 1,524 (+2.1%), the cost of asking what is missing; under the 2,000 floor, every quality metric held.
+
+### Review (ECC security-reviewer, python-reviewer, react-reviewer)
+
+No critical finding. Fixed with failing tests first: the question's words could let a figure stand beside the wrong label; short forms and units dropped correct statements; abbreviations parted labels from values and a value on the next line went unlabelled; the instruction filter held back ordinary letters, missed hidden characters (tag characters too) and gave planted passages free places; a PDF deleted mid-read failed the reading; the limiter rounded down; older withheld answers were given a guessed reason (now "reason not recorded") and the index was built inside the transaction; a held-back note hid the status note; the Unanswered page had no loading state.
+
+### Recording note
+
+The first recording ran while Gemini's embedding API was refusing (429): search fell back to words alone partway through, three quantity questions went unanswered, and the replies did not match a proper run. They were discarded and recorded again with every search embedded. A record run now shows "words only" when that happens; check for it.
+
+### Honest limits
+
+- **The wording and label checks are heuristics**: a statement can still be dropped for writing a label a way the checks do not know; it is then withheld and counted, never shown wrong.
+- **The instruction filter is a heuristic**; the quote and statement checks are what keep an answer honest.
+- **Test documents are synthetic**: a pilot with real documents is what measures real-world wording.
+
 ## H1 Hardening (2026-10-05): the five known limits, resolved before C14
 
 Branch `h1-hardening` (also carries C13's first two steps: folder references, the sync plan, Drive settings). Owner's request: resolve the limits recorded in C10-C12 before C14, the follow-up one first.

@@ -1,0 +1,14 @@
+{
+  "key": "082fdc046f728597c3b8988de528606fe54379d3d74dcd53ee3741a180b311c3",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the total microbial count\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1186,
+    "output_tokens": 29,
+    "thinking_tokens": null,
+    "latency_ms": 1327.0
+  }
+}
