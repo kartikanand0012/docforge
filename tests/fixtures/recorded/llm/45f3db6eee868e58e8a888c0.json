@@ -1,0 +1,14 @@
+{
+  "key": "45f3db6eee868e58e8a888c09182e2e6c925029ab4f313e39c6270a76bde683c",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the name of the person who signed the procedure\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 663,
+    "output_tokens": 34,
+    "thinking_tokens": null,
+    "latency_ms": 1414.6
+  }
+}

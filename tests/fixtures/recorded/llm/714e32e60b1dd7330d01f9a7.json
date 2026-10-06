@@ -1,0 +1,14 @@
+{
+  "key": "714e32e60b1dd7330d01f9a73151ae7dcc46189a6ca2173291d56d68879c68e0",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the assay result for batch CD27015\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1758,
+    "output_tokens": 36,
+    "thinking_tokens": null,
+    "latency_ms": 1466.5
+  }
+}

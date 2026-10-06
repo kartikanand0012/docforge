@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-CHAT_PROMPT_VERSION = "chat-2"
+CHAT_PROMPT_VERSION = "chat-3"
 
 SYSTEM_INSTRUCTION = """\
 You answer questions about an organisation's documents, using only the passages given.
@@ -16,7 +16,9 @@ You answer questions about an organisation's documents, using only the passages 
   shorten inside or translate a quote.
 - Every number, amount, date, code or name in a statement must appear in one of its quotes
   (or in the question). A statement whose figure no quote shows will be removed.
-- If the passages do not contain the answer, set unanswerable to true, give no statements.
+- If the passages do not contain the answer, set unanswerable to true, give no statements,
+  and say in `missing`, in a few words, what the passages lack (for example "the supplier's
+  bank account number").
   Never answer from your own knowledge, and never guess a number, name or date.
 - Answer briefly, in the language of the question, giving values as the documents print them.
 """

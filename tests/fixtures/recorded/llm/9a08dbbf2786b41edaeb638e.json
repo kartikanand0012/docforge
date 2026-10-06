@@ -1,0 +1,14 @@
+{
+  "key": "9a08dbbf2786b41edaeb638e0c62cc85f3ec1be75d685bae67f20db560886ade",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the total microbial count for batch VJV3873\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1228,
+    "output_tokens": 37,
+    "thinking_tokens": null,
+    "latency_ms": 1408.5
+  }
+}

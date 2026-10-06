@@ -1,0 +1,14 @@
+{
+  "key": "cdb4f2a4c12ed9dfc1c278c3621f32cd1996d6fd035667e2a11bcd8fce4b7022",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"total microbial count for batch BO893576\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1184,
+    "output_tokens": 37,
+    "thinking_tokens": null,
+    "latency_ms": 2799.8
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "key": "9f42e8cff0f30add2d89314c2b5fb1d85a0bdf60b6f6df5c29de0cdd874c2981",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the bank account number of Kaveri Lifecare Pharma\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1478,
+    "output_tokens": 36,
+    "thinking_tokens": null,
+    "latency_ms": 1771.4
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "key": "ecf473538745bcc635a2fb1e8694b5a834b55400aee001f9765f4ba5e8336e0b",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the assay result for batch RL5781\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1548,
+    "output_tokens": 35,
+    "thinking_tokens": null,
+    "latency_ms": 8969.2
+  }
+}

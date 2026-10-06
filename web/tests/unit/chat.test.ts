@@ -54,3 +54,43 @@ describe("sendsOnEnter", () => {
     expect(sendsOnEnter({ key: "Enter", shiftKey: false, isComposing: false, keyCode: 229 })).toBe(false);
   });
 });
+
+import { reasonNote } from "@/lib/chat";
+
+describe("reasonNote", () => {
+  it("says why a question went unanswered, in words", () => {
+    expect(reasonNote("no_passages", { scope: "collection" })).toBe("Nothing in this knowledge base matched the question.");
+    expect(reasonNote("not_in_passages", { missing: "the bank account number", documents: ["a.pdf", "b.pdf"] })).toBe(
+      "The documents read (a.pdf, b.pdf) do not give the bank account number.",
+    );
+    expect(reasonNote("figures_not_in_quotes", {})).toMatch(/figures/);
+    expect(reasonNote("wording_not_in_passages", {})).toMatch(/do not say/);
+    expect(reasonNote(null, {})).toBeNull();
+  });
+
+  it("says when passages were held back for reading like instructions", () => {
+    expect(reasonNote(null, { held_back: 1 })).toBe("1 passage was held back because it reads like instructions to the AI, not document content.");
+  });
+});
+
+import { answerNote, type Answer } from "@/lib/chat";
+
+describe("answerNote", () => {
+  const base: Answer = {
+    conversation_id: "c", message_id: "m", status: "partly_supported", text: "t", citations: [],
+    dropped_citations: 1, dropped_statements: 0, words_only: false,
+  };
+
+  it("keeps the status note beside a held-back note", () => {
+    expect(answerNote({ ...base, reason: null, reason_detail: { held_back: 1 } })).toBe(
+      "1 quote could not be found in the documents and was left out. " +
+        "1 passage was held back because it reads like instructions to the AI, not document content.",
+    );
+  });
+
+  it("lets a reason replace the status note", () => {
+    expect(answerNote({ ...base, status: "unsupported", reason: "quotes_not_found", reason_detail: {} })).toBe(
+      "The answer drafted quoted text that is not in the documents.",
+    );
+  });
+});

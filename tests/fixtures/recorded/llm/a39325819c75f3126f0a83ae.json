@@ -1,0 +1,14 @@
+{
+  "key": "a39325819c75f3126f0a83ae24f41c52df206f1be1307878c0f1e42cc0a1d39b",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"Navjivan Medical Agencies issued the invoice.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Invoice NVM/26-27/09004 dated 12 June 2026 from Navjivan Medical Agencies (GSTIN 24AABFN7754K1Z0) to Umiya Medical Store (GSTIN 24ACDPU8840L1Z3), against purchase order PO-UMS-63004.\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1535,
+    "output_tokens": 156,
+    "thinking_tokens": null,
+    "latency_ms": 1771.6
+  }
+}

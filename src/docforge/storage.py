@@ -31,6 +31,10 @@ class ObjectStore(Protocol):
 
     def exists(self, key: str) -> bool: ...
 
+    def delete(self, key: str) -> None:
+        """Gone, if it was there."""
+        ...
+
 
 def original_key(tenant_id: uuid.UUID, sha256: str, fmt: Format = "pdf") -> str:
     """Where an uploaded file lives. Content-addressed, so the same bytes map to one object."""
@@ -99,6 +103,12 @@ class S3ObjectStore:
             raise StorageUnavailable("could not check for the object") from error
         return True
 
+    def delete(self, key: str) -> None:
+        try:
+            self._client.delete_object(Bucket=self._bucket, Key=key)
+        except (BotoCoreError, ClientError) as error:
+            raise StorageUnavailable("could not delete the object") from error
+
 
 class MemoryObjectStore:
     """For tests."""
@@ -118,8 +128,8 @@ class MemoryObjectStore:
     def exists(self, key: str) -> bool:
         return key in self._objects
 
+    def delete(self, key: str) -> None:
+        self._objects.pop(key, None)
+
     def keys(self) -> list[str]:
         return sorted(self._objects)
-
-    def delete(self, key: str) -> None:
-        del self._objects[key]

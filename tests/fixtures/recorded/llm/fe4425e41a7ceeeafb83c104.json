@@ -1,0 +1,14 @@
+{
+  "key": "fe4425e41a7ceeeafb83c104c91a7a734a10ed2d772b43a3c429a8cf7884f398",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the assay result for batch LJE1302\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1766,
+    "output_tokens": 36,
+    "thinking_tokens": null,
+    "latency_ms": 1141.8
+  }
+}

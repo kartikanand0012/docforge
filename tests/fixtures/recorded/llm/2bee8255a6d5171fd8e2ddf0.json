@@ -1,0 +1,14 @@
+{
+  "key": "2bee8255a6d5171fd8e2ddf0b4c387d451f151a1b98774afd310dab3c036a4b1",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the assay result for batch XGX944068\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1561,
+    "output_tokens": 38,
+    "thinking_tokens": null,
+    "latency_ms": 1188.4
+  }
+}

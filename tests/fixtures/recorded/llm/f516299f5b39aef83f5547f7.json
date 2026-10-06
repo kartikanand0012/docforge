@@ -1,0 +1,14 @@
+{
+  "key": "f516299f5b39aef83f5547f7794b53a9908fec3d4a26ff810f3bc2124b75d35f",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the phone number of Marina Medical Stores\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1529,
+    "output_tokens": 32,
+    "thinking_tokens": null,
+    "latency_ms": 1297.3
+  }
+}

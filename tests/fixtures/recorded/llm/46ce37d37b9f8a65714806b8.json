@@ -1,0 +1,14 @@
+{
+  "key": "46ce37d37b9f8a65714806b81ea4bcc46f77d86d428fb86fd48d47d8e0ed346b",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the bank account number of Shreeram Pharma Distributors\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1435,
+    "output_tokens": 35,
+    "thinking_tokens": null,
+    "latency_ms": 1260.7
+  }
+}

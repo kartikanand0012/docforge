@@ -1,0 +1,14 @@
+{
+  "key": "f54481d7f31b2914a56587efa3ee75307ba9184136a19174eca357846b540bd9",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the assay result for batch VJV3873\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1630,
+    "output_tokens": 36,
+    "thinking_tokens": null,
+    "latency_ms": 1232.9
+  }
+}

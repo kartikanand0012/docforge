@@ -31,6 +31,7 @@ from docforge.llm.base import LLMError
 
 logger = logging.getLogger(__name__)
 Reader = Annotated[Principal, Depends(require("documents:read"))]
+Admin = Annotated[Principal, Depends(require("admin"))]
 MAX_IN_FLIGHT_PER_CALLER = 2
 _running: set[asyncio.Task[None]] = set()
 _UNAVAILABLE = "The model could not answer just now. Try again shortly."
@@ -68,6 +69,10 @@ class AnswerOut(BaseModel):
     citations: list[CitationOut]
     dropped_citations: int
     dropped_statements: int  # statements left out: no quote found, or a figure it lacks
+    # Why there is no answer, when there is none: no_passages, not_in_passages,
+    # quotes_not_found or figures_not_in_quotes; and what is known (what was missing).
+    reason: str | None = None
+    reason_detail: dict[str, Any] = {}
     words_only: bool
 
 
@@ -83,6 +88,22 @@ class MessageOut(BaseModel):
 class ConversationOut(BaseModel):
     id: uuid.UUID
     messages: list[MessageOut]
+
+
+class UnansweredQuestionOut(BaseModel):
+    message_id: uuid.UUID
+    question: str
+    reason: str
+    missing: str
+    documents: list[str]
+    owner: str
+    conversation_id: uuid.UUID
+    created_at: datetime
+
+
+class UnansweredOut(BaseModel):
+    questions: list[UnansweredQuestionOut]
+    by_reason: dict[str, int]
 
 
 class ConversationSummaryOut(BaseModel):
@@ -122,6 +143,8 @@ def _answer_out(answer: Any) -> "AnswerOut":
         citations=[CitationOut(**c.as_json()) for c in answer.citations],
         dropped_citations=answer.dropped_citations,
         dropped_statements=answer.dropped_statements,
+        reason=answer.reason,
+        reason_detail=answer.reason_detail,
         words_only=answer.words_only,
     )
 
@@ -215,6 +238,16 @@ def chat_router(chat: ChatService, per_minute: int, limits: Limits) -> APIRouter
             events(),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @router.get("/questions/unanswered", response_model=UnansweredOut)
+    def unanswered(principal: Admin) -> UnansweredOut:
+        """What the organisation asked that its documents could not answer, and why: the
+        documents worth adding. Administrators only: it shows everyone's questions."""
+        report = chat.unanswered(principal.tenant_id)
+        return UnansweredOut(
+            questions=[UnansweredQuestionOut(**vars(q)) for q in report.questions],
+            by_reason=report.by_reason,
         )
 
     @router.get("/conversations", response_model=list[ConversationSummaryOut])

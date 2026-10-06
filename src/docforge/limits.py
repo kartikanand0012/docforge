@@ -50,9 +50,21 @@ class DatabaseLimits:
                 ),
                 {"key": key},
             ).scalar_one()
+            # A sliding minute: the minute before counts for the part of it still within the
+            # last sixty seconds, so a caller cannot double the rate at the turn of a minute.
+            before = session.execute(
+                text(
+                    "SELECT coalesce(max(count), 0) * (1 - extract(epoch FROM now() - "
+                    "date_trunc('minute', now())) / 60) FROM rate_windows "
+                    "WHERE key = :key AND window_start = date_trunc('minute', now()) "
+                    "- interval '1 minute'"
+                ),
+                {"key": key},
+            ).scalar_one()
+            count = float(count) + float(before)
         if random.random() < 0.01:  # noqa: S311 - housekeeping, not security
             self.sweep()
-        return int(count) <= per_minute
+        return count <= per_minute
 
     @contextmanager
     def hold(self, key: str, at_most: int, seconds: int) -> Iterator[None]:

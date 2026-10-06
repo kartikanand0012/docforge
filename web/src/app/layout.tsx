@@ -23,6 +23,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/search">Search</Link>
             <Link href="/chat">Chat</Link>
             <Link href="/collections">Knowledge bases</Link>
+            <Link href="/questions">Unanswered</Link>
             <Link href="/evals">Evals and cost</Link>
             {/* A file download through the session proxy, not a page. */}
             <a href="/api/v1/exports/documents.csv" download>

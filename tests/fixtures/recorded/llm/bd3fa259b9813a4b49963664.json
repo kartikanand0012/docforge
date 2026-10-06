@@ -1,0 +1,14 @@
+{
+  "key": "bd3fa259b9813a4b49963664f920635f841270767c9276b8e23d0dd76c0294ab",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"20 units of Amoxicillin Capsules IP 250mg were billed on invoice NVM/26-27/32001.\",\n      \"citations\": [\n        {\n          \"passage\": 3,\n          \"quote\": \"Sl Product: 1 Amoxicillin Capsules IP 250mg | Pack: 10x10 | HSN: 30041030 | Batch: XGX944068 | Mfg: 06/26 | Exp: 06/28 | Qty: 20 | Free: 0 | MRP: 86.24 | PTR: 59.51 | Disc%: 2 | Taxable: 1166.40 | GST%: 12 | Amount: 1306.36\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1752,
+    "output_tokens": 225,
+    "thinking_tokens": null,
+    "latency_ms": 2023.8
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "key": "0739ed00082a18862e236a74453d53339df918f0b324b22361b674c3d967d084",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"The assay result for batch BO893576 was 98.3 %.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Assay 98.3 %\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1212,
+    "output_tokens": 90,
+    "thinking_tokens": null,
+    "latency_ms": 1256.9
+  }
+}

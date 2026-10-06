@@ -1,0 +1,14 @@
+{
+  "key": "36fbe18c8825883c174a81313775bf6d57b3a3efbe22eb198817d9187a523604",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"The grand total of the invoice is 75703.00.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Grand Total\\n75703.00\"\n        },\n        {\n          \"passage\": 2,\n          \"quote\": \"Grand total 75703.00.\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1701,
+    "output_tokens": 123,
+    "thinking_tokens": null,
+    "latency_ms": 1719.6
+  }
+}

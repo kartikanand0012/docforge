@@ -120,6 +120,11 @@ export type KnowledgeBase = { id: string; name: string; description: string; doc
 
 export type KnowledgeBaseMember = { id: string; filename: string; doc_type: string; stage: string; added_at: string };
 
+export type UnansweredReport = {
+  questions: { message_id: string; question: string; reason: string; missing: string; documents: string[]; owner: string; conversation_id: string; created_at: string }[];
+  by_reason: Record<string, number>;
+};
+
 export type ConversationSummary = { id: string; title: string; document_id: string | null; created_at: string };
 
 export type StoredMessage = { id: string; question: string; answer: string; status: ChatStatus; citations: Citation[]; created_at: string };
@@ -241,6 +246,7 @@ export const api = {
   removeFromCollection: (id: string, documentId: string) =>
     call<null>(`/v1/collections/${encodeURIComponent(id)}/documents/${encodeURIComponent(documentId)}`, { method: "DELETE" }),
   conversations: () => call<ConversationSummary[]>("/v1/conversations"),
+  unanswered: () => call<UnansweredReport>("/v1/questions/unanswered"),
   conversation: (id: string) => call<{ id: string; messages: StoredMessage[] }>(`/v1/conversations/${encodeURIComponent(id)}`),
   pageUrl: (id: string, page: number) => `${API_URL}/v1/documents/${encodeURIComponent(id)}/pages/${page}`,
 };

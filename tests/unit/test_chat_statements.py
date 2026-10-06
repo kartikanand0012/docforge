@@ -110,8 +110,10 @@ def keep(text: str, quote: str, given: str = "") -> bool:
 
 def test_ordinary_ways_of_writing_a_figure_are_the_same_figure() -> None:
     assert keep("Each capsule is 250mg.", "Amoxicillin Capsules IP 250 mg")
-    assert keep("The limit is 95.0-105.0 %.", "Assay 95.0 - 105.0 %")
-    assert keep("It costs Rs.500.", "Rs. 500")
+    assert keep(
+        "The limit is 95.0-105.0 %.", "Assay 95.0 - 105.0 %", given="What is the assay limit?"
+    )
+    assert keep("It costs Rs.500.", "Rs. 500", given="What does it cost?")
 
 
 def test_a_sign_and_a_list_are_not_lost() -> None:
@@ -139,3 +141,78 @@ def test_a_quote_may_join_distant_parts_of_a_summary_but_not_of_other_passages()
     text = [Passage(n=1, filename="i.pdf", page=1, text=far, kind="text")]
     assert check_statements([statement(said, (1, quote))], summary, given="").kept
     assert not check_statements([statement(said, (1, quote))], text, given="").kept
+
+
+# --- wording and labels (limits) -----------------------------------------------------------
+
+INVOICE = [
+    Passage(
+        n=1,
+        filename="inv.pdf",
+        page=1,
+        text=(
+            "Invoice NVM/26-27/32001 from Navjivan Medical Agencies | Discount 0.00 "
+            "| Grand total 98,697.00"
+        ),
+    ),
+    Passage(
+        n=2,
+        filename="coa.pdf",
+        page=1,
+        text="Test: Assay | Specification: 95.0 - 105.0 % | Result: 96.3 %",
+        kind="table_row",
+    ),
+]
+
+
+def kept(text: str, quote: str, n: int = 1, given: str = "") -> bool:
+    return bool(check_statements([statement(text, (n, quote))], INVOICE, given=given).kept)
+
+
+def test_a_statement_that_says_what_its_passage_does_not_is_dropped() -> None:
+    """No figure to check, but the words are not the passage's: 'paid in full' is said nowhere."""
+    assert not kept("The invoice was paid in full and approved.", "Navjivan Medical Agencies")
+    assert kept("The invoice is from Navjivan Medical Agencies.", "Navjivan Medical Agencies")
+
+
+def test_a_figure_must_stand_beside_what_the_statement_calls_it() -> None:
+    assert kept("The grand total is 98,697.00.", "Grand total 98,697.00")
+    assert not kept("The discount is 98,697.00.", "Grand total 98,697.00")
+
+
+def test_a_table_cell_quoted_alone_is_read_with_its_row() -> None:
+    assert kept("The assay result was 96.3 %.", "96.3 %", n=2)
+    assert not kept("The water content was 96.3 %.", "96.3 %", n=2)
+
+
+def said(text: str, passage: str, quote: str, given: str = "", kind: str = "text") -> bool:
+    passages = [Passage(n=1, filename="a.pdf", page=1, text=passage, kind=kind)]
+    return bool(check_statements([statement(text, (1, quote))], passages, given=given).kept)
+
+
+def test_the_question_does_not_lend_a_figure_its_label() -> None:
+    """'total' is in the question, but the statement calls 500 the discount: it is not."""
+    passage = "Grand total 500. Discount 50."
+    question = "What are the discount and the total?"
+    assert not said("The discount is 500.", passage, "Grand total 500", question)
+    assert said("The total is 500.", passage, "Grand total 500", question)
+    # A statement that names nothing the passage labels takes the question's name for it.
+    assert said("It comes to 500.", passage, "Grand total 500", "What is the grand total?")
+    invoice = "Invoice NV-1 | Grand total 500"
+    assert said("The invoice comes to 500.", invoice, "Grand total 500", "What is the total?")
+
+
+def test_a_label_written_another_way_is_the_same_label() -> None:
+    assert said("The quantity was 20.", "Batch B-7 | Qty 20 units | Rate 15.00", "Qty 20 units")
+    assert said("The payment was 500.", "Paid 500 | Due 0", "Paid 500")
+    assert not said("The rate was 20.", "Batch B-7 | Qty 20 units | Rate 15.00", "Qty 20 units")
+
+
+def test_an_abbreviation_does_not_part_a_label_from_its_value() -> None:
+    assert said("The total is 500.", "Total Amt. Payable 500 | Discount 50", "Payable 500")
+
+
+def test_a_value_on_the_line_below_its_label_is_read_with_it() -> None:
+    passage = "Grand total\n500\nDiscount 50"
+    assert said("The grand total is 500.", passage, "Grand total 500")
+    assert not said("The discount is 500.", passage, "Grand total 500")

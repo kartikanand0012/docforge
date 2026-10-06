@@ -1,0 +1,14 @@
+{
+  "key": "e8c2942118a17ca69354af9710de0a7b1f2d9d92d9a32ef9cfee3cae33ae5969",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"20 units of Pantoprazole Tablets IP 40mg were billed on invoice NVM/26-27/27003.\",\n      \"citations\": [\n        {\n          \"passage\": 3,\n          \"quote\": \"Sl Product: 1 Pantoprazole Tablets IP 40mg | Pack: 10x10 | HSN: 30049099 | Batch: RL5781 | Mfg: 08/25 | Exp: 08/28 | Qty: 20 | Free: 0 | MRP: 117.00 | PTR: 84.24 | Disc%: 0 | Taxable: 1684.80 | GST%: 12 | Amount: 1886.98\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1719,
+    "output_tokens": 221,
+    "thinking_tokens": null,
+    "latency_ms": 1548.6
+  }
+}
