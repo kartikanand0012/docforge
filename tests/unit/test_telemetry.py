@@ -1,6 +1,5 @@
 """Exporting traces is switched on by configuration only."""
 
-
 from docforge.config import Settings
 from docforge.telemetry import configure_tracing, document_cost
 
