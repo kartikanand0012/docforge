@@ -150,3 +150,55 @@ def test_the_held_out_hard_slice_and_field_classes_are_gated() -> None:
     assert ("search_heldout", "modes.hybrid.by_kind.ocr_code.recall_at_5") in paths
     assert ("invoice", "summary.by_class.date.accuracy") in paths
     assert ("invoice", "summary.fields.wrong") in paths
+
+
+# --- other providers (C15) ---------------------------------------------------------------------
+
+MODEL_REPORTS = ("invoice", "multipage", "trust", "scans", "coa", "answers")
+
+
+def test_every_report_from_a_model_pins_its_provider_model_and_prompts() -> None:
+    pinned = {(c.report, c.path) for c in load_gate(GATE) if c.op == "=="}
+    for report in MODEL_REPORTS:
+        assert (report, "provider") in pinned, report
+        assert (report, "model") in pinned, report
+        assert any(r == report and "prompt_version" in p for r, p in pinned), report
+
+
+def test_a_provider_with_any_report_is_held_to_every_floor_gemini_is(tmp_path: Path) -> None:
+    """Reports under evals/baselines/<provider>/<model>/ get every Gemini check, with that
+    provider and model pinned and Gemini's token ceilings left out (tokenisers differ). A
+    missing report fails: a provider cannot pass by being half measured."""
+    from docforge.evals.gate import for_providers
+
+    reports = tmp_path / "baselines"
+    shutil.copytree(BASELINES, reports)
+    own = reports / "anthropic" / "claude-x"
+    own.mkdir(parents=True)
+    invoice = json.loads((BASELINES / "invoice.json").read_text(encoding="utf-8"))
+    invoice |= {"provider": "anthropic", "model": "claude-x"}
+    (own / "invoice.json").write_text(json.dumps(invoice), encoding="utf-8")
+
+    checks = for_providers(load_gate(GATE), reports)
+    results = [r for r in check_gate(reports, checks) if r.report.startswith("anthropic/")]
+
+    invoice_results = [r for r in results if r.report == "anthropic/claude-x/invoice"]
+    assert invoice_results and all(r.passed for r in invoice_results)
+    assert not any("tokens" in r.label for r in results)
+    missing = {r.report for r in results if r.detail == "report missing"}
+    assert missing == {f"anthropic/claude-x/{name}" for name in MODEL_REPORTS if name != "invoice"}
+    assert main(["--reports", str(reports)]) == 1
+
+
+@pytest.mark.parametrize(
+    "name", ["EvalReport", "TrustReport", "ScanReport", "CoaReport", "AnswerReport"]
+)
+def test_every_report_from_a_model_says_which_provider(name: str) -> None:
+    import docforge.evals.answers as answers
+    import docforge.evals.coa as coa
+    import docforge.evals.run as run
+    import docforge.evals.scans as scans
+    import docforge.evals.trust as trust
+
+    found = next(getattr(m, name) for m in (run, trust, scans, coa, answers) if hasattr(m, name))
+    assert "provider" in found.model_fields

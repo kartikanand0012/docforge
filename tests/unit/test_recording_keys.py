@@ -71,3 +71,19 @@ def test_another_providers_reply_is_keyed_by_provider_and_named_by_it(tmp_path: 
 def test_a_live_provider_of_another_name_is_refused(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="openai"):
         RecordingProvider(tmp_path, "m", Live("openai", "m"), provider="anthropic")
+
+
+def test_another_providers_recording_is_keyed_by_the_strict_schema_it_was_sent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Claude and OpenAI are sent the strict schema, not the pydantic one: a change to how it
+    is made must miss, not replay replies made under the old contract."""
+    claude = RecordingProvider(tmp_path, "m", Live("anthropic", "m"), provider="anthropic")
+    claude.generate(REQUEST)
+    replay = RecordingProvider(tmp_path, "m", provider="anthropic")
+    assert replay.generate(REQUEST).text == '{"answer": "4"}'
+    monkeypatch.setattr(
+        "docforge.llm.replay.strict_json_schema", lambda model: {"type": "object", "changed": 1}
+    )
+    with pytest.raises(LLMError):
+        replay.generate(REQUEST)
