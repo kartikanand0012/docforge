@@ -359,3 +359,13 @@ def test_prices_are_per_provider_and_model_with_the_old_settings_as_geminis() ->
     }
     with pytest.raises(ValueError, match="MODEL_PRICES"):
         make_settings(MODEL_PRICES='{"anthropic/x": [3]}')
+
+
+def test_a_replay_deployment_needs_no_model_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The demo replays recorded answers and embeddings: it calls no provider, so it holds
+    no key, whichever provider it is set to."""
+    production(monkeypatch)
+    monkeypatch.delenv("GEMINI_API_KEY")
+    monkeypatch.setenv("PIPELINE_FACTORY", "docforge.wiring:build_replay_pipelines")
+    monkeypatch.setenv("CHAT_PROVIDER", "anthropic")
+    assert make_settings().provider_for("chat") == "anthropic"
