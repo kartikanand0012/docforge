@@ -1,13 +1,16 @@
 """Record model responses to disk and replay them, so evals and CI run offline.
 
 A recording is keyed by everything that determines the reply: model, prompt version,
-system instruction, prompt and reply schema. Change any of them and it is a miss.
+system instruction, prompt and reply schema - and, for a provider other than Gemini, the
+provider and its options. Gemini's keys are as they always were, so every committed recording
+still replays. Change any of them and it is a miss.
 """
 
 import hashlib
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
 
@@ -18,13 +21,24 @@ class RecordingProvider:
     Without `inner` it is replay-only: a miss raises instead of calling out.
     """
 
-    def __init__(self, directory: Path, model: str, inner: LLMProvider | None = None) -> None:
+    def __init__(
+        self,
+        directory: Path,
+        model: str,
+        inner: LLMProvider | None = None,
+        *,
+        provider: str = "gemini",
+        options: dict[str, Any] | None = None,
+    ) -> None:
         if inner is not None and inner.model != model:
             raise ValueError(f"inner provider uses model {inner.model!r}, not {model!r}")
-        self.name = inner.name if inner is not None else "replay"
+        if inner is not None and inner.name != provider:
+            raise ValueError(f"inner provider is {inner.name!r}, not {provider!r}")
+        self.name = provider
         self.model = model
         self._directory = directory
         self._inner = inner
+        self._options = options or {}
 
     def _key(self, request: LLMRequest) -> str:
         identity = {
@@ -34,6 +48,8 @@ class RecordingProvider:
             "prompt": request.prompt,
             "schema": request.schema.model_json_schema(),
         }
+        if self.name != "gemini":  # Gemini's keys stay as they were: its recordings replay
+            identity |= {"provider": self.name, "options": self._options}
         encoded = json.dumps(identity, sort_keys=True, ensure_ascii=False).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
 

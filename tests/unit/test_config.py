@@ -196,6 +196,7 @@ def test_production_on_aws_uses_the_instance_role_for_s3(monkeypatch: pytest.Mon
     monkeypatch.setenv("CONVERTER_TOKEN", "c" * 32)
     monkeypatch.setenv("S3_ENDPOINT_URL", "")
     monkeypatch.setenv("S3_REGION", "ap-south-1")
+    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
 
     settings = make_settings()
 

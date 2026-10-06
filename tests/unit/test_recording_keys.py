@@ -20,7 +20,9 @@ class Reply(BaseModel):
     answer: str
 
 
-REQUEST = LLMRequest(system="Be exact.", prompt="What is 2 + 2?", schema=Reply, prompt_version="t-1")
+REQUEST = LLMRequest(
+    system="Be exact.", prompt="What is 2 + 2?", schema=Reply, prompt_version="t-1"
+)
 
 
 def old_key(model: str, request: LLMRequest) -> str:

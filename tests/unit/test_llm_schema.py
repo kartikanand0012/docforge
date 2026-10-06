@@ -49,7 +49,7 @@ def test_a_field_with_a_default_becomes_required_and_descriptions_stay() -> None
 
 
 def test_a_value_that_may_be_missing_is_a_type_or_null() -> None:
-    field = strict_json_schema(RawInvoice)["properties"]["invoice_no"]
+    field = strict_json_schema(RawInvoice)["properties"]["po_no"]
     assert field["properties"]["text"]["type"] == ["string", "null"]
     assert field["description"]  # the description beside the reference is kept
 
