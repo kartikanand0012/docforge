@@ -235,7 +235,7 @@ test("an administrator connects an AI agent with a read-only key, and revokes it
   expect(listed.status()).toBe(200);
   expect(JSON.stringify(await listed.json())).toContain("search_documents");
 
-  await page.getByRole("button", { name: "Revoke E2E agent" }).click();
+  await page.getByRole("button", { name: /^Revoke E2E agent \(/ }).click();
   await expect(page.getByRole("row", { name: /E2E agent/ })).toContainText("Revoked");
   expect((await list()).status()).toBe(401);
 });

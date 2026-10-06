@@ -138,6 +138,9 @@ button.citation, button.link { background: none; border: none; padding: 0; color
   position: absolute;
   width: 1px;
   height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
@@ -145,10 +148,19 @@ button.citation, button.link { background: none; border: none; padding: 0; color
 
 /* A command to copy: kept on its lines, scrolled rather than overflowing. */
 pre.command {
-  overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
   padding: 0.5rem;
   border-radius: 4px;
   background: rgba(127, 127, 127, 0.12);
+}
+
+/* Long ids and addresses break rather than push the page sideways. */
+code.wrap {
+  overflow-wrap: anywhere;
+}
+
+/* A wide table scrolls within itself on a narrow screen. */
+.table-scroll {
+  overflow-x: auto;
 }
