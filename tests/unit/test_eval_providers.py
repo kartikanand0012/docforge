@@ -13,7 +13,7 @@ from docforge.evals.__main__ import main, report_path
 def no_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in ("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_MODEL"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr("docforge.evals.__main__.get_settings", lambda: Settings(_env_file=None))  # type: ignore[call-arg]
+    monkeypatch.setattr("docforge.evals.__main__.get_settings", lambda: Settings(_env_file=None))
 
 
 def test_geminis_reports_stay_and_anothers_go_under_its_name_and_model() -> None:

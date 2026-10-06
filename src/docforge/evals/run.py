@@ -21,7 +21,7 @@ from docforge.extraction.pipeline import (
     PipelineResult,
 )
 from docforge.extraction.schema import InvoiceExtraction
-from docforge.llm.base import LLMResponse
+from docforge.llm.base import LLMProvider, LLMResponse
 from docforge.llm.gemini import GeminiProvider
 from docforge.llm.replay import RecordingProvider
 from docforge.parsing.cache import CachingParser
@@ -147,19 +147,26 @@ def run_eval(
     )
 
 
-def replay_pipeline(recordings: Path, model: str) -> InvoicePipeline:
-    """Offline: cached parses and recorded model replies only."""
+def replay_pipeline(
+    recordings: Path, model: str, *, provider: LLMProvider | None = None
+) -> InvoicePipeline:
+    """Offline: cached parses and recorded model replies only (Gemini's, or `provider`'s)."""
     return InvoicePipeline(
-        CachingParser(recordings / "parsed"), RecordingProvider(recordings / "llm", model)
+        CachingParser(recordings / "parsed"),
+        provider or RecordingProvider(recordings / "llm", model),
     )
 
 
-def record_pipeline(recordings: Path, model: str, api_key: str) -> InvoicePipeline:
-    """Live for anything not yet recorded; every new parse and reply is saved."""
-    return InvoicePipeline(
-        CachingParser(recordings / "parsed", DoclingParser()),
-        RecordingProvider(recordings / "llm", model, GeminiProvider(model, api_key)),
-    )
+def record_pipeline(
+    recordings: Path, model: str, api_key: str | None = None, *, provider: LLMProvider | None = None
+) -> InvoicePipeline:
+    """Live for anything not yet recorded; every new parse and reply is saved. Gemini with
+    `api_key`, or `provider` (recording another provider's replies)."""
+    if provider is None:
+        if api_key is None:
+            raise ValueError("recording Gemini needs its key")
+        provider = RecordingProvider(recordings / "llm", model, GeminiProvider(model, api_key))
+    return InvoicePipeline(CachingParser(recordings / "parsed", DoclingParser()), provider)
 
 
 def format_report(report: EvalReport) -> str:

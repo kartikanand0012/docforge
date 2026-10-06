@@ -17,7 +17,7 @@ from docforge.extraction.pipeline import (
 )
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
-from docforge.llm.base import LLMResponse
+from docforge.llm.base import LLMProvider, LLMResponse
 from docforge.llm.gemini import GeminiProvider
 from docforge.llm.replay import RecordingProvider
 from docforge.parsing.cache import CachingParser
@@ -81,14 +81,21 @@ class TrustReport(_Model):
 
 
 def trust_pipelines(
-    recordings: Path, model: str, api_key: str | None = None
+    recordings: Path,
+    model: str,
+    api_key: str | None = None,
+    *,
+    provider: LLMProvider | None = None,
+    live: bool | None = None,
 ) -> tuple[InvoicePipeline, ExtractionPipeline[PurchaseOrderExtraction]]:
-    """Replay-only without a key; with one, anything not yet recorded is fetched and saved."""
-    live = api_key is not None
+    """Replay-only without a key; with one, anything not yet recorded is fetched and saved.
+    `provider`: another provider's recordings instead of Gemini's (`live` if it records)."""
+    live = api_key is not None if live is None else live
     parser = CachingParser(recordings / "parsed", DoclingParser() if live else None)
-    provider = RecordingProvider(
-        recordings / "llm", model, GeminiProvider(model, api_key) if live else None
-    )
+    if provider is None:
+        provider = RecordingProvider(
+            recordings / "llm", model, GeminiProvider(model, api_key) if api_key else None
+        )
     return (
         InvoicePipeline(parser, provider),
         ExtractionPipeline(parser, provider, PURCHASE_ORDER_SPEC),
