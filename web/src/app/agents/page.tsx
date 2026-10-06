@@ -173,6 +173,10 @@ export default function AgentsPage() {
                 </p>
               )}
               <p className="muted">Other MCP clients: the endpoint above, with the same Authorization header as the command.</p>
+              <p className="muted">
+                Claude Code keeps the key in its own settings, and the command stays in your shell history: run it only on a
+                computer you trust, and revoke the key if that computer is lost.
+              </p>
             </div>
           )}
 

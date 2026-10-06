@@ -2,6 +2,47 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C14 MCP server for AI agents (2026-10-06): gate passed
+
+Branch `c14-mcp`, stacked on `h2-unanswered`. Plan: `docs/plans/c14-mcp.md` (ECC planner). Evidence: `docs/tdd/c14-mcp.tdd.md`. Owner's decisions: a new read-only `reader` role, and only such keys at `/v1/mcp`; only administrators make them; no Claude Desktop bridge.
+
+### Gate
+
+| Gate condition | Result | Evidence |
+| --- | --- | --- |
+| Six read-only tools, nothing that writes | Pass | `tools_listed` 6, `write_tools` 0 |
+| Every tool answers each organisation | Pass | 16 of 16 calls answered with something in them (`calls_succeeded` 1.0) |
+| `ask` is the chat's checked answer | Pass | Same status, text and quotes as `/v1/chat` for the same question and scope (`ask_matches_rest` 1.0) |
+| 0 cross-tenant leaks | Pass | Organisation b with a's document, knowledge-base and conversation ids in every tool: "Not found." each time; none of a's ids or filenames in anything b was sent |
+| Only reader keys | Pass | No key, a made-up key, a revoked key: 401; integrator, reviewer and admin keys: 403 (and a person's session, in the tests) |
+| Planted instructions withheld | Pass | A line addressing the model, in page text and in search: withheld in both, flagged |
+| Results capped | Pass | A page of about 120 KB read, searched and its fields asked: every reply under 64 KB |
+| Limits and the record | Pass | A key over its minute is told to wait; every call recorded, a refused one too; no row holds a query or text |
+
+Gate 60/60 (12 new). The `mcp` eval runs in `make eval`, so CI re-runs it; no model or recordings are needed, because what it measures is the server's promises, not answer quality.
+
+### What was built
+
+- **`/v1/mcp`**: Streamable HTTP in the API, stateless, JSON replies, through the official MCP SDK (1.30, pinned below 2). Before any JSON-RPC: a reader key (401 or 403 otherwise), an allowed Origin, a body of at most 64 KB read within 30 s. Tools run in a pool of their own, so agents cannot take the threads sign-ins and the REST API need.
+- **Tools**: list knowledge bases, list documents (paged), search, ask (the checked, cited answer, follow-ups included), a document's fields, a page's text. The organisation is always the key's.
+- **Text as data**: every result says its text is data, not instructions. Text that addresses a model is withheld wherever it appears (passages, pages, fields and their names, quotes, answers, filenames, knowledge-base names); characters a reader cannot see are removed; look-alike letters and full-width forms are read as what they show. What is sent is otherwise exactly as printed: units and exponents are a certificate's data.
+- **Limits**: per key 60 calls a minute and 4 at once; per organisation 12 at once; searches and questions count against the REST API's own limits; the daily question limits apply; at most 20 agent keys per organisation.
+- **Record**: every call (tool, scope, outcome, count, duration) in `agent_calls` (migration 0022, row-level security, insert and read only), never a question, query or document text. Making and revoking a key go into the hash-chained audit log.
+- **Web**: "AI agents" (administrators): the endpoint, make a read-only key shown once inside a ready Claude Code command, the keys with last use and Revoke, the latest calls.
+
+### Review (ECC security-reviewer, python-reviewer, react-reviewer)
+
+No critical finding; isolation and authentication held. Fixed with failing tests first: text was folded to look-alike forms before it was sent (10⁻³, m², µg changed: a checked quote must stay verbatim); several kinds of hidden character and look-alike letters escaped the instruction check; filenames, names, answers and quotes skipped it; any lookup failure read as "Not found." and went unlogged; a call refused for its arguments was neither counted nor recorded; one organisation could take every worker thread; the SDK's session manager could start only once; an unindexed page came back blank; a cursor of other digits was an internal error. The eval could pass without testing (empty results counted, one reply scanned for leaks, nothing near the size cap, documents picked by random id). The page: an older list could overwrite a newer one, Revoke could be sent twice, focus was lost, the token stayed on screen, non-administrators saw controls, long text was wider than a phone.
+
+### Honest limits
+
+- **The instruction check is a heuristic.** What bounds the harm is that every tool only reads, every result is marked as data, and `ask` answers only from checked quotes. An agent that can also act elsewhere should do so only with its user's approval (the page says so).
+- **A key reads the whole organisation.** Keys limited to one knowledge base are on the roadmap.
+- **Claude Desktop is not documented**: its remote connectors expect OAuth, which this does not build (owner's decision).
+- **Requests refused before a tool runs** (401, 403, 413) are not in `agent_calls`; the proxy's log has them.
+- **`agent_calls` is kept indefinitely** until the retention work on the roadmap.
+- **Not yet measured end to end in a browser**: the e2e test is written and passes its type and lint checks, but the e2e suite needs the chat-3 recordings, which wait on the model quota (see H2).
+
 ## H1 Hardening (2026-10-05): the five known limits, resolved before C14
 
 Branch `h1-hardening` (also carries C13's first two steps: folder references, the sync plan, Drive settings). Owner's request: resolve the limits recorded in C10-C12 before C14, the follow-up one first.

@@ -20,6 +20,8 @@ role and only such keys at `/v1/mcp`; only administrators make them; no Claude D
 | --- | --- | --- |
 | RED | `a607cd5` | `tests/integration/test_mcp.py` and `tests/unit/test_injection.py` fail to import (`docforge.mcp_server`, `docforge.chat.injection`) |
 | GREEN | `65d2290` | 16 MCP and injection tests pass; web 75; mcp eval 13 measures; gate 60/60 |
+| RED review findings | `a3a19f8` | 3 unit and 5 integration tests fail (also carries the page's rework for the React review and this record) |
+| GREEN | `b464626` | 1,846 Python tests; web 75; mcp eval 13/13 with the hardened measures; gate 60/60 |
 
 The web helpers' tests (`web/tests/unit/agents.test.ts`) were run failing before the page
 existed, then committed with it.
