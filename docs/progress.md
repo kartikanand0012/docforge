@@ -19,7 +19,7 @@ Branch `c14-mcp`, stacked on `h2-unanswered`. Plan: `docs/plans/c14-mcp.md` (ECC
 | Results capped | Pass | A page of about 120 KB read, searched and its fields asked: every reply under 64 KB |
 | Limits and the record | Pass | A key over its minute is told to wait; every call recorded, a refused one too; no row holds a query or text |
 
-Gate 60/60 (12 new). The `mcp` eval runs in `make eval`, so CI re-runs it; no model or recordings are needed, because what it measures is the server's promises, not answer quality.
+Gate 61/61 (12 new). e2e 10/10: an administrator makes a key on the page, the key lists the tools at `/v1/mcp`, and after Revoke it is refused. The `mcp` eval runs in `make eval`, so CI re-runs it; no model or recordings are needed, because what it measures is the server's promises, not answer quality.
 
 ### What was built
 
@@ -41,7 +41,6 @@ No critical finding; isolation and authentication held. Fixed with failing tests
 - **Claude Desktop is not documented**: its remote connectors expect OAuth, which this does not build (owner's decision).
 - **Requests refused before a tool runs** (401, 403, 413) are not in `agent_calls`; the proxy's log has them.
 - **`agent_calls` is kept indefinitely** until the retention work on the roadmap.
-- **Not yet measured end to end in a browser**: the e2e test is written and passes its type and lint checks, but the e2e suite needs the chat-3 recordings, which wait on the model quota (see H2).
 ## H2 Unanswered questions, and the rest of the limits (2026-10-06)
 
 Branch `h2-unanswered`. Owner's request: track why each question goes unanswered, and resolve the limits H1 recorded. Commits: RED `90bb907`, GREEN `33bd94d`; wording and labels RED `e85fc05`, GREEN `03ac593`; review findings RED `d4f3593`, GREEN `e0006e3`; tag characters RED `081276f`, GREEN `8e58298`.
