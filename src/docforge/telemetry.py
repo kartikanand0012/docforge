@@ -57,6 +57,8 @@ def document_cost(usages: Iterable[tuple[str, str, int, int, int]], prices: Pric
     """USD for each call's (provider, model, input, output, thinking); thinking is billed as
     output. None when any call's model has no price: a price is never invented, and a
     document is never half priced."""
+    if not prices:
+        return None
     total = 0.0
     for provider, model, i, o, t in usages:
         price = prices.get(f"{provider}/{model}")

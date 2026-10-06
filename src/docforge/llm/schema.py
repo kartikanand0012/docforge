@@ -62,8 +62,15 @@ def _strict(node: Any, definitions: dict[str, Any], seen: tuple[str, ...]) -> An
     out = {
         key: _strict(value, definitions, seen)
         for key, value in node.items()
-        if key not in _DROPPED and key != "$defs"
+        if key not in _DROPPED and key not in ("$defs", "properties")
     }
+    if "properties" in node:
+        # Field names, not schema words: a field called "title" or "format" is a field.
+        out["properties"] = {
+            name: _strict(value, definitions, seen) for name, value in node["properties"].items()
+        }
+    if "const" in out:  # a single allowed value: an enum of one, which every strict mode takes
+        out["enum"] = [out.pop("const")]
     if "anyOf" in out:
         out = _nullable(out)
     if out.get("type") == "object" or "properties" in out:

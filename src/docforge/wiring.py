@@ -209,20 +209,27 @@ def build_search(settings: Settings) -> SearchService:
     return SearchService(sessions, embedder)
 
 
+def chat_provider(settings: Settings) -> LLMProvider:
+    """Who answers questions. A replay deployment (the demo) never calls a provider, key or
+    not; without the provider's key its recorded answers are replayed (production refuses
+    that at start-up); `CHAT_RECORD=1` records what is asked, for those replays."""
+    keys = {
+        "gemini": settings.gemini_api_key,
+        "anthropic": settings.anthropic_api_key,
+        "openai": settings.openai_api_key,
+    }
+    if settings.pipeline_factory == REPLAY_FACTORY or keys[settings.chat_provider] is None:
+        return recorded_provider(settings, "chat")
+    live = build_provider(settings, "chat")
+    return recorded_provider(settings, "chat", live) if settings.chat_record else live
+
+
 def build_chat(settings: Settings, search: SearchService) -> ChatService:
-    """Answers with the chat provider. With no key, its recorded answers are replayed (the
-    demo and the browser test); `CHAT_RECORD=1` with a key records what is asked."""
-    provider: LLMProvider
-    try:
-        live = build_provider(settings, "chat")
-    except ValueError:  # no key: replay, which production refuses at start-up
-        provider = recorded_provider(settings, "chat")
-    else:
-        provider = recorded_provider(settings, "chat", live) if settings.chat_record else live
+    """Answers with the chat provider (`chat_provider`)."""
     return ChatService(
         make_session_factory(make_engine(settings.database_url.get_secret_value())),
         search,
-        provider,
+        chat_provider(settings),
         daily_limit=settings.chat_daily_limit,
         daily_limit_per_person=settings.chat_daily_limit_per_person,
     )

@@ -1,11 +1,12 @@
 """Application settings, read from the environment and an optional `.env` file."""
 
 import json
+import math
 import re
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -22,6 +23,16 @@ _LOCAL_S3_SECRET_KEY = "docforge-local-secret"  # noqa: S105 - local Compose def
 _LOCAL_WEBHOOK_KEY = "docforge-local-webhook-key"
 PROVIDERS = ("gemini", "anthropic", "openai")
 Task = Literal["extraction", "chat"]
+
+
+def _price(value: object) -> bool:
+    """A real, finite, non-negative number of dollars (true is not a price)."""
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
+    )
 
 
 class Settings(BaseSettings):
@@ -63,7 +74,9 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     openai_model: str | None = None  # chosen by the owner and pinned: no default
     openai_reasoning_effort: str | None = None  # a reasoning model only; part of its pin
-    llm_timeout_seconds: float = 600.0  # Claude and OpenAI write long extractions slowly
+    # One model call's whole time, its retries and waits included (Claude and OpenAI write
+    # long extractions slowly). Each attempt may take all of what is left.
+    llm_timeout_seconds: float = Field(default=600.0, gt=0, le=3600)
     # USD per million tokens, input and output, per "provider/model":
     # {"anthropic/claude-sonnet-5-5": [3, 15]}. A model without a price shows no cost.
     model_prices: str = "{}"
@@ -209,7 +222,7 @@ class Settings(BaseSettings):
                 and "/" in k
                 and isinstance(v, list)
                 and len(v) == 2
-                and all(isinstance(n, int | float) for n in v)
+                and all(_price(n) for n in v)
                 for k, v in prices.items()
             ):
                 raise ValueError

@@ -43,10 +43,12 @@ def _progress(score: DocumentScore) -> None:
     print(f"{score.pair_id}: {correct}/{len(score.scored)} fields correct{note}", flush=True)
 
 
-def report_path(base: Path, provider: str, model: str, name: str) -> Path:
-    """Where a report is written: Gemini's where they always were, another provider's under
-    its name and model, so the gate holds each to the same floors."""
-    if provider == "gemini":
+def report_path(
+    base: Path, provider: str, model: str, name: str, *, default: str | None = None
+) -> Path:
+    """Where a report is written: the pinned Gemini model's where they always were; any other
+    model's under its provider and name, so it never overwrites the committed reports."""
+    if provider == "gemini" and (default is None or model == default):
         return base / f"{name}.json"
     return base / provider / model / f"{name}.json"
 
@@ -79,6 +81,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--model", default=None, help="the provider's pinned model if unset")
     args = parser.parse_args(argv)
     args.llm = None  # another provider's recordings; None is Gemini, as the suites always had
+    if args.model and args.model.endswith("-latest"):
+        parser.error(f"{args.model!r} is an alias that moves; pin a model version")
     if args.provider == "gemini":
         args.model = args.model or settings.gemini_model
     else:
@@ -113,7 +117,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "mcp": "mcp",
     }
     out = args.out or report_path(
-        Path("evals/baselines"), args.provider, args.model, names[args.suite]
+        Path("evals/baselines"),
+        args.provider,
+        args.model,
+        names[args.suite],
+        default=settings.gemini_model,
     )
     if args.mode == "record" and args.llm is None and settings.gemini_api_key is None:
         parser.error("record mode needs GEMINI_API_KEY")
@@ -258,7 +266,8 @@ def _agents(args: argparse.Namespace, out: Path, embedding_model: str) -> int:
 
 
 def _coa(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
-    live = api_key is not None
+    # Parses are made live whenever anything is recorded, whichever provider records.
+    live = api_key is not None or (args.llm is not None and args.mode == "record")
     parser = CachingParser(args.recordings / "parsed", DoclingParser() if live else None)
     provider = args.llm or RecordingProvider(
         args.recordings / "llm", args.model, GeminiProvider(args.model, api_key) if live else None
