@@ -3,12 +3,12 @@
   "model": "gemini-3.5-flash-lite",
   "prompt_version": "chat-3",
   "response": {
-    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"The assay result for batch QC5253 was 99.8 %.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Assay 99.8 %\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "text": "{\"statements\": [{\"text\": \"The assay result for batch QC5253 was 99.8 %.\", \"citations\": [{\"passage\": 1, \"quote\": \"Assay 99.8 %\"}]}],\"unanswerable\": false}",
     "provider": "gemini",
     "model": "gemini-3.5-flash-lite",
     "input_tokens": 899,
-    "output_tokens": 88,
+    "output_tokens": 55,
     "thinking_tokens": null,
-    "latency_ms": 2216.3
+    "latency_ms": 2044.2
   }
 }

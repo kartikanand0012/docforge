@@ -1,0 +1,14 @@
+{
+  "key": "b869453a94b4c97e224d08bb16060ce32c7e45b0ee66aa67bda51a4040415244",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\"statements\": [{\"text\": \"Coromandel Pharma Agency issued the invoice CPA/26-27/33007.\", \"citations\": [{\"passage\": 2, \"quote\": \"Invoice CPA/26-27/33007 dated 13 September 2026 from Coromandel Pharma Agency (GSTIN 33AADFC9047H1ZJ) to Vaigai Medical Pharmacy (GSTIN 33ADLPV9925B1ZA), against purchase order PO-VMP-92007.\"}]}],\"unanswerable\": false}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1562,
+    "output_tokens": 134,
+    "thinking_tokens": null,
+    "latency_ms": 1517.1
+  }
+}

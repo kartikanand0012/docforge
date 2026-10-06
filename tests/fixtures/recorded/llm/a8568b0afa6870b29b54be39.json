@@ -1,0 +1,14 @@
+{
+  "key": "a8568b0afa6870b29b54be398da6fca8e6bec1819de59ae43f9983b07edf2125",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the supplier's bank account number\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1824,
+    "output_tokens": 32,
+    "thinking_tokens": null,
+    "latency_ms": 1225.1
+  }
+}

@@ -311,7 +311,7 @@
     "report": "answers",
     "path": "prompt_version",
     "op": "==",
-    "value": "chat-2",
+    "value": "chat-3",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
@@ -334,6 +334,13 @@
     "op": ">=",
     "value": 0.93,
     "why": "a follow-up that names nothing ('its total') is answered about what the conversation is about (16 of 16 measured; 9 of 16 before the hardening fix)"
+  },
+  {
+    "report": "answers",
+    "path": "explained_when_no_answer",
+    "op": ">=",
+    "value": 1.0,
+    "why": "every question the documents cannot answer says why: what was missing, or that nothing matched"
   },
   {
     "report": "mcp",

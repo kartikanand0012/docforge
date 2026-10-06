@@ -1,0 +1,14 @@
+{
+  "key": "dc7d57767bb71e5acee732232a3e5fe2cbea1a96994eb9cea1a5aa12e48b0486",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"Invoice CPA/26-27/02008 billed batch LJE1302.\",\n      \"citations\": [\n        {\n          \"passage\": 2,\n          \"quote\": \"Invoice CPA/26-27/02008 dated 2 April 2026 from Coromandel Pharma Agency (GSTIN 33AADFC9047H1ZJ) to Marina Medical Stores (GSTIN 33AAUFM5873T1Z1), against purchase order PO-MMS-70008. Products: ORS Powder WHO Formula 21g, Prednisolone Tablets IP 5mg, Atorvastatin Tablets IP 10mg, Insulin Injection IP 40IU/ml, Ibuprofen Tablets IP 400mg, Amoxicillin Capsules IP 250mg, Metformin Tablets IP 500mg, Salbutamol Inhaler 100mcg, Pantoprazole Tablets IP 40mg, Paracetamol Tablets IP 500mg. Batches: LJE1302, HTV876947, PUT32127, DW8330, KPT976710, WH721306, MMC9255, KX430209, NZC4812, UC7765.\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1810,
+    "output_tokens": 347,
+    "thinking_tokens": null,
+    "latency_ms": 1935.6
+  }
+}

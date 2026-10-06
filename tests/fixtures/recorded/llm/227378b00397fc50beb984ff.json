@@ -1,0 +1,14 @@
+{
+  "key": "227378b00397fc50beb984ffc9f2064e34f79dc1bc4028190229f992eeaf58d7",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the phone number of Vaigai Medical Pharmacy\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1676,
+    "output_tokens": 34,
+    "thinking_tokens": null,
+    "latency_ms": 1304.7
+  }
+}

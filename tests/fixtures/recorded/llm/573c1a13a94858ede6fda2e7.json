@@ -1,0 +1,14 @@
+{
+  "key": "573c1a13a94858ede6fda2e793d5bb20f79009d0fefc1d83ed676e57db08aed5",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [\n    {\n      \"text\": \"10 units of ORS Powder WHO Formula 21g were billed on invoice CPA/26-27/02008.\",\n      \"citations\": [\n        {\n          \"passage\": 1,\n          \"quote\": \"Invoice CPA/26-27/02008 dated 2 April 2026 from Coromandel Pharma Agency (GSTIN 33AADFC9047H1ZJ) to Marina Medical Stores (GSTIN 33AAUFM5873T1Z1), against purchase order PO-MMS-70008. Products: ORS Powder WHO Formula 21g, Prednisolone Tablets IP 5mg, Atorvastatin Tablets IP 10mg, Insulin Injection IP 40IU/ml, Ibuprofen Tablets IP 400mg, Amoxicillin Capsules IP 250mg, Metformin Tablets IP 500mg, Salbutamol Inhaler 100mcg, Pantoprazole Tablets IP 40mg, Paracetamol Tablets IP 500mg.\"\n        },\n        {\n          \"passage\": 3,\n          \"quote\": \"# HSN/SAC: 1 30049099 | Description of Goods: ORS Powder WHO Formula 21g | Batch No.: LJE1302 | Expiry: 11/28 | Mfg.: 11/25 | Packing: 1x25 | M.R.P.: 24.49 | Qty: 10 | Sch: 0 | Rate: 18.12 | D% Tax%: 2 | Taxable Amt: 5 | Net: 177.58 | Amt: 186.46\"\n        }\n      ]\n    }\n  ],\n  \"unanswerable\": false\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1584,
+    "output_tokens": 435,
+    "thinking_tokens": null,
+    "latency_ms": 2060.8
+  }
+}

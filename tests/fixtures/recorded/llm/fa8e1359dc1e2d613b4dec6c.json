@@ -1,0 +1,14 @@
+{
+  "key": "fa8e1359dc1e2d613b4dec6c5c9d57432cb0eedc78249dd323de28648503e5af",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\"statements\": [{\"text\": \"The grand total of invoice KLP/26-27/13006 is 39373.00.\", \"citations\": [{\"passage\": 2, \"quote\": \"Grand total 39373.00.\"}, {\"passage\": 3, \"quote\": \"Grand Total\\n39373.00\"}]}], \"unanswerable\": false}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1577,
+    "output_tokens": 94,
+    "thinking_tokens": null,
+    "latency_ms": 1256.7
+  }
+}

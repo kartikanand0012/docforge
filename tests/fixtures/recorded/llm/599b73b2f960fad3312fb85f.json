@@ -1,0 +1,14 @@
+{
+  "key": "599b73b2f960fad3312fb85ff99b069fd9acd6e6849231624f4d0d73c5104ad6",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "chat-3",
+  "response": {
+    "text": "{\n  \"statements\": [],\n  \"unanswerable\": true,\n  \"missing\": \"the assay result for batch QC5253\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1708,
+    "output_tokens": 35,
+    "thinking_tokens": null,
+    "latency_ms": 1306.5
+  }
+}
