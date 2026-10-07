@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
-import { MAX_BODY_BYTES, SESSION_COOKIE, apiBase, declaredTooLarge, forwardedFor, sameOrigin } from "@/lib/server";
+import { FORWARDED_HEADERS, MAX_BODY_BYTES, SESSION_COOKIE, apiBase, declaredTooLarge, forwardedFor, sameOrigin } from "@/lib/server";
 
 /** The review screen's only way to the API: same origin, with the session token added here,
  * so the browser holds nothing but an HttpOnly cookie. */
@@ -30,7 +30,7 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/v1/[...path
     cache: "no-store",
   });
   const out = new Headers();
-  for (const name of ["content-type", "cache-control", "retry-after"]) {
+  for (const name of FORWARDED_HEADERS) {
     const value = upstream.headers.get(name);
     if (value) out.set(name, value);
   }

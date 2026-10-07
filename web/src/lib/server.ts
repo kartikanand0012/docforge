@@ -53,3 +53,7 @@ export function declaredTooLarge(request: Request, limit: number = MAX_BODY_BYTE
   const declared = Number(request.headers.get("content-length") ?? "0");
   return Number.isFinite(declared) && declared > limit;
 }
+
+/** Headers of the API's answer passed back to the browser: its type and caching, when to try
+ * again, a download's name, and whether an export was cut short. */
+export const FORWARDED_HEADERS = ["content-type", "cache-control", "retry-after", "content-disposition", "x-docforge-truncated"];
