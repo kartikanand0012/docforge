@@ -209,7 +209,8 @@ def test_the_secret_is_shown_once_and_not_stored(
     with owner_engine.connect() as conn:
         stored = " ".join(str(row) for row in conn.execute(text("SELECT * FROM webhooks")))
     assert secret not in stored
-    assert all("secret" not in str(hook) for hook in hooks.webhooks(DEFAULT_TENANT_ID))
+    assert all(secret not in str(hook) for hook in hooks.webhooks(DEFAULT_TENANT_ID))
+    assert all("secret" not in hook for hook in hooks.webhooks(DEFAULT_TENANT_ID))
 
 
 Factory = Callable[..., Any]

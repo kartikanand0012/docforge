@@ -13,6 +13,7 @@ import procrastinate
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select, text
+from test_webhooks import KEY, Receiver, emit
 
 from docforge import audit
 from docforge.api.app import create_app
@@ -32,7 +33,6 @@ from docforge.webhooks import (
     sign,
 )
 from fakes import signed_in
-from test_webhooks import KEY, Receiver, emit
 
 pytestmark = pytest.mark.integration
 
@@ -119,7 +119,7 @@ def test_a_rotated_secret_signs_every_later_attempt_and_the_old_one_no_longer_ve
         hooks.deliver(delivery_id, tenant)
 
     headers, body = receiver.received[-1]
-    stamp = int(headers["docforge-timestamp"])
+    stamp = int(headers["docforge-signature"].split(",")[0].removeprefix("t="))
     assert headers["docforge-signature"] == sign(new, body, timestamp=stamp)
     assert headers["docforge-signature"] != sign(old, body, timestamp=stamp)
     listed = next(h for h in hooks.webhooks(DEFAULT_TENANT_ID) if h["id"] == hook_id)
@@ -240,7 +240,7 @@ def test_when_the_next_attempt_is_due_is_kept_as_the_queue_will_schedule_it(
 
 def test_the_wait_before_each_attempt_is_the_queues() -> None:
     """The time shown as "next retry" is the time the queue will wait, attempt by attempt."""
-    from docforge.queue import WEBHOOK_RETRY
+    from docforge.queue import WEBHOOK_RETRY, DeliveryNotDone
 
     assert isinstance(WEBHOOK_RETRY, procrastinate.RetryStrategy)
 
@@ -249,9 +249,12 @@ def test_the_wait_before_each_attempt_is_the_queues() -> None:
             self.attempts = attempts
 
     for attempt in range(1, 9):
-        decision = WEBHOOK_RETRY.get_retry_decision(exception=Exception(), job=Job(attempt - 1))  # type: ignore[arg-type]
-        assert decision is not None
-        assert decision.retry_in == {"seconds": next_wait(attempt)}
+        now = datetime.now(UTC)
+        job = Job(attempt - 1)
+        decision = WEBHOOK_RETRY.get_retry_decision(exception=DeliveryNotDone(), job=job)  # type: ignore[arg-type]
+        assert decision is not None and decision.retry_at is not None
+        waited = (decision.retry_at - now).total_seconds()
+        assert abs(waited - next_wait(attempt)) < 2, attempt
 
 
 def test_an_organisation_has_at_most_its_share_of_webhooks(

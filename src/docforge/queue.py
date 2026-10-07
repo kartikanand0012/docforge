@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from docforge.db.models import DocumentVersion
 from docforge.documents import DocumentNotFound
+from docforge.webhooks import RETRY_LINEAR_SECONDS, RETRY_WAIT_SECONDS
 
 if TYPE_CHECKING:
     from docforge.documents import DocumentService
@@ -36,6 +37,17 @@ QUEUES = [QUEUE_NAME, WEBHOOK_QUEUE, INDEX_QUEUE]
 
 class DeliveryNotDone(Exception):
     """The receiver did not accept the event yet: the queue tries again later."""
+
+
+# The service counts attempts and fails the delivery when they run out, so the queue allows
+# a few more than it needs. The waits are the service's own, so the screen's "next retry" is
+# when the queue will really try.
+WEBHOOK_RETRY = procrastinate.RetryStrategy(
+    max_attempts=12,
+    wait=RETRY_WAIT_SECONDS,
+    linear_wait=RETRY_LINEAR_SECONDS,
+    retry_exceptions={DeliveryNotDone},
+)
 
 
 DEFAULT_MAX_ATTEMPTS = 5
@@ -106,9 +118,7 @@ class JobQueue:
         @self.app.task(
             name=WEBHOOK_TASK,
             queue=WEBHOOK_QUEUE,
-            retry=procrastinate.RetryStrategy(
-                max_attempts=12, wait=30, linear_wait=60, retry_exceptions={DeliveryNotDone}
-            ),
+            retry=WEBHOOK_RETRY,
         )
         def deliver_webhook(delivery_id: str, tenant_id: str) -> None:
             if self._webhooks is None:

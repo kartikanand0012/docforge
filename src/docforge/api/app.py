@@ -200,7 +200,7 @@ def create_app(
     if review is not None:
         app.include_router(review_router(review, evals_dir, prices, limiter))
     if webhooks is not None:
-        app.include_router(webhooks_router(webhooks))
+        app.include_router(webhooks_router(webhooks, caps))
     if review is not None:
         app.include_router(exports_router(review))
     if search is not None:

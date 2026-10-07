@@ -305,6 +305,8 @@ class Webhook(Base):
     active: Mapped[bool] = mapped_column(Boolean, server_default=true())
     created_by: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    secret_rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class WebhookDelivery(Base):
@@ -324,6 +326,8 @@ class WebhookDelivery(Base):
     last_error: Mapped[str | None] = mapped_column(Text)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ChunkRow(Base):
