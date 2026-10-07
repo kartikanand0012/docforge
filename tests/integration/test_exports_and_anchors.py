@@ -74,7 +74,7 @@ def test_signed_records_export_as_rows_with_their_signature(
 
 
 def test_csv_cells_cannot_start_a_formula_in_a_spreadsheet() -> None:
-    from docforge.api.exports import to_csv
+    from docforge.csvsafe import to_csv
 
     rows = [
         {
