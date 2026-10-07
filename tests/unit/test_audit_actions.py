@@ -37,4 +37,5 @@ def test_only_the_allowed_details_are_shown_and_the_rest_are_counted() -> None:
 def test_nothing_that_could_be_secret_or_personal_is_allowed() -> None:
     risky = re.compile(r"pin|token|secret|password|text|filename|url|payload|question", re.I)
     allowed = {key for action in ACTIONS.values() for key in action.shown}
-    assert not {key for key in allowed if risky.search(key)}
+    known_safe = {"secret_version"}  # how many times a secret was rotated, not a secret
+    assert not {key for key in allowed - known_safe if risky.search(key)}

@@ -19,6 +19,7 @@ from sqlalchemy.exc import OperationalError
 
 from docforge import __version__
 from docforge.api.agents import agents_router
+from docforge.api.audit import audit_router
 from docforge.api.auth import require, sessions_router
 from docforge.api.chat import chat_router
 from docforge.api.collections import collections_router
@@ -34,6 +35,7 @@ from docforge.api.uploads import (
     too_large_message,
 )
 from docforge.api.webhooks import webhooks_router
+from docforge.audit_log import AuditLogService
 from docforge.auth import Authenticator, FailureLimiter, Principal
 from docforge.chat.service import ChatService
 from docforge.collections import CollectionService
@@ -115,6 +117,7 @@ def create_app(
     collections: CollectionService | None = None,
     limits: Limits | None = None,
     agents: AgentTools | None = None,
+    audit_log: AuditLogService | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     # FastAPI's own telemetry is off: its request spans record the query string (a search
@@ -206,6 +209,8 @@ def create_app(
         app.include_router(chat_router(chat, questions_per_minute, caps))
     if collections is not None:
         app.include_router(collections_router(collections))
+    if audit_log is not None:
+        app.include_router(audit_router(audit_log))
     if agents is not None and authenticator is not None:
         # AI agents, through the MCP server, with keys administrators make.
         app.include_router(agents_router(authenticator, agents))

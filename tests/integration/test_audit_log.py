@@ -161,7 +161,8 @@ def test_an_export_is_the_filtered_view_formula_safe_and_itself_logged(setup: Se
         "id", "occurred_at", "actor", "actor_name", "action", "target_type", "target_id",
         "details", "prev_hash", "hash",
     ]  # fmt: skip
-    assert rows[0]["details"].startswith("'")  # a formula is not a formula in a spreadsheet
+    # No cell opens as a formula in a spreadsheet (details are JSON, so "{" comes first).
+    assert not any(cell.startswith(("=", "+", "@")) for cell in rows[0].values())
     assert rows[0]["actor_name"] == "Asha Rao"
     exported = setup.log.entries(DEFAULT_TENANT_ID, Filters(action="audit.exported")).items
     assert [e.details for e in exported] == [{"rows": 1, "truncated": False, "filtered": True}]
