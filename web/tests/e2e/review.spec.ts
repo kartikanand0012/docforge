@@ -151,7 +151,7 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     await expect(row).toContainText("invoice.pdf");
 
     const download = page.waitForEvent("download");
-    await filters.getByRole("link", { name: "Export CSV" }).click();
+    await page.getByRole("button", { name: "Export these entries as CSV" }).click();
     const file = await (await download).path();
     const csv = readFileSync(file!, "utf-8");
     expect(csv.split("\n")[0]).toBe("id,occurred_at,actor,actor_name,action,target_type,target_id,details,prev_hash,hash");
@@ -296,26 +296,26 @@ test("an administrator manages a webhook end to end", async ({ page }) => {
     expect(secret).toMatch(/^whsec_/);
     await page.getByRole("button", { name: "Done, I have copied it" }).click();
 
-    await page.getByRole("button", { name: "Send test" }).click();
+    await page.getByRole("button", { name: /^Send a test to/ }).click();
     await expect.poll(() => received.length, { timeout: 30_000 }).toBe(1);
     expect(received[0]).toEqual({ verified: true, type: "webhook.test" });
 
-    await page.getByRole("button", { name: "Rotate secret" }).click();
+    await page.getByRole("button", { name: /^Rotate the secret of/ }).click();
     const rotated = (await page.locator("pre.command").innerText()).trim();
     expect(rotated).not.toBe(secret);
     secret = rotated;
     await page.getByRole("button", { name: "Done, I have copied it" }).click();
-    await page.getByRole("button", { name: "Send test" }).click();
+    await page.getByRole("button", { name: /^Send a test to/ }).click();
     await expect.poll(() => received.length, { timeout: 30_000 }).toBe(2);
     expect(received[1].verified).toBe(true); // signed with the new secret
 
-    await page.getByRole("button", { name: "Deliveries" }).click();
-    await expect(page.getByRole("region", { name: "Deliveries" }).locator("tbody tr")).toHaveCount(2);
+    await page.getByRole("button", { name: /^Deliveries to/ }).click();
+    await expect(page.getByRole("region", { name: /^Deliveries to/ }).locator("tbody tr")).toHaveCount(2);
 
-    await page.getByRole("button", { name: "Disable" }).click();
-    await expect(page.getByRole("button", { name: "Send test" })).toBeDisabled();
-    await page.getByRole("button", { name: "Enable" }).click();
-    await expect(page.getByRole("button", { name: "Send test" })).toBeEnabled();
+    await page.getByRole("button", { name: /^Disable the webhook/ }).click();
+    await expect(page.getByRole("button", { name: /^Send a test to/ })).toBeDisabled();
+    await page.getByRole("button", { name: /^Enable the webhook/ }).click();
+    await expect(page.getByRole("button", { name: /^Send a test to/ })).toBeEnabled();
     await page.getByRole("button", { name: /^Delete the webhook to/ }).click();
     await expect(page.getByText("No webhooks yet.")).toBeVisible();
   } finally {

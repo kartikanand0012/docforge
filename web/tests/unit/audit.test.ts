@@ -39,3 +39,17 @@ describe("details", () => {
     expect(detailsText({}, 0)).toBe("");
   });
 });
+
+import { localDaysFromRange } from "@/lib/audit";
+
+describe("review findings", () => {
+  it("turns instants in the URL back into the local days chosen", () => {
+    const { from, to } = localDayRange("2026-10-01", "2026-10-08");
+    expect(localDaysFromRange(from, to)).toEqual({ fromDay: "2026-10-01", toDay: "2026-10-08" });
+    expect(localDaysFromRange(undefined, undefined)).toEqual({ fromDay: "", toDay: "" });
+  });
+
+  it("shows a nested detail as JSON, not [object Object]", () => {
+    expect(detailsText({ counts: { a: 1 } }, 0)).toBe('counts: {"a":1}');
+  });
+});

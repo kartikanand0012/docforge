@@ -35,6 +35,17 @@ export function localDayRange(fromDay: string, toDay: string): { from?: string; 
   return { from: fromDay ? start(fromDay) : undefined, to: toDay ? start(toDay, 1) : undefined };
 }
 
+/** The local days a range in the URL stands for: the reverse of `localDayRange`. */
+export function localDaysFromRange(from?: string, to?: string): { fromDay: string; toDay: string } {
+  const day = (instant: string, minus = 0) => {
+    const d = new Date(instant);
+    d.setDate(d.getDate() - minus);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  return { fromDay: from ? day(from) : "", toDay: to ? day(to, 1) : "" };
+}
+
 /** What the chain check found, in words, with the limits `audit.py` itself states. */
 export function chainNote(report: ChainReport): string {
   if (!report.consistent) return `Broken at entry ${report.first_bad_id}: ${report.reason ?? "it does not match"}.`;
@@ -50,7 +61,9 @@ export function chainNote(report: ChainReport): string {
 
 /** An entry's shown details as text, and how many were held back. */
 export function detailsText(details: Record<string, unknown>, hidden: number): string {
-  const parts = Object.entries(details).map(([key, value]) => `${key}: ${String(value)}`);
+  const parts = Object.entries(details).map(
+    ([key, value]) => `${key}: ${value !== null && typeof value === "object" ? JSON.stringify(value) : String(value)}`,
+  );
   if (hidden) parts.push(hidden === 1 ? "1 detail hidden" : `${hidden} details hidden`);
   return parts.join(" · ");
 }

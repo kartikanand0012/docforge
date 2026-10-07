@@ -1,5 +1,6 @@
-import type { ChainReport } from "@/lib/audit";
 /** The DocForge API, as the review screen uses it. */
+
+import type { ChainReport } from "@/lib/audit";
 
 import { readEvents, type Answer, type ChatStatus, type Citation } from "./chat";
 import type { Box } from "./geometry";
@@ -310,7 +311,11 @@ export const api = {
   agentCalls: () => call<AgentCall[]>("/v1/agent-calls"),
   audit: (query: string) => call<AuditPage>(`/v1/audit${query ? `?${query}` : ""}`),
   auditChoices: () => call<AuditChoices>("/v1/audit/filters"),
-  auditExportUrl: (query: string) => `${API_URL}/v1/audit/export.csv${query ? `?${query}` : ""}`,
+  auditExport: async (query: string): Promise<{ blob: Blob; truncated: boolean }> => {
+    const response = await fetch(`${API_URL}/v1/audit/export.csv${query ? `?${query}` : ""}`, { cache: "no-store" });
+    if (!response.ok) throw await failure(response);
+    return { blob: await response.blob(), truncated: response.headers.get("x-docforge-truncated") === "true" };
+  },
   verifyChain: () => call<ChainReport>("/v1/audit/verification"),
   webhooks: () => call<Webhook[]>("/v1/webhooks"),
   webhookEvents: () => call<string[]>("/v1/webhooks/events"),

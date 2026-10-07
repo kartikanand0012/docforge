@@ -1,9 +1,16 @@
 /** The webhooks screen's wording, kept apart from the page so it is tested. */
 
-/** A URL with its query hidden: a query can carry a receiver's own token. */
+/** A URL as it is safe to show: the scheme and host, with the path and query hidden (either
+ * can carry a receiver's token, as Slack's and Teams' URLs do) and no user name or password. */
 export function maskedUrl(url: string): string {
-  const at = url.indexOf("?");
-  return at < 0 ? url : `${url.slice(0, at)}?…`;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  const hidden = parsed.pathname.length > 1 || parsed.search !== "";
+  return `${parsed.protocol}//${parsed.host}/${hidden ? "…" : ""}`;
 }
 
 /** When the next attempt is due, roughly: the queue decides the exact moment. */

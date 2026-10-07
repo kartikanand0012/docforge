@@ -12,16 +12,19 @@ export default function WebhooksPage() {
   const [events, setEvents] = useState<string[]>([]);
   const [url, setUrl] = useState("");
   const [chosen, setChosen] = useState<string[]>([]);
-  const [secret, setSecret] = useState<{ id: string; secret: string } | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
+  const [secret, setSecret] = useState<{ id: string; url: string; secret: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState<Webhook | null>(null);
   const [deliveries, setDeliveries] = useState<Delivery[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [said, setSaid] = useState("");
   const [forbidden, setForbidden] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const loads = useRef(0);
+  const shown = useRef(0);
   const mounted = useRef(true);
   const heading = useRef<HTMLHeadingElement>(null);
+  const card = useRef<HTMLDivElement>(null);
 
   const explain = (e: Error) => {
     if (e instanceof ApiError && e.status === 403) setForbidden(true);
@@ -32,6 +35,23 @@ export default function WebhooksPage() {
     const mine = ++loads.current;
     const found = await api.webhooks();
     if (mounted.current && mine === loads.current) setHooks(found);
+  };
+
+  /** The deliveries of `hook`: only the newest request is shown, so a slow answer for
+   * another webhook can never be listed (or re-sent) under this one. */
+  const showDeliveries = async (hook: Webhook) => {
+    const mine = ++shown.current;
+    if (open?.id !== hook.id) setDeliveries(null);
+    setOpen(hook);
+    try {
+      const found = await api.deliveries(hook.id);
+      if (mounted.current && mine === shown.current) setDeliveries(found);
+    } catch (e) {
+      if (mounted.current && mine === shown.current) {
+        setDeliveries([]);
+        explain(e as Error);
+      }
+    }
   };
 
   useEffect(() => {
@@ -54,17 +74,27 @@ export default function WebhooksPage() {
     };
   }, []);
 
-  /** Run one action on a webhook: one at a time, the list reloaded, what happened said. */
-  async function act(id: string, what: () => Promise<unknown>, done: string) {
-    if (busy) return;
+  // A new secret takes focus once, when it appears: not on every later render.
+  useEffect(() => {
+    if (secret) card.current?.focus();
+  }, [secret]);
+
+  /** One action at a time; the list (and an open deliveries panel) reloaded; what happened
+   * said. True if it worked. */
+  async function act(id: string, what: () => Promise<unknown>, done: string): Promise<boolean> {
+    if (busy) return false;
     setBusy(id);
     setProblem(null);
+    setSaid("");
     try {
       await what();
       setSaid(done);
       await load();
+      if (open) await showDeliveries(open);
+      return true;
     } catch (e) {
       explain(e as Error);
+      return false;
     } finally {
       setBusy(null);
     }
@@ -72,49 +102,53 @@ export default function WebhooksPage() {
 
   async function make(event: FormEvent) {
     event.preventDefault();
-    if (busy) return;
-    setBusy("new");
-    setProblem(null);
-    try {
-      const made = await api.makeWebhook(url.trim(), chosen);
-      setSecret(made);
-      setUrl("");
-      setChosen([]);
-      setSaid("Webhook made. Copy its secret below: it is shown only once.");
-      await load();
-    } catch (e) {
-      explain(e as Error);
-    } finally {
-      setBusy(null);
-    }
+    const target = url.trim();
+    await act(
+      "new",
+      async () => {
+        const made = await api.makeWebhook(target, chosen);
+        setSecret({ ...made, url: target });
+        setCopied(false);
+        setUrl("");
+        setChosen([]);
+      },
+      "Webhook made. Copy its secret below: it is shown only once.",
+    );
   }
 
   async function rotate(hook: Webhook) {
-    const sure = window.confirm("Receivers using the old secret will refuse deliveries until they have the new one. Rotate now?");
-    if (!sure) return;
-    await act(hook.id, async () => setSecret({ id: hook.id, ...(await api.rotateWebhook(hook.id)) }), "Secret rotated. Copy the new one below.");
+    if (!window.confirm("Receivers using the old secret will refuse deliveries until they have the new one. Rotate now?")) return;
+    await act(
+      hook.id,
+      async () => {
+        setSecret({ id: hook.id, url: hook.url, ...(await api.rotateWebhook(hook.id)) });
+        setCopied(false);
+      },
+      "Secret rotated. Copy the new one below.",
+    );
   }
 
   async function remove(hook: Webhook) {
     if (!window.confirm(`Delete the webhook to ${maskedUrl(hook.url)}? It cannot be undone here.`)) return;
-    await act(hook.id, () => api.deleteWebhook(hook.id), "Webhook deleted.");
-    if (open === hook.id) setOpen(null);
-    heading.current?.focus();
-  }
-
-  async function show(hook: Webhook) {
-    setOpen(hook.id);
-    setDeliveries(null);
-    try {
-      setDeliveries(await api.deliveries(hook.id));
-    } catch (e) {
-      explain(e as Error);
+    if (await act(hook.id, () => api.deleteWebhook(hook.id), "Webhook deleted.")) {
+      if (open?.id === hook.id) setOpen(null);
+      heading.current?.focus(); // its row, and the focused button, are gone
     }
   }
 
-  async function resend(hook: Webhook, delivery: Delivery) {
-    await act(hook.id, () => api.resendDelivery(hook.id, delivery.id), "Sent again.");
-    await show(hook);
+  async function copySecret() {
+    if (!secret) return;
+    try {
+      await navigator.clipboard.writeText(secret.secret);
+      setCopied(true);
+    } catch {
+      setSaid("The browser refused to copy: select the secret and copy it.");
+    }
+  }
+
+  function done() {
+    setSecret(null);
+    heading.current?.focus(); // the card, and its focused button, are gone
   }
 
   if (forbidden) {
@@ -146,7 +180,7 @@ export default function WebhooksPage() {
       <form onSubmit={make} aria-label="Make a webhook">
         <label>
           URL (https){" "}
-          <input value={url} onChange={(e) => setUrl(e.target.value)} required maxLength={2000} placeholder="https://erp.example.com/hooks" />
+          <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} required maxLength={2000} placeholder="https://erp.example.com/hooks" />
         </label>
         <fieldset>
           <legend>Events</legend>
@@ -161,33 +195,37 @@ export default function WebhooksPage() {
             </label>
           ))}
         </fieldset>
-        <button type="submit" disabled={busy !== null || chosen.length === 0}>
+        <p id="events-needed" className="muted">
+          Choose at least one event.
+        </p>
+        <button type="submit" disabled={busy !== null || chosen.length === 0} aria-describedby="events-needed">
           {busy === "new" ? "Making…" : "Make webhook"}
         </button>
       </form>
       {secret && (
-        <div className="card" tabIndex={-1} ref={(card) => card?.focus()} aria-label="Webhook secret">
+        <div className="card" role="group" tabIndex={-1} ref={card} aria-label={`Secret of the webhook to ${maskedUrl(secret.url)}`}>
           <p>
             <strong>Copy this secret now: it is shown only once.</strong> Verify each delivery&rsquo;s
             <code> DocForge-Signature</code> with it.
           </p>
-          <pre className="command" tabIndex={0} aria-label="Webhook secret">
+          <pre className="command" tabIndex={0} aria-label="The secret">
             {secret.secret}
           </pre>
-          <button type="button" onClick={() => setSecret(null)}>
-            Done, I have copied it
-          </button>
+          <div className="row">
+            <button type="button" onClick={copySecret}>
+              {copied ? "Copied" : "Copy secret"}
+            </button>
+            <button type="button" onClick={done}>
+              Done, I have copied it
+            </button>
+          </div>
         </div>
       )}
 
       <h2 ref={heading} tabIndex={-1}>
         Webhooks
       </h2>
-      {hooks === null && !problem && (
-        <p className="muted" role="status">
-          Loading…
-        </p>
-      )}
+      {hooks === null && !problem && <p className="muted">Loading…</p>}
       {hooks && hooks.length === 0 && <p className="muted">No webhooks yet.</p>}
       {hooks && hooks.length > 0 && (
         <div className="table-scroll">
@@ -202,54 +240,61 @@ export default function WebhooksPage() {
               </tr>
             </thead>
             <tbody>
-              {hooks.map((hook) => (
-                <tr key={hook.id}>
-                  <td>
-                    <code className="wrap">{maskedUrl(hook.url)}</code>
-                  </td>
-                  <td>{hook.events.join(", ")}</td>
-                  <td>{hook.active ? "Active" : "Disabled"}</td>
-                  <td>
-                    {hook.last_delivery
-                      ? `${DELIVERY_TEXT[hook.last_delivery.status] ?? hook.last_delivery.status}${hook.last_delivery.last_status ? ` (${hook.last_delivery.last_status})` : ""}`
-                      : "None yet"}
-                  </td>
-                  <td className="row">
-                    <button type="button" disabled={busy !== null} onClick={() => show(hook)}>
-                      Deliveries
-                    </button>
-                    <button type="button" disabled={busy !== null || !hook.active} onClick={() => act(hook.id, () => api.testWebhook(hook.id), "Test queued.")}>
-                      Send test
-                    </button>
-                    <button type="button" disabled={busy !== null} onClick={() => rotate(hook)}>
-                      Rotate secret
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy !== null}
-                      onClick={() => act(hook.id, () => api.setWebhookActive(hook.id, !hook.active), hook.active ? "Webhook disabled." : "Webhook enabled.")}
-                    >
-                      {hook.active ? "Disable" : "Enable"}
-                    </button>
-                    <button type="button" disabled={busy !== null} onClick={() => remove(hook)} aria-label={`Delete the webhook to ${maskedUrl(hook.url)}`}>
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {hooks.map((hook) => {
+                const to = maskedUrl(hook.url);
+                return (
+                  <tr key={hook.id}>
+                    <td>
+                      <code className="wrap">{to}</code>
+                    </td>
+                    <td>{hook.events.join(", ")}</td>
+                    <td>{hook.active ? "Active" : "Disabled"}</td>
+                    <td>
+                      {hook.last_delivery
+                        ? `${DELIVERY_TEXT[hook.last_delivery.status] ?? hook.last_delivery.status}${hook.last_delivery.last_status ? ` (${hook.last_delivery.last_status})` : ""}`
+                        : "None yet"}
+                    </td>
+                    <td className="row">
+                      <button type="button" onClick={() => void showDeliveries(hook)} aria-label={`Deliveries to ${to}`}>
+                        Deliveries
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy !== null || !hook.active}
+                        onClick={() => void act(hook.id, () => api.testWebhook(hook.id), "Test queued.")}
+                        aria-label={`Send a test to ${to}`}
+                      >
+                        Send test
+                      </button>
+                      <button type="button" disabled={busy !== null} onClick={() => void rotate(hook)} aria-label={`Rotate the secret of ${to}`}>
+                        Rotate secret
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          void act(hook.id, () => api.setWebhookActive(hook.id, !hook.active), hook.active ? "Webhook disabled." : "Webhook enabled.")
+                        }
+                        aria-label={`${hook.active ? "Disable" : "Enable"} the webhook to ${to}`}
+                      >
+                        {hook.active ? "Disable" : "Enable"}
+                      </button>
+                      <button type="button" disabled={busy !== null} onClick={() => void remove(hook)} aria-label={`Delete the webhook to ${to}`}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
       {open && (
-        <section aria-label="Deliveries">
-          <h2>Deliveries</h2>
-          {deliveries === null && (
-            <p className="muted" role="status">
-              Loading…
-            </p>
-          )}
+        <section aria-label={`Deliveries to ${maskedUrl(open.url)}`}>
+          <h2>Deliveries to {maskedUrl(open.url)}</h2>
+          {deliveries === null && <p className="muted">Loading…</p>}
           {deliveries && deliveries.length === 0 && <p className="muted">Nothing sent yet.</p>}
           {deliveries && deliveries.length > 0 && (
             <div className="table-scroll">
@@ -281,10 +326,7 @@ export default function WebhooksPage() {
                           <button
                             type="button"
                             disabled={busy !== null}
-                            onClick={() => {
-                              const hook = hooks?.find((h) => h.id === open);
-                              if (hook) void resend(hook, d);
-                            }}
+                            onClick={() => void act(open.id, () => api.resendDelivery(open.id, d.id), "Sent again.")}
                           >
                             Send again
                           </button>
