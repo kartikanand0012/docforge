@@ -349,3 +349,102 @@ def test_migration_0024_adds_the_columns_and_valid_indexes(owner_sessions: Sessi
         "webhook_deliveries.last_attempt_at",
         "webhook_deliveries.next_attempt_at",
     } <= columns
+
+
+# --- review findings ----------------------------------------------------------------------------
+
+
+def test_two_makes_at_once_cannot_pass_the_cap(hooks: WebhookService, receiver: Receiver) -> None:
+    import threading
+
+    for _ in range(MAX_WEBHOOKS - 1):
+        make(hooks, receiver)
+    outcomes: list[str] = []
+
+    def one() -> None:
+        try:
+            make(hooks, receiver)
+            outcomes.append("made")
+        except TooManyWebhooks:
+            outcomes.append("refused")
+
+    threads = [threading.Thread(target=one) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(outcomes) == ["made", "refused"]
+    assert len(hooks.webhooks(DEFAULT_TENANT_ID)) == MAX_WEBHOOKS
+
+
+def test_an_unsafe_destination_is_refused_without_saying_what_it_resolves_to(
+    hooks: WebhookService, sessions: SessionFactory
+) -> None:
+    """An administrator must not be able to map the server's network by trying names."""
+    strict = WebhookService(sessions, KEY, lambda *a: None)
+    client = TestClient(signed_in(create_app(None, webhooks=strict, limits=LocalLimits())))
+    made = client.post(
+        "/v1/webhooks", json={"url": "https://127.0.0.1/hooks", "events": ["review.signed"]}
+    )
+    assert made.status_code == 422
+    assert "127.0.0.1" not in made.text and "resolves" not in made.text
+
+
+def test_an_unknown_delivery_is_named_as_such(hooks: WebhookService, receiver: Receiver) -> None:
+    hook_id, _ = make(hooks, receiver)
+    client = api(hooks)
+    missing = client.post(f"/v1/webhooks/{hook_id}/deliveries/{uuid.uuid4()}/resend")
+    assert missing.status_code == 404 and missing.json()["detail"] == "No such delivery."
+    bad_cursor = client.get(
+        f"/v1/webhooks/{hook_id}/deliveries", params={"before": str(uuid.uuid4())}
+    )
+    assert bad_cursor.status_code == 404 and bad_cursor.json()["detail"] == "No such delivery."
+
+
+def test_making_and_enabling_are_limited_too(hooks: WebhookService, receiver: Receiver) -> None:
+    client = api(hooks)
+    body = {"url": receiver.url, "events": ["review.signed"]}
+    hook = client.post("/v1/webhooks", json=body).json()["id"]
+    codes = [
+        client.patch(f"/v1/webhooks/{hook}", json={"active": n % 2 == 1}).status_code
+        for n in range(30)
+    ]
+    assert 429 in codes
+
+
+def test_changes_are_recorded_under_the_one_who_made_them(
+    hooks: WebhookService, receiver: Receiver, owner_sessions: SessionFactory
+) -> None:
+    import inspect
+
+    for method in (hooks.create, hooks.emit_test, hooks.delete, hooks.rotate, hooks.set_active):
+        parameters = inspect.signature(method).parameters
+        who = parameters.get("actor") or parameters.get("created_by")
+        assert who is not None and who.default is inspect.Parameter.empty, method.__name__
+    assert not hasattr(hooks, "deactivate")
+
+
+def test_nothing_secret_is_ever_written_to_the_log(
+    hooks: WebhookService, receiver: Receiver, sessions: SessionFactory,
+    deferred: Deferred, owner_sessions: SessionFactory,
+) -> None:  # fmt: skip
+    """Whatever the screen shows, the log itself keeps every detail, hashed: a secret, a URL's
+    path or token, a key's token must never reach it."""
+    from docforge.auth import Authenticator
+
+    token = Authenticator(sessions).create_api_key(DEFAULT_TENANT_ID, name="erp", role="integrator")
+    hook_id, first = make(hooks, receiver)
+    second = hooks.rotate(DEFAULT_TENANT_ID, hook_id, actor=ADMIN)
+    emit(hooks, sessions)
+    receiver.statuses = [500, 500]
+    ((delivery_id, tenant),) = deferred
+    hooks.deliver(delivery_id, tenant)
+    hooks.deliver(delivery_id, tenant)
+    hooks.resend(DEFAULT_TENANT_ID, hook_id, delivery_id, actor=ADMIN)
+    Authenticator(sessions).revoke_api_key(DEFAULT_TENANT_ID, token)
+    with owner_sessions() as session:
+        logged = " ".join(
+            str(row) for row in session.execute(text("SELECT actor, details::text FROM audit_log"))
+        )
+    for secret in (first, second, token, token.split("_")[2], "/hooks", "token=abc"):
+        assert secret not in logged, secret

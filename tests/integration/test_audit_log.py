@@ -219,3 +219,31 @@ def test_checking_the_chain_is_limited_per_organisation(setup: Setup) -> None:
     client = api(setup, limits=LocalLimits())
     codes = [client.get("/v1/audit/verification").status_code for _ in range(7)]
     assert codes[:6] == [200] * 6 and codes[6] == 429
+
+
+# --- review findings ----------------------------------------------------------------------------
+
+
+def test_a_reader_checking_the_chain_cannot_use_up_an_administrators_checks(setup: Setup) -> None:
+    limits = LocalLimits()
+    reader = api(setup, role="reader", limits=limits)
+    admin = api(setup, role="admin", limits=limits)
+    assert [reader.get("/v1/audit/verification").status_code for _ in range(7)][-1] == 429
+    assert admin.get("/v1/audit/verification").status_code == 200
+
+
+@pytest.mark.parametrize(
+    "params", [{"before": str(2**63)}, {"before": "-1"}, {"actor": "a\x00b"}, {"action": "x\x00"}]
+)
+def test_a_cursor_beyond_any_id_or_a_nul_in_a_filter_is_refused(
+    setup: Setup, params: dict[str, Any]
+) -> None:
+    assert api(setup).get("/v1/audit", params=params).status_code == 422
+
+
+def test_listing_and_exporting_the_log_are_limited(setup: Setup) -> None:
+    client = api(setup, limits=LocalLimits())
+    exports = [client.get("/v1/audit/export.csv").status_code for _ in range(7)]
+    assert exports[:6] == [200] * 6 and exports[6] == 429
+    lists = [client.get("/v1/audit", params={"limit": 1}).status_code for _ in range(61)]
+    assert lists[-1] == 429
