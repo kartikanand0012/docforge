@@ -66,6 +66,7 @@ class AnswerResult(_Model):
 
 
 class AnswerReport(_Model):
+    provider: str = "gemini"  # whose replies were scored
     model: str
     prompt_version: str
     questions: int

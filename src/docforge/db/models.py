@@ -400,6 +400,7 @@ class Message(Base):
     # was read. None when it was answered.
     reason: Mapped[str | None] = mapped_column(Text)
     reason_detail: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
+    provider: Mapped[str | None] = mapped_column(Text)  # who answered: gemini, anthropic...
     model: Mapped[str | None] = mapped_column(Text)
     prompt_version: Mapped[str] = mapped_column(Text)
     input_tokens: Mapped[int | None] = mapped_column(Integer)

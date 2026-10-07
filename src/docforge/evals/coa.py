@@ -46,6 +46,7 @@ class CoaSummary(_Model):
 
 
 class CoaReport(_Model):
+    provider: str = "gemini"  # whose replies were scored
     model: str
     prompt_version: str
     summary: CoaSummary

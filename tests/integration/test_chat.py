@@ -615,3 +615,17 @@ def test_instructions_hidden_with_tag_characters_are_held_back(
     chat = ChatService(sessions, planted(setup, [tagged, "Grand total 98,697.00"]), setup.model)
     answer = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Was it paid?")
     assert answer.reason_detail.get("held_back") == 1
+
+
+def test_an_answer_records_which_provider_answered_it(
+    setup: Setup, owner_sessions: SessionFactory
+) -> None:
+    from sqlalchemy import text
+
+    setup.model.reply = quoting(setup.batch, f"Batch {setup.batch} is on it.")
+    answer = setup.ask(f"Which invoice billed batch {setup.batch}?")
+    with owner_sessions() as session:
+        row = session.execute(
+            text("SELECT provider, model FROM messages WHERE id = :m"), {"m": answer.message_id}
+        ).one()
+    assert tuple(row) == ("fake", "fake-chat-1")

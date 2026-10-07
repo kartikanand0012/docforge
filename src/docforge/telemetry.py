@@ -34,36 +34,37 @@ def traced(name: str) -> Iterator[Span]:
             raise
 
 
-_prices: tuple[float, float] | None = None
+Prices = dict[str, tuple[float, float]]  # "provider/model" -> USD per million in, out
+_prices: Prices = {}
 
 
-def set_prices(prices: tuple[float, float] | None) -> None:
-    """USD per million input and output tokens, for the cost on each document's span."""
+def set_prices(prices: Prices) -> None:
+    """USD per million input and output tokens by "provider/model", for each document's cost."""
     global _prices
-    _prices = prices
+    _prices = dict(prices)
 
 
-def current_prices() -> tuple[float, float] | None:
+def current_prices() -> Prices:
     return _prices
 
 
 def settings_prices(settings: Settings) -> tuple[float, float] | None:
-    if (
-        settings.price_input_per_million_usd is None
-        or settings.price_output_per_million_usd is None
-    ):
-        return None
-    return settings.price_input_per_million_usd, settings.price_output_per_million_usd
+    """Gemini's price, for the eval page: its reports are Gemini's."""
+    return settings.prices().get(f"gemini/{settings.gemini_model}")
 
 
-def document_cost(
-    usages: Iterable[tuple[int, int, int]], prices: tuple[float, float] | None
-) -> float | None:
-    """USD for (input, output, thinking) token counts; thinking is billed as output.
-    None when no prices are configured: a price is never invented."""
-    if prices is None:
+def document_cost(usages: Iterable[tuple[str, str, int, int, int]], prices: Prices) -> float | None:
+    """USD for each call's (provider, model, input, output, thinking); thinking is billed as
+    output. None when any call's model has no price: a price is never invented, and a
+    document is never half priced."""
+    if not prices:
         return None
-    total = sum(i * prices[0] + (o + t) * prices[1] for i, o, t in usages)
+    total = 0.0
+    for provider, model, i, o, t in usages:
+        price = prices.get(f"{provider}/{model}")
+        if price is None:
+            return None
+        total += i * price[0] + (o + t) * price[1]
     return round(total / 1_000_000, 6)
 
 
@@ -71,7 +72,7 @@ def configure_tracing(
     settings: Settings, service: str, *, install: bool = True
 ) -> TracerProvider | None:
     """Export spans over OTLP/HTTP when an endpoint is configured; otherwise do nothing."""
-    set_prices(settings_prices(settings))
+    set_prices(settings.prices())
     endpoint = settings.otel_exporter_otlp_endpoint
     if not endpoint:
         return None

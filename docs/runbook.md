@@ -98,10 +98,49 @@ The Postgres owner password is set when the volume is first created. Rotating it
 (`force_destroy = false`): empty it first with `aws s3 rm --recursive s3://<bucket>` if you
 mean to delete it.
 
+## Where documents go
+
+| What is sent | Where |
+| --- | --- |
+| Document text, to read its fields | The extraction provider (`EXTRACTION_PROVIDER`, Gemini by default) |
+| Passages, the question and the conversation, to answer | The chat provider (`CHAT_PROVIDER`, Gemini by default) |
+| Chunk text and every question, to search by meaning | Google (Gemini embeddings), always |
+| Traces and logs | No document content |
+
+- **Switching a provider on.** Record its evals first (`python -m docforge.evals --provider
+  anthropic --mode record`, suite by suite), commit the reports under
+  `evals/baselines/<provider>/<model>/`, and add their floors to `evals/gate.json`, the same as
+  Gemini's. Only then set `EXTRACTION_PROVIDER` or `CHAT_PROVIDER` and the provider's key.
+- **Before switching a provider on**, in this order:
+  1. Its reports for every suite (invoice, multipage, trust, scans, coa, answers) are committed
+     under `evals/baselines/<provider>/<model>/`. The gate then holds them to every Gemini
+     floor automatically; a missing report fails it. Record trust before scans (scans reads
+     trust's orders).
+  2. `python -m docforge.evals.compare` with the models' prices: the measures side by side,
+     each with its 95% interval, and the cost per invoice and per question in dollars. 72
+     correct of 72 means "no evidence of a problem", not "perfect".
+  3. One live call per task with the real key (an invoice and a question), to confirm the API
+     accepts the request as built.
+  4. A shadow run on real (not synthetic) documents beside Gemini, compared by a person.
+  5. Note the model's retirement date beside its pin, and re-record before it.
+- **Once on:** watch the log for "served" warnings (the provider answered with another model
+  than the pin), schema-validation retries, refusals and the review-queue rate, against the
+  eval's numbers. Each answer and document records its provider and model.
+- **Rolling back** is a settings change (`EXTRACTION_PROVIDER` or `CHAT_PROVIDER` back to
+  `gemini`) and a restart of the API and worker. Documents already read keep the provider and
+  model that read them.
+- **A new provider is a new sub-processor.** Tell customers before their documents go to it:
+  invoices hold names, addresses and GSTINs, personal data under India's DPDP Act.
+- **Keys:** use a key on a paid plan with a spend limit. OpenAI is always told not to store a
+  response (`store: false`); zero data retention is by agreement with Anthropic or OpenAI.
+- **A replay deployment** (the demo, `PIPELINE_FACTORY=docforge.wiring:build_replay_pipelines`)
+  calls no provider and needs no key. A live production deployment refuses to start without
+  the key of each selected provider, and Gemini's for search.
+
 ## Not covered here
 
 - No backups: the demo's data is synthetic and re-seeded every night. A real deployment needs
   RDS (or snapshots of the volume) and point-in-time recovery.
 - One host, one zone: a real deployment needs at least two, behind a load balancer.
-- Live extraction: set `GEMINI_API_KEY` and `PIPELINE_FACTORY=docforge.wiring:build_pipelines`
+- Live extraction: set `GEMINI_API_KEY` (and any other selected provider's key; see Where documents go) and `PIPELINE_FACTORY=docforge.wiring:build_pipelines`
   in the settings parameter, and size the host for the parser (`PARSER_MAX_RSS_MB`).

@@ -31,9 +31,9 @@ RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 @pytest.fixture
 def spans() -> Iterator[Callable[[], list[ReadableSpan]]]:
     EXPORTER.clear()
-    set_prices((0.30, 2.50))
+    set_prices({"fake/fake-1": (0.30, 2.50)})  # the scripted model's
     yield lambda: list(EXPORTER.get_finished_spans())
-    set_prices(None)
+    set_prices({})
     EXPORTER.clear()
 
 

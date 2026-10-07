@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from docforge.config import get_settings
+from docforge.config import PROVIDERS, get_settings
 from docforge.evals.agents import format_agent_report, run_agent_eval
 from docforge.evals.answers import (
     AnswerResult,
@@ -34,12 +34,34 @@ from docforge.parsing.base import ParseError
 from docforge.parsing.cache import CachingParser
 from docforge.parsing.docling_parser import DoclingParser
 from docforge.search.embeddings import EmbeddingMissing, GeminiEmbedder, RecordingEmbedder
+from docforge.wiring import build_provider, recorded_provider
 
 
 def _progress(score: DocumentScore) -> None:
     correct = sum(field.outcome == "correct" for field in score.scored)
     note = f" ({score.error})" if score.error else ""
     print(f"{score.pair_id}: {correct}/{len(score.scored)} fields correct{note}", flush=True)
+
+
+def _write(out: Path, report: Any) -> None:
+    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+
+
+def _stamped(report: Any, provider: str) -> Any:
+    """A report from a model, saying whose replies it scored."""
+    if "provider" in type(report).model_fields:
+        return report.model_copy(update={"provider": provider})
+    return report
+
+
+def report_path(
+    base: Path, provider: str, model: str, name: str, *, default: str | None = None
+) -> Path:
+    """Where a report is written: the pinned Gemini model's where they always were; any other
+    model's under its provider and name, so it never overwrites the committed reports."""
+    if provider == "gemini" and (default is None or model == default):
+        return base / f"{name}.json"
+    return base / provider / model / f"{name}.json"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -66,8 +88,34 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--scanned", type=Path, default=Path("tests/fixtures/scanned"))
     parser.add_argument("--coa", type=Path, default=Path("tests/fixtures/coa"))
     parser.add_argument("--out", type=Path, default=None)
-    parser.add_argument("--model", default=settings.gemini_model)
+    parser.add_argument("--provider", choices=PROVIDERS, default="gemini")
+    parser.add_argument("--model", default=None, help="the provider's pinned model if unset")
     args = parser.parse_args(argv)
+    args.llm = None  # another provider's recordings; None is Gemini, as the suites always had
+    if args.model and args.model.endswith("-latest"):
+        parser.error(f"{args.model!r} is an alias that moves; pin a model version")
+    if args.provider == "gemini":
+        args.model = args.model or settings.gemini_model
+    else:
+        if args.suite in ("search", "search-heldout", "mcp"):
+            parser.error(f"the {args.suite} suite makes no model call: --provider does not apply")
+        chosen = settings.model_copy(
+            update={
+                "extraction_provider": args.provider,
+                "extraction_model": args.model,
+                "recordings_dir": str(args.recordings),
+            }
+        )
+        if args.provider == "openai" and not (args.model or settings.openai_model):
+            parser.error("OpenAI's model is not pinned: give --model or OPENAI_MODEL")
+        args.model = chosen.model_for("extraction")
+        live = None
+        if args.mode == "record":
+            try:
+                live = build_provider(chosen, "extraction")
+            except ValueError as error:
+                parser.error(f"record mode needs {error}")
+        args.llm = recorded_provider(chosen, "extraction", live)
 
     names = {
         "extraction": "invoice",
@@ -79,8 +127,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         "answers": "answers",
         "mcp": "mcp",
     }
-    out = args.out or Path(f"evals/baselines/{names[args.suite]}.json")
-    if args.mode == "record" and settings.gemini_api_key is None:
+    out = args.out or report_path(
+        Path("evals/baselines"),
+        args.provider,
+        args.model,
+        names[args.suite],
+        default=settings.gemini_model,
+    )
+    if args.mode == "record" and args.llm is None and settings.gemini_api_key is None:
         parser.error("record mode needs GEMINI_API_KEY")
     if args.suite == "mcp":
         return _agents(args, out, settings.embedding_model)
@@ -98,12 +152,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         key = secret.get_secret_value() if secret is not None else None
         return _trust(args, out, key)
     if args.mode == "record":
-        assert settings.gemini_api_key is not None  # noqa: S101 - checked above
-        pipeline = record_pipeline(
-            args.recordings, args.model, settings.gemini_api_key.get_secret_value()
-        )
+        key = settings.gemini_api_key.get_secret_value() if settings.gemini_api_key else None
+        pipeline = record_pipeline(args.recordings, args.model, key, provider=args.llm)
     else:
-        pipeline = replay_pipeline(args.recordings, args.model)
+        pipeline = replay_pipeline(args.recordings, args.model, provider=args.llm)
     if args.suite == "scans":
         return _scans(args, out, pipeline)
 
@@ -120,7 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_report(report))
     print(f"Report written to {out}")
     return 0
@@ -136,7 +188,7 @@ def _scans(args: argparse.Namespace, out: Path, pipeline: InvoicePipeline) -> in
 
     try:
         # Orders are read from recordings made by the trust eval; they are never scanned.
-        _, order_pipeline = trust_pipelines(args.recordings, args.model)
+        _, order_pipeline = trust_pipelines(args.recordings, args.model, provider=args.llm)
         report = run_scan_eval(
             variants, pipeline, on_document=progress, orders=(args.fixtures, order_pipeline)
         )
@@ -150,7 +202,7 @@ def _scans(args: argparse.Namespace, out: Path, pipeline: InvoicePipeline) -> in
             print("Recordings are missing or stale; run `make eval-record`.", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_scan_report(report))
     print(f"Report written to {out}")
     return 0
@@ -183,7 +235,7 @@ def _answers(args: argparse.Namespace, out: Path, embedding_model: str, secret: 
         GeminiEmbedder(embedding_model, key) if key else None,
         model=embedding_model,
     )
-    provider = RecordingProvider(
+    provider = args.llm or RecordingProvider(
         args.recordings / "llm", args.model, GeminiProvider(args.model, key) if key else None
     )
 
@@ -203,7 +255,7 @@ def _answers(args: argparse.Namespace, out: Path, embedding_model: str, secret: 
             print("Recordings are missing or stale; record the answer eval.", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_answer_report(report))
     print(f"Report written to {out}")
     return 0
@@ -218,16 +270,17 @@ def _agents(args: argparse.Namespace, out: Path, embedding_model: str) -> int:
         print(f"Eval failed: {error}", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_agent_report(report))
     print(f"Report written to {out}")
     return 0
 
 
 def _coa(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
-    live = api_key is not None
+    # Parses are made live whenever anything is recorded, whichever provider records.
+    live = api_key is not None or (args.llm is not None and args.mode == "record")
     parser = CachingParser(args.recordings / "parsed", DoclingParser() if live else None)
-    provider = RecordingProvider(
+    provider = args.llm or RecordingProvider(
         args.recordings / "llm", args.model, GeminiProvider(args.model, api_key) if live else None
     )
     try:
@@ -239,14 +292,20 @@ def _coa(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
         print(f"Eval failed: {error}", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_coa_report(report))
     print(f"Report written to {out}")
     return 0
 
 
 def _trust(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
-    invoices, orders = trust_pipelines(args.recordings, args.model, api_key)
+    invoices, orders = trust_pipelines(
+        args.recordings,
+        args.model,
+        api_key,
+        provider=args.llm,
+        live=api_key is not None or (args.llm is not None and args.mode == "record"),
+    )
     try:
         report = run_trust_eval(args.fixtures, args.seeded, invoices, orders)
     except LLMQuotaExhausted as error:
@@ -259,7 +318,7 @@ def _trust(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
             print("Recordings are missing or stale; run `make eval-record`.", file=sys.stderr)
         return 1
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(report.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    _write(out, _stamped(report, args.provider))
     print(format_trust_report(report))
     print(f"Report written to {out}")
     return 0

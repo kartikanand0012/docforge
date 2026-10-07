@@ -72,6 +72,35 @@ def _lookup(report: Any, path: str) -> Any:
     return node
 
 
+def for_providers(checks: Sequence[Check], reports: Path) -> list[Check]:
+    """`checks`, and for every other provider or model with reports under
+    `<reports>/<provider>/<model>/`, every one of Gemini's checks on its reports: the same
+    floors, its own provider and model pinned. Gemini's token ceilings are left out, since
+    tokenisers differ (providers are compared in dollars). A report it lacks fails as
+    missing: a provider cannot pass by being half measured."""
+    out = list(checks)
+    # Only reports a model made (they say whose): search and the MCP server call none.
+    from_a_model = {
+        check.report
+        for check in checks
+        if "/" not in check.report
+        and "provider" in (_load_reports(reports, {check.report})[check.report] or {})
+    }
+    for provider_dir in sorted(p for p in reports.iterdir() if p.is_dir()):
+        for model_dir in sorted(m for m in provider_dir.iterdir() if m.is_dir()):
+            prefix = f"{provider_dir.name}/{model_dir.name}"
+            for check in checks:
+                if check.report not in from_a_model or "tokens" in check.path:
+                    continue
+                value = {"provider": provider_dir.name, "model": model_dir.name}.get(
+                    check.path, check.value
+                )
+                out.append(
+                    Check(f"{prefix}/{check.report}", check.path, check.op, value, check.why)
+                )
+    return out
+
+
 def check_gate(reports: Path, checks: Sequence[Check]) -> list[Result]:
     loaded: dict[str, Any] = {}
     results = []
@@ -167,7 +196,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--base-gate", type=Path, help="the base branch's evals/gate.json")
     args = parser.parse_args(argv)
     checks = load_gate(args.gate)
-    results = check_gate(args.reports, checks)
+    results = check_gate(args.reports, for_providers(checks, args.reports))
     if args.base_reports is not None:
         results += compare_with_base(args.reports, args.base_reports, checks)
     print(format_gate(results))

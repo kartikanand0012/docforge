@@ -32,6 +32,8 @@ class LLMResponse(BaseModel):
     output_tokens: int | None
     thinking_tokens: int | None = None  # billed like output, reported separately
     latency_ms: float
+    # The model the provider says it served, when it says: a pin can be served as a snapshot.
+    served_model: str | None = None
 
 
 class LLMProvider(Protocol):

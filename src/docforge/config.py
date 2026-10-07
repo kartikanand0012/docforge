@@ -1,11 +1,12 @@
 """Application settings, read from the environment and an optional `.env` file."""
 
 import json
+import math
 import re
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import ArgumentError
@@ -20,6 +21,18 @@ _LOCAL_APP_DATABASE_URL = (
 )
 _LOCAL_S3_SECRET_KEY = "docforge-local-secret"  # noqa: S105 - local Compose default, not a real secret
 _LOCAL_WEBHOOK_KEY = "docforge-local-webhook-key"
+PROVIDERS = ("gemini", "anthropic", "openai")
+Task = Literal["extraction", "chat"]
+
+
+def _price(value: object) -> bool:
+    """A real, finite, non-negative number of dollars (true is not a price)."""
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and value >= 0
+    )
 
 
 class Settings(BaseSettings):
@@ -49,6 +62,24 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash-lite"
     # Pinned for the same reason: vectors from two models cannot be compared.
     embedding_model: str = "gemini-embedding-001"
+
+    # Which provider reads fields from documents, and which answers questions. Gemini unless
+    # told otherwise; search's embeddings are Gemini's whatever these say.
+    extraction_provider: str = "gemini"
+    chat_provider: str = "gemini"
+    extraction_model: str | None = None  # unset: the provider's pinned model below
+    chat_model: str | None = None
+    anthropic_api_key: SecretStr | None = None
+    anthropic_model: str = "claude-sonnet-5-5"
+    openai_api_key: SecretStr | None = None
+    openai_model: str | None = None  # chosen by the owner and pinned: no default
+    openai_reasoning_effort: str | None = None  # a reasoning model only; part of its pin
+    # One model call's whole time, its retries and waits included (Claude and OpenAI write
+    # long extractions slowly). Each attempt may take all of what is left.
+    llm_timeout_seconds: float = Field(default=600.0, gt=0, le=3600)
+    # USD per million tokens, input and output, per "provider/model":
+    # {"anthropic/claude-sonnet-5-5": [3, 15]}. A model without a price shows no cost.
+    model_prices: str = "{}"
 
     max_upload_bytes: int = 10 * 1024 * 1024
     max_pages: int = 20
@@ -154,10 +185,90 @@ class Settings(BaseSettings):
         email = json.loads(self.google_service_account_json.get_secret_value())["client_email"]
         return str(email)
 
-    @field_validator("gemini_api_key", mode="before")
+    @field_validator("gemini_api_key", "anthropic_api_key", "openai_api_key", mode="before")
     @classmethod
     def _blank_key_is_unset(cls, value: object) -> object:
         return None if value == "" else value
+
+    @field_validator("extraction_model", "chat_model", "openai_model", mode="before")
+    @classmethod
+    def _blank_model_is_unset(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @field_validator("extraction_provider", "chat_provider")
+    @classmethod
+    def _known_provider(cls, value: str) -> str:
+        if value not in PROVIDERS:
+            raise ValueError(f"the provider must be one of {', '.join(PROVIDERS)}")
+        return value
+
+    @field_validator(
+        "gemini_model", "anthropic_model", "openai_model", "extraction_model", "chat_model"
+    )
+    @classmethod
+    def _pinned(cls, value: str | None) -> str | None:
+        # A "-latest" alias moves under us: a model change must be deliberate and evaluated.
+        if value is not None and value.endswith("-latest"):
+            raise ValueError(f"{value!r} is an alias that moves; pin a model version")
+        return value
+
+    @field_validator("model_prices")
+    @classmethod
+    def _prices(cls, value: str) -> str:
+        try:
+            prices = json.loads(value or "{}")
+            if not isinstance(prices, dict) or not all(
+                isinstance(k, str)
+                and "/" in k
+                and isinstance(v, list)
+                and len(v) == 2
+                and all(_price(n) for n in v)
+                for k, v in prices.items()
+            ):
+                raise ValueError
+        except ValueError:
+            raise ValueError(
+                'MODEL_PRICES must be {"provider/model": [input, output]} in USD per million'
+            ) from None
+        return value
+
+    @model_validator(mode="after")
+    def _openai_model_is_pinned(self) -> Self:
+        if "openai" in (self.extraction_provider, self.chat_provider) and not self.openai_model:
+            raise ValueError("OPENAI_MODEL must name the OpenAI model to use, pinned")
+        return self
+
+    def provider_for(self, task: Task) -> str:
+        return self.extraction_provider if task == "extraction" else self.chat_provider
+
+    def model_for(self, task: Task) -> str:
+        """The model `task` uses: its own setting, or its provider's pinned model."""
+        chosen = self.extraction_model if task == "extraction" else self.chat_model
+        if chosen:
+            return chosen
+        provider = self.provider_for(task)
+        if provider == "anthropic":
+            return self.anthropic_model
+        if provider == "openai":
+            return str(self.openai_model)
+        return self.gemini_model
+
+    def prices(self) -> dict[str, tuple[float, float]]:
+        """USD per million input and output tokens, by "provider/model"."""
+        found = {
+            name: (float(pair[0]), float(pair[1]))
+            for name, pair in json.loads(self.model_prices or "{}").items()
+        }
+        # The settings from before several providers: Gemini's price.
+        if (
+            self.price_input_per_million_usd is not None
+            and self.price_output_per_million_usd is not None
+        ):
+            found.setdefault(
+                f"gemini/{self.gemini_model}",
+                (self.price_input_per_million_usd, self.price_output_per_million_usd),
+            )
+        return found
 
     @model_validator(mode="after")
     def _no_local_defaults_in_production(self) -> Self:
@@ -194,6 +305,15 @@ class Settings(BaseSettings):
         token = self.converter_token.get_secret_value() if self.converter_token else ""
         if len(token) < 32:
             raise ValueError("CONVERTER_TOKEN must be set (32 characters or more)")
+        if self.pipeline_factory == "docforge.wiring:build_replay_pipelines":
+            return self  # the demo replays recorded replies and embeddings: no provider is called
+        keys = {"anthropic": self.anthropic_api_key, "openai": self.openai_api_key}
+        for provider in dict.fromkeys((self.extraction_provider, self.chat_provider)):
+            if provider in keys and keys[provider] is None:
+                raise ValueError(f"{provider.upper()}_API_KEY must be set: {provider} is selected")
+        if self.gemini_api_key is None:
+            # Search embeds every question with Gemini, whichever provider answers.
+            raise ValueError("GEMINI_API_KEY must be set: search embeds with Gemini")
         return self
 
 

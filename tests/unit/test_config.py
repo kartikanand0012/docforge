@@ -24,6 +24,17 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "PIPELINE_FACTORY",
         "WEBHOOK_SIGNING_KEY",
         "WEBHOOK_ALLOW_LOCAL",
+        "EXTRACTION_PROVIDER",
+        "CHAT_PROVIDER",
+        "EXTRACTION_MODEL",
+        "CHAT_MODEL",
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_MODEL",
+        "OPENAI_API_KEY",
+        "OPENAI_MODEL",
+        "MODEL_PRICES",
+        "PRICE_INPUT_PER_MILLION_USD",
+        "PRICE_OUTPUT_PER_MILLION_USD",
     ):
         monkeypatch.delenv(name, raising=False)
 
@@ -115,6 +126,7 @@ def test_production_accepts_explicit_credentials(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
     monkeypatch.setenv("CONVERTER_URL", "http://converter:8090")
     monkeypatch.setenv("CONVERTER_TOKEN", "c" * 32)
+    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
 
     assert make_settings().environment == "production"
 
@@ -184,6 +196,7 @@ def test_production_on_aws_uses_the_instance_role_for_s3(monkeypatch: pytest.Mon
     monkeypatch.setenv("CONVERTER_TOKEN", "c" * 32)
     monkeypatch.setenv("S3_ENDPOINT_URL", "")
     monkeypatch.setenv("S3_REGION", "ap-south-1")
+    monkeypatch.setenv("GEMINI_API_KEY", "g-key")
 
     settings = make_settings()
 
@@ -260,3 +273,114 @@ def test_production_converts_in_the_isolated_service(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("CONVERTER_TOKEN", "short")
     with pytest.raises(ValueError, match="CONVERTER_TOKEN"):
         make_settings()
+
+
+# --- model providers (C15) -------------------------------------------------------------------
+
+
+def production(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name, value in {
+        "ENVIRONMENT": "production",
+        "DATABASE_URL": "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge",
+        "MIGRATION_DATABASE_URL": "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge",
+        "S3_SECRET_KEY": "a-real-secret",
+        "WEBHOOK_SIGNING_KEY": "a-real-webhook-key",
+        "CONVERTER_URL": "http://converter:8090",
+        "CONVERTER_TOKEN": "c" * 32,
+        "GEMINI_API_KEY": "g-key",
+    }.items():
+        monkeypatch.setenv(name, value)
+
+
+def test_gemini_answers_both_tasks_unless_told_otherwise() -> None:
+    settings = make_settings()
+    for task in ("extraction", "chat"):
+        assert settings.provider_for(task) == "gemini"
+        assert settings.model_for(task) == settings.gemini_model
+
+
+def test_each_task_takes_its_own_provider_and_that_providers_pinned_model() -> None:
+    settings = make_settings(
+        CHAT_PROVIDER="anthropic", EXTRACTION_PROVIDER="openai", OPENAI_MODEL="o-pinned-1"
+    )
+    assert settings.provider_for("chat") == "anthropic"
+    assert settings.model_for("chat") == "claude-sonnet-5-5"
+    assert settings.provider_for("extraction") == "openai"
+    assert settings.model_for("extraction") == "o-pinned-1"
+    chosen = make_settings(CHAT_PROVIDER="anthropic", CHAT_MODEL="claude-haiku-4-5-20251001")
+    assert chosen.model_for("chat") == "claude-haiku-4-5-20251001"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"CHAT_PROVIDER": "openai"}, "OPENAI_MODEL"),
+        ({"CHAT_PROVIDER": "mistral"}, "provider"),
+        ({"ANTHROPIC_MODEL": "claude-sonnet-latest"}, "latest"),
+        ({"GEMINI_MODEL": "gemini-flash-latest"}, "latest"),
+        ({"CHAT_MODEL": "x-latest"}, "latest"),
+    ],
+)
+def test_a_provider_or_model_that_is_not_pinned_is_refused(
+    overrides: dict[str, str], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        make_settings(**overrides)
+
+
+def test_blank_keys_are_unset() -> None:
+    settings = make_settings(ANTHROPIC_API_KEY="", OPENAI_API_KEY="")
+    assert settings.anthropic_api_key is None and settings.openai_api_key is None
+
+
+def test_production_needs_the_key_of_every_provider_it_uses_and_gemini_for_search(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    production(monkeypatch)
+    monkeypatch.setenv("CHAT_PROVIDER", "anthropic")
+    with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+        make_settings()
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "a-key")
+    assert make_settings().provider_for("chat") == "anthropic"
+    monkeypatch.delenv("GEMINI_API_KEY")
+    with pytest.raises(ValueError, match="GEMINI_API_KEY"):  # search embeds with Gemini
+        make_settings()
+
+
+def test_prices_are_per_provider_and_model_with_the_old_settings_as_geminis() -> None:
+    settings = make_settings(
+        MODEL_PRICES='{"anthropic/claude-sonnet-5-5": [3, 15]}',
+        PRICE_INPUT_PER_MILLION_USD="0.1",
+        PRICE_OUTPUT_PER_MILLION_USD="0.4",
+    )
+    assert settings.prices() == {
+        "anthropic/claude-sonnet-5-5": (3.0, 15.0),
+        f"gemini/{settings.gemini_model}": (0.1, 0.4),
+    }
+    with pytest.raises(ValueError, match="MODEL_PRICES"):
+        make_settings(MODEL_PRICES='{"anthropic/x": [3]}')
+
+
+def test_a_replay_deployment_needs_no_model_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The demo replays recorded answers and embeddings: it calls no provider, so it holds
+    no key, whichever provider it is set to."""
+    production(monkeypatch)
+    monkeypatch.delenv("GEMINI_API_KEY")
+    monkeypatch.setenv("PIPELINE_FACTORY", "docforge.wiring:build_replay_pipelines")
+    monkeypatch.setenv("CHAT_PROVIDER", "anthropic")
+    assert make_settings().provider_for("chat") == "anthropic"
+
+
+@pytest.mark.parametrize("seconds", ["0", "-1", "3601"])
+def test_a_model_timeout_must_be_sensible(seconds: str) -> None:
+    with pytest.raises(ValueError, match="llm_timeout_seconds"):
+        make_settings(LLM_TIMEOUT_SECONDS=seconds)
+
+
+@pytest.mark.parametrize(
+    "prices",
+    ['{"a/b": [true, 1]}', '{"a/b": [-1, 1]}', '{"a/b": [NaN, 1]}', '{"a/b": [1, Infinity]}'],
+)
+def test_prices_must_be_real_non_negative_numbers(prices: str) -> None:
+    with pytest.raises(ValueError, match="MODEL_PRICES"):
+        make_settings(MODEL_PRICES=prices)

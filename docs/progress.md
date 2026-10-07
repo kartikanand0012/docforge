@@ -2,6 +2,37 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C15 Claude and OpenAI as model providers (2026-10-06): built, not yet measured on real models
+
+Branch `c15-providers`. Plan: `docs/plans/c15-providers.md` (ECC planner). Evidence: `docs/tdd/c15-providers.tdd.md`. The owner marked the item needed; the providers, models, keys and budget to record with are still to come, so no Claude or OpenAI model has been measured yet. Everything up to recording is built and tested on fake replies through the real SDKs.
+
+### What was built
+
+- **A provider per task**: `EXTRACTION_PROVIDER` and `CHAT_PROVIDER` (`gemini`, `anthropic`, `openai`), each pinned to a model; a `-latest` alias is refused. Gemini stays the default: a deployment that sets nothing is unchanged. Search's embeddings stay Gemini's (Anthropic has none).
+- **Claude** through Anthropic's SDK with its native JSON-schema output; **OpenAI** through the Responses API with a strict JSON schema and `store: false` always. Both are held to one strict form of the same reply schemas; the same pydantic models validate every reply.
+- **Failures**: rate limits and overloads retried as the server asks (`retry-after-ms` first), within one time budget per call (`LLM_TIMEOUT_SECONDS`, 600 s by default); out of credit is a quota stop; refusals and bad requests are not retried; errors name the request id, never the prompt or a key. The model the provider says it served is recorded, and a different one than the pin is logged.
+- **Cost by provider and model** (`MODEL_PRICES`), none shown if any call is unpriced; each answer records the provider that answered (migration 0023).
+- **Recordings per provider**, keyed by provider, request shape and the strict schema; Gemini's keys never moved (every committed recording replays).
+- **Evals against another provider** (`--provider`, `--model`), reports under `evals/baselines/<provider>/<model>/`. The gate holds any provider with reports to every Gemini floor automatically, its own provider and model pinned; a missing report fails. Every report from a model now says whose and pins provider, model and prompts (15 pins added; the Gemini reports changed only by that field). `python -m docforge.evals.compare` shows providers side by side with 95% intervals and cost in dollars.
+- **Production**: each selected provider's key is required, and Gemini's for search, except in a replay deployment (the demo and the local stack), which never calls a provider, key or not.
+- **Runbook**: where documents go, and what to do before switching a provider on, once on, and to roll back.
+
+### Departures from the plan
+
+- **Anthropic is called without streaming**, with an explicit timeout: simpler to test, and within the time a long extraction takes. Recorded here; revisit if a long extraction times out.
+- **No `provider` cost in the reports themselves**: prices come from the environment, so a report with dollars would change from machine to machine; the compare tool prices tokens instead.
+
+### Review (ECC security-reviewer, python-reviewer, mle-reviewer)
+
+No critical or high security finding; keys, `store: false` and per-provider recordings held. Fixed with failing tests first: a "nan" or negative wait could crash the retry loop, and `retry-after-ms` was ignored; one call could hold a worker for four timeouts; the served-model check took "gpt-5-mini" for "gpt-5"; a replay deployment with a key would have answered live; the schema treated a field called "title" or "format" as a schema word; prices accepted true, negatives and NaN; the CoA eval would not parse live when recording another provider; another Gemini model's eval would have overwritten the committed reports. From the MLE review: the gate could pass a provider measured on one suite (now every floor, every report); reports did not all say whose; recordings did not key on what Claude and OpenAI are actually sent; there was no side-by-side comparison with intervals and dollars.
+
+### Honest limits
+
+- **No Claude or OpenAI model has been measured.** The structured-output requests are built from the SDKs' current shapes; a live call per provider (runbook, before switching on) is the first real proof.
+- **Small sets**: 20 invoices and 104 questions. A provider passing means "no evidence of a problem", which the compare tool's intervals make plain; prompts were tuned on Gemini.
+- **Before a switch-on**, still to do (runbook): a shadow run on real documents, a weekly live canary, retirement dates beside pins, and alerts on served-model changes. Not built until a provider is chosen.
+- **No customer can avoid Google** while search embeds with Gemini.
+
 ## C14 MCP server for AI agents (2026-10-06): gate passed
 
 Branch `c14-mcp`, stacked on `h2-unanswered`. Plan: `docs/plans/c14-mcp.md` (ECC planner). Evidence: `docs/tdd/c14-mcp.tdd.md`. Owner's decisions: a new read-only `reader` role, and only such keys at `/v1/mcp`; only administrators make them; no Claude Desktop bridge.
