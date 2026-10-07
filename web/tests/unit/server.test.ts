@@ -64,3 +64,13 @@ describe("declaredTooLarge", () => {
     expect(declaredTooLarge(small, 11 * 1024 * 1024)).toBe(false);
   });
 });
+
+import { FORWARDED_HEADERS } from "@/lib/server";
+
+describe("headers passed back from the API", () => {
+  it("include a download's name and whether an export was cut", () => {
+    expect(FORWARDED_HEADERS).toEqual(
+      expect.arrayContaining(["content-type", "cache-control", "retry-after", "content-disposition", "x-docforge-truncated"]),
+    );
+  });
+});
