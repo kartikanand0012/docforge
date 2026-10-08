@@ -13,6 +13,8 @@ from sqlalchemy.exc import ArgumentError
 
 DATABASE_DRIVER = "postgresql+psycopg"
 _FACTORY = re.compile(r"[A-Za-z_][\w.]*:[A-Za-z_]\w*")
+# Robustness and capacity runs: the real parser and converter, the model simulated.
+CAPACITY_FACTORY = "docforge.loadtest.pipelines:build_capacity_pipelines"
 # The owner, for migrations only, and the restricted login the API and worker use.
 _LOCAL_DATABASE_URL = "postgresql+psycopg://docforge:docforge@127.0.0.1:5432/docforge"
 _LOCAL_APP_PASSWORD = "docforge-app-local"  # noqa: S105 - local Compose default, not a real secret
@@ -109,6 +111,10 @@ class Settings(BaseSettings):
     # `module:function` returning one pipeline per document type; lets a deployment swap
     # the parser or model without changing this package.
     pipeline_factory: str = "docforge.wiring:build_pipelines"
+    # Robustness and capacity runs only: no model is called; every reply is empty and marked
+    # simulated, after SIMULATED_MODEL_TIME (zero, c1, fixed:N). Needs the capacity factory.
+    simulated_model: bool = False
+    simulated_model_time: str = "zero"
 
     # Signs webhook deliveries; each webhook's secret is derived from it. Changing it changes
     # every webhook's secret.
@@ -233,6 +239,16 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
+    def _simulated_model_only_by_name(self) -> Self:
+        capacity = self.pipeline_factory == CAPACITY_FACTORY
+        if capacity != self.simulated_model:
+            raise ValueError(
+                f"SIMULATED_MODEL=true and PIPELINE_FACTORY={CAPACITY_FACTORY} go together: "
+                "set both for a capacity run, or neither"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _openai_model_is_pinned(self) -> Self:
         if "openai" in (self.extraction_provider, self.chat_provider) and not self.openai_model:
             raise ValueError("OPENAI_MODEL must name the OpenAI model to use, pinned")
@@ -307,6 +323,8 @@ class Settings(BaseSettings):
             raise ValueError("CONVERTER_TOKEN must be set (32 characters or more)")
         if self.pipeline_factory == "docforge.wiring:build_replay_pipelines":
             return self  # the demo replays recorded replies and embeddings: no provider is called
+        if self.simulated_model:
+            return self  # a capacity run: no provider is called (ops-check says so)
         keys = {"anthropic": self.anthropic_api_key, "openai": self.openai_api_key}
         for provider in dict.fromkeys((self.extraction_provider, self.chat_provider)):
             if provider in keys and keys[provider] is None:

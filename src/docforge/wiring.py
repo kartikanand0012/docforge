@@ -21,12 +21,14 @@ from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrde
 from docforge.llm.base import LLMProvider
 from docforge.llm.gemini import GeminiProvider
 from docforge.llm.replay import RecordingProvider
+from docforge.loadtest.simulated import SimulatedProvider
+from docforge.parsing.base import Parser
 from docforge.parsing.cache import CachingParser
 from docforge.parsing.docling_parser import DoclingParser
 from docforge.parsing.isolation import IsolatedParser
 from docforge.queue import JobQueue
 from docforge.review.service import ReviewService
-from docforge.search.embeddings import Embedder, GeminiEmbedder, RecordingEmbedder
+from docforge.search.embeddings import Embedder, FakeEmbedder, GeminiEmbedder, RecordingEmbedder
 from docforge.search.service import SearchService
 from docforge.storage import S3ObjectStore
 from docforge.webhooks import WebhookService
@@ -83,9 +85,9 @@ def recorded_provider(
     return RecordingProvider(directory, model, live, provider=name, options=options)
 
 
-def build_pipeline(settings: Settings) -> InvoicePipeline:
-    provider = build_provider(settings, "extraction")
-    parser = IsolatedParser(
+def build_parser(settings: Settings) -> IsolatedParser:
+    """Docling in a child process with its own memory, time and document limits."""
+    return IsolatedParser(
         partial(DoclingParser, batch_pages=settings.parser_batch_pages),
         name=DoclingParser.name,
         version=version("docling"),
@@ -94,32 +96,18 @@ def build_pipeline(settings: Settings) -> InvoicePipeline:
         max_rss_bytes=settings.parser_max_rss_mb * 1024 * 1024,
         child_env={"HF_HUB_OFFLINE": "1"} if settings.parser_offline else None,
     )
-    return InvoicePipeline(parser, provider, max_pages=settings.max_pages)
 
 
-def build_pipelines(settings: Settings) -> dict[str, Pipeline]:
-    """One pipeline per document type. A new type is added by registering it here."""
-    invoice = build_pipeline(settings)
-    # The parser and the provider are shared: the parser's models are loaded once.
-    order = ExtractionPipeline(
-        invoice.parser, invoice.provider, PURCHASE_ORDER_SPEC, max_pages=settings.max_pages
+def build_pipeline(settings: Settings) -> InvoicePipeline:
+    pipeline = pipelines_for(
+        build_parser(settings), build_provider(settings, "extraction"), settings
     )
-    coa: ExtractionPipeline[CoaExtraction] = ExtractionPipeline(
-        invoice.parser, invoice.provider, COA_SPEC, max_pages=settings.max_pages
-    )
-    general = GeneralPipeline(invoice.parser, max_pages=settings.max_pages)
-    return {"invoice": invoice, "purchase_order": order, "coa": coa, "general": general}
+    return pipeline["invoice"]  # type: ignore[return-value]
 
 
-def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
-    """Pipelines that only replay recorded parses and model replies: no key, no network.
-
-    For the end-to-end test and demos on the recorded documents. A file that was never
-    recorded fails its parse, which the service records as an unreadable file.
-    """
-    recordings = Path(settings.recordings_dir)
-    parser = CachingParser(recordings / "parsed")
-    provider = recorded_provider(settings, "extraction")
+def pipelines_for(parser: Parser, provider: LLMProvider, settings: Settings) -> dict[str, Pipeline]:
+    """One pipeline per document type, sharing one parser (its models are loaded once) and
+    one provider. A new type is added by registering it here."""
     order: ExtractionPipeline[PurchaseOrderExtraction] = ExtractionPipeline(
         parser, provider, PURCHASE_ORDER_SPEC, max_pages=settings.max_pages
     )
@@ -132,6 +120,21 @@ def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
         "coa": coa,
         "general": GeneralPipeline(parser, max_pages=settings.max_pages),
     }
+
+
+def build_pipelines(settings: Settings) -> dict[str, Pipeline]:
+    """The live pipelines: the isolated parser and the extraction provider."""
+    return pipelines_for(build_parser(settings), build_provider(settings, "extraction"), settings)
+
+
+def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
+    """Pipelines that only replay recorded parses and model replies: no key, no network.
+
+    For the end-to-end test and demos on the recorded documents. A file that was never
+    recorded fails its parse, which the service records as an unreadable file.
+    """
+    parser = CachingParser(Path(settings.recordings_dir) / "parsed")
+    return pipelines_for(parser, recorded_provider(settings, "extraction"), settings)
 
 
 REPLAY_FACTORY = "docforge.wiring:build_replay_pipelines"
@@ -193,31 +196,37 @@ def build_authenticator(settings: Settings) -> Authenticator:
     )
 
 
-def build_search(settings: Settings) -> SearchService:
-    """Search with Gemini embeddings. With no key, or with replayed pipelines, recorded
-    embeddings are replayed (tests and demos on the recorded documents), so a replayed run
-    ranks exactly as the recorded one; with `CHAT_RECORD=1` and a key, missing ones are
-    recorded. Nothing is ever recorded in a deployment."""
+def embedder_for(settings: Settings) -> Embedder:
+    """Gemini embeddings. With no key, or with replayed pipelines, recorded embeddings are
+    replayed (tests and demos on the recorded documents), so a replayed run ranks exactly as
+    the recorded one; with `CHAT_RECORD=1` and a key, missing ones are recorded. Nothing is
+    ever recorded in a deployment. With the model simulated, words hashed offline."""
+    if settings.simulated_model:
+        return FakeEmbedder()
     directory = Path(settings.recordings_dir) / "embeddings"
     key = settings.gemini_api_key
-    embedder: Embedder
     if settings.pipeline_factory == REPLAY_FACTORY or key is None:
         live = (
             GeminiEmbedder(settings.embedding_model, key.get_secret_value())
             if key is not None and settings.chat_record
             else None
         )
-        embedder = RecordingEmbedder(directory, live, model=settings.embedding_model)
-    else:
-        embedder = GeminiEmbedder(settings.embedding_model, key.get_secret_value())
+        return RecordingEmbedder(directory, live, model=settings.embedding_model)
+    return GeminiEmbedder(settings.embedding_model, key.get_secret_value())
+
+
+def build_search(settings: Settings) -> SearchService:
     sessions = make_session_factory(make_engine(settings.database_url.get_secret_value()))
-    return SearchService(sessions, embedder)
+    return SearchService(sessions, embedder_for(settings))
 
 
 def chat_provider(settings: Settings) -> LLMProvider:
     """Who answers questions. A replay deployment (the demo) never calls a provider, key or
     not; without the provider's key its recorded answers are replayed (production refuses
-    that at start-up); `CHAT_RECORD=1` records what is asked, for those replays."""
+    that at start-up); `CHAT_RECORD=1` records what is asked, for those replays. A capacity
+    run's simulated model answers that the documents do not say."""
+    if settings.simulated_model:
+        return SimulatedProvider(settings.simulated_model_time)
     keys = {
         "gemini": settings.gemini_api_key,
         "anthropic": settings.anthropic_api_key,

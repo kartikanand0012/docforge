@@ -19,6 +19,10 @@ from docforge.loadtest.simulated import SimulatedProvider, minimal_reply, model_
 CAPACITY = "docforge.loadtest.pipelines:build_capacity_pipelines"
 
 
+def seeded(seed: int) -> random.Random:
+    return random.Random(seed)  # noqa: S311 - model timing, not security
+
+
 def request(schema: type) -> LLMRequest:
     return LLMRequest(system="s", prompt="p", schema=schema, prompt_version="v")
 
@@ -48,7 +52,7 @@ def test_the_reply_is_marked_simulated_and_costs_nothing() -> None:
 
 
 def test_model_time_like_c1_has_its_measured_median_and_tail() -> None:
-    draw = model_time("c1", random.Random(7))
+    draw = model_time("c1", seeded(7))
     samples = sorted(draw() for _ in range(4000))
 
     assert samples[2000] == pytest.approx(14.4, rel=0.08)
@@ -58,11 +62,11 @@ def test_model_time_like_c1_has_its_measured_median_and_tail() -> None:
 @pytest.mark.parametrize("spec", ["", "fast", "fixed:", "fixed:-1", "fixed:nan", "fixed:601"])
 def test_a_model_time_that_is_not_understood_is_refused(spec: str) -> None:
     with pytest.raises(ValueError, match="SIMULATED_MODEL_TIME"):
-        model_time(spec, random.Random(0))
+        model_time(spec, seeded(0))
 
 
 def test_zero_model_time_does_not_wait() -> None:
-    assert model_time("zero", random.Random(0))() == 0
+    assert model_time("zero", seeded(0))() == 0
 
 
 # --- switched on only by name ---------------------------------------------------------------
@@ -113,6 +117,7 @@ def test_search_and_chat_never_call_a_provider_when_it_is_on() -> None:
 
 
 def test_the_capacity_pipelines_use_the_real_parser_and_the_simulated_model() -> None:
+    from docforge.extraction.pipeline import InvoicePipeline
     from docforge.loadtest.pipelines import build_capacity_pipelines
     from docforge.parsing.isolation import IsolatedParser
 
@@ -121,8 +126,10 @@ def test_the_capacity_pipelines_use_the_real_parser_and_the_simulated_model() ->
     )
 
     assert set(pipelines) == {"invoice", "purchase_order", "coa", "general"}
-    assert isinstance(pipelines["invoice"].parser, IsolatedParser)
-    assert isinstance(pipelines["invoice"].provider, SimulatedProvider)  # type: ignore[attr-defined]
+    invoice = pipelines["invoice"]
+    assert isinstance(invoice, InvoicePipeline)
+    assert isinstance(invoice.parser, IsolatedParser)
+    assert isinstance(invoice.provider, SimulatedProvider)
 
 
 def test_an_operator_is_told_the_model_is_simulated() -> None:
