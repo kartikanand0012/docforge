@@ -83,7 +83,9 @@ def emit(
 def test_a_delivery_is_signed_and_names_its_event(
     hooks: WebhookService, sessions: SessionFactory, receiver: Receiver, deferred: list[Any]
 ) -> None:
-    hook_id, secret = hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
+    hook_id, secret = hooks.create(
+        DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"], created_by="test"
+    )
     event_id = emit(hooks, sessions)
 
     ((delivery_id, tenant_id),) = deferred
@@ -107,7 +109,7 @@ def test_a_delivery_is_signed_and_names_its_event(
 def test_a_failed_delivery_is_retried_with_the_same_event_id_and_sent_once_it_succeeds(
     hooks: WebhookService, sessions: SessionFactory, receiver: Receiver, deferred: list[Any]
 ) -> None:
-    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
+    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"], created_by="test")
     emit(hooks, sessions)
     ((delivery_id, tenant_id),) = deferred
     receiver.statuses = [500, 503]
@@ -125,7 +127,7 @@ def test_a_failed_delivery_is_retried_with_the_same_event_id_and_sent_once_it_su
 def test_the_same_event_emitted_twice_is_delivered_once(
     hooks: WebhookService, sessions: SessionFactory, receiver: Receiver, deferred: list[Any]
 ) -> None:
-    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
+    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"], created_by="test")
     event_id = uuid.uuid4()
 
     emit(hooks, sessions, event_id)
@@ -139,7 +141,7 @@ def test_the_same_event_emitted_twice_is_delivered_once(
 def test_a_delivery_that_keeps_failing_stops_after_the_last_attempt(
     hooks: WebhookService, sessions: SessionFactory, receiver: Receiver, deferred: list[Any]
 ) -> None:
-    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
+    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"], created_by="test")
     emit(hooks, sessions)
     ((delivery_id, tenant_id),) = deferred
     receiver.statuses = [500] * 10
@@ -153,9 +155,13 @@ def test_a_delivery_that_keeps_failing_stops_after_the_last_attempt(
 def test_only_subscribed_and_active_webhooks_get_an_event(
     hooks: WebhookService, sessions: SessionFactory, receiver: Receiver, deferred: list[Any]
 ) -> None:
-    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["document.processed"])
-    gone, _ = hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
-    hooks.deactivate(DEFAULT_TENANT_ID, gone)
+    hooks.create(
+        DEFAULT_TENANT_ID, url=receiver.url, events=["document.processed"], created_by="test"
+    )
+    gone, _ = hooks.create(
+        DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"], created_by="test"
+    )
+    hooks.delete(DEFAULT_TENANT_ID, gone, actor="test")
 
     emit(hooks, sessions)
 
@@ -168,7 +174,12 @@ def test_an_unsafe_destination_is_refused_when_the_webhook_is_made(
     strict = WebhookService(sessions, KEY, lambda *args: None)
 
     with pytest.raises(UnsafeDestination):
-        strict.create(DEFAULT_TENANT_ID, url="http://127.0.0.1:1/hooks", events=["review.signed"])
+        strict.create(
+            DEFAULT_TENANT_ID,
+            url="http://127.0.0.1:1/hooks",
+            events=["review.signed"],
+            created_by="test",
+        )
 
 
 def test_a_destination_that_became_unsafe_is_not_called(
@@ -178,7 +189,7 @@ def test_a_destination_that_became_unsafe_is_not_called(
     deferred: list[Any],
 ) -> None:
     """Checked again at delivery: a name can be pointed at an internal address later."""
-    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
+    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"], created_by="test")
     emit(hooks, sessions)
     ((delivery_id, tenant_id),) = deferred
     strict = WebhookService(sessions, KEY, lambda *args: None, max_attempts=1)
@@ -190,13 +201,15 @@ def test_a_destination_that_became_unsafe_is_not_called(
 def test_another_tenants_webhooks_and_deliveries_are_invisible(
     hooks: WebhookService, sessions: SessionFactory, receiver: Receiver, other_tenant: uuid.UUID
 ) -> None:
-    hook_id, _ = hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
+    hook_id, _ = hooks.create(
+        DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"], created_by="test"
+    )
 
     assert hooks.webhooks(other_tenant) == []
     with pytest.raises(LookupError):
         hooks.deliveries(other_tenant, hook_id)
     with pytest.raises(LookupError):
-        hooks.deactivate(other_tenant, hook_id)
+        hooks.delete(other_tenant, hook_id, actor="test")
 
 
 def test_the_secret_is_shown_once_and_not_stored(
@@ -204,12 +217,15 @@ def test_the_secret_is_shown_once_and_not_stored(
 ) -> None:
     from sqlalchemy import text
 
-    _, secret = hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
+    _, secret = hooks.create(
+        DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"], created_by="test"
+    )
 
     with owner_engine.connect() as conn:
         stored = " ".join(str(row) for row in conn.execute(text("SELECT * FROM webhooks")))
     assert secret not in stored
-    assert all("secret" not in str(hook) for hook in hooks.webhooks(DEFAULT_TENANT_ID))
+    assert all(secret not in str(hook) for hook in hooks.webhooks(DEFAULT_TENANT_ID))
+    assert all("secret" not in hook for hook in hooks.webhooks(DEFAULT_TENANT_ID))
 
 
 Factory = Callable[..., Any]
@@ -231,7 +247,10 @@ def test_processing_a_document_and_signing_its_review_emit_events(
         sessions, KEY, lambda s, d, t: deferred.append((d, t)), allow_http=True, allow_private=True
     )
     hooks.create(
-        DEFAULT_TENANT_ID, url=receiver.url, events=["document.processed", "review.signed"]
+        DEFAULT_TENANT_ID,
+        url=receiver.url,
+        events=["document.processed", "review.signed"],
+        created_by="test",
     )
     world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001", events=hooks)
     review = ReviewService(
@@ -284,7 +303,7 @@ def test_a_delivery_goes_through_the_real_queue_and_worker(
     queue = JobQueue(engine.url)
     hooks = WebhookService(sessions, KEY, queue.defer_delivery, allow_http=True, allow_private=True)
     queue.bind_webhooks(hooks)
-    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"])
+    hooks.create(DEFAULT_TENANT_ID, url=receiver.url, events=["review.signed"], created_by="test")
     receiver.statuses = [500]  # the first attempt fails; the queue tries again
 
     emit(hooks, sessions)
@@ -318,7 +337,12 @@ def test_a_delivery_connects_to_the_address_that_was_checked(
         "getaddrinfo",
         lambda host, *a, **k: real("127.0.0.1" if host == "hooks.test" else host, *a, **k),
     )
-    hooks.create(DEFAULT_TENANT_ID, url=f"http://hooks.test:{port}/hooks", events=["review.signed"])
+    hooks.create(
+        DEFAULT_TENANT_ID,
+        url=f"http://hooks.test:{port}/hooks",
+        events=["review.signed"],
+        created_by="test",
+    )
     emit(hooks, sessions)
     ((delivery_id, tenant_id),) = deferred
     lookups: list[str] = []
@@ -369,7 +393,12 @@ def test_no_database_lock_is_held_while_the_receiver_answers(
         allow_private=True,
         client=lambda: Probe(),  # type: ignore[arg-type,return-value]
     )
-    hooks.create(DEFAULT_TENANT_ID, url="http://127.0.0.1:9/hooks", events=["review.signed"])
+    hooks.create(
+        DEFAULT_TENANT_ID,
+        url="http://127.0.0.1:9/hooks",
+        events=["review.signed"],
+        created_by="test",
+    )
     emit(hooks, sessions)
     ((delivery_id, tenant_id),) = deferred
 

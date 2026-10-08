@@ -169,6 +169,9 @@ class ChainOut(_Out):
 _NOT_FOUND = HTTPException(404, "No such document.")
 
 
+AUDIT_CHECKS_PER_MINUTE = 6
+
+
 def documents_router(
     service: DocumentService, *, max_upload_bytes: int, max_pages: int, limits: Limits
 ) -> APIRouter:
@@ -398,6 +401,11 @@ def documents_router(
         entry was edited or removed from the middle without the later hashes being redone;
         it cannot show that the log was not rewritten by someone able to redo them.
         """
+        # Recomputing every hash is linear in the log: a few checks a minute per organisation.
+        # Counted per caller: a read-only key cannot use up an administrator's checks.
+        key = f"audit-verify:{principal.tenant_id}:{principal.actor}"
+        if not limits.allow(key, AUDIT_CHECKS_PER_MINUTE):
+            raise HTTPException(429, "The chain was checked a moment ago; wait a minute.")
         return ChainOut.model_validate(service.verify_audit_chain(principal.tenant_id))
 
     return router

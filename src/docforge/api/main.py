@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from docforge.api.app import create_app
+from docforge.audit_log import AuditLogService
 from docforge.collections import CollectionService
 from docforge.config import get_settings
 from docforge.db.session import make_engine, make_session_factory
@@ -57,4 +58,5 @@ def create_default_app() -> FastAPI:
         collections=collections,
         limits=limits,
         agents=agents,
+        audit_log=AuditLogService(sessions),
     )

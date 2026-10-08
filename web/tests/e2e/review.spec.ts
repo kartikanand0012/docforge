@@ -1,4 +1,7 @@
+import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -133,6 +136,28 @@ test.describe.serial("a flagged invoice is resolved end to end", () => {
     expect(chain.consistent).toBe(true);
   });
 
+  test("the audit log shows the signed review by its reviewer, checks the chain, and exports", async ({ page }) => {
+    await page.getByRole("link", { name: "Audit log" }).click();
+    await page.getByRole("button", { name: "Check the chain" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Verified" })).toContainText("chain intact");
+
+    const filters = page.getByRole("form", { name: "Filter the audit log" });
+    await filters.getByLabel("Action").selectOption({ label: "Review signed" });
+    await filters.getByRole("button", { name: "Filter" }).click();
+    await expect(page).toHaveURL(/action=review\.signed/);
+    const row = page.locator("table.documents tbody tr");
+    await expect(row).toHaveCount(1);
+    await expect(row).toContainText("E2E Reviewer");
+    await expect(row).toContainText("invoice.pdf");
+
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export these entries as CSV" }).click();
+    const file = await (await download).path();
+    const csv = readFileSync(file!, "utf-8");
+    expect(csv.split("\n")[0]).toBe("id,occurred_at,actor,actor_name,action,target_type,target_id,details,prev_hash,hash");
+    expect(csv).toContain("review.signed");
+  });
+
   test("search finds the invoice by its batch and opens it", async ({ page }) => {
     const label = JSON.parse(readFileSync(path.join(FIXTURES, "label.json"), "utf-8")) as {
       invoice: { lines: { batch_no: string }[] };
@@ -238,4 +263,62 @@ test("an administrator connects an AI agent with a read-only key, and revokes it
   await page.getByRole("button", { name: /^Revoke E2E agent \(/ }).click();
   await expect(page.getByRole("row", { name: /E2E agent/ })).toContainText("Revoked");
   expect((await list()).status()).toBe(401);
+});
+
+
+test("an administrator manages a webhook end to end", async ({ page }) => {
+  // A receiver on this machine that checks each delivery's signature with the secret shown.
+  const received: { verified: boolean; type: string }[] = [];
+  let secret = "";
+  const server = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk) => (body += chunk));
+    request.on("end", () => {
+      const header = String(request.headers["docforge-signature"] ?? "");
+      const [t, v1] = header.split(",").map((part) => part.split("=")[1]);
+      const expected = createHmac("sha256", secret).update(`${t}.${body}`).digest("hex");
+      received.push({ verified: v1 === expected, type: JSON.parse(body).type });
+      response.writeHead(200).end();
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as AddressInfo;
+  page.on("dialog", (dialog) => void dialog.accept());
+  try {
+    await signIn(page);
+    await expect(page.getByRole("heading", { name: "Review queue" })).toBeVisible();
+    await page.getByRole("link", { name: "Webhooks" }).click();
+    const form = page.getByRole("form", { name: "Make a webhook" });
+    await form.getByLabel("URL (https)").fill(`http://127.0.0.1:${port}/hooks`);
+    await form.getByLabel("review.signed").check();
+    await form.getByRole("button", { name: "Make webhook" }).click();
+    secret = (await page.locator("pre.command").innerText()).trim();
+    expect(secret).toMatch(/^whsec_/);
+    await page.getByRole("button", { name: "Done, I have copied it" }).click();
+
+    await page.getByRole("button", { name: /^Send a test to/ }).click();
+    await expect.poll(() => received.length, { timeout: 30_000 }).toBe(1);
+    expect(received[0]).toEqual({ verified: true, type: "webhook.test" });
+
+    await page.getByRole("button", { name: /^Rotate the secret of/ }).click();
+    const rotated = (await page.locator("pre.command").innerText()).trim();
+    expect(rotated).not.toBe(secret);
+    secret = rotated;
+    await page.getByRole("button", { name: "Done, I have copied it" }).click();
+    await page.getByRole("button", { name: /^Send a test to/ }).click();
+    await expect.poll(() => received.length, { timeout: 30_000 }).toBe(2);
+    expect(received[1].verified).toBe(true); // signed with the new secret
+
+    await page.getByRole("button", { name: /^Deliveries to/ }).click();
+    await expect(page.getByRole("region", { name: /^Deliveries to/ }).locator("tbody tr")).toHaveCount(2);
+
+    await page.getByRole("button", { name: /^Disable the webhook/ }).click();
+    await expect(page.getByRole("button", { name: /^Send a test to/ })).toBeDisabled();
+    await page.getByRole("button", { name: /^Enable the webhook/ }).click();
+    await expect(page.getByRole("button", { name: /^Send a test to/ })).toBeEnabled();
+    await page.getByRole("button", { name: /^Delete the webhook to/ }).click();
+    await expect(page.getByText("No webhooks yet.")).toBeVisible();
+  } finally {
+    server.close();
+  }
 });

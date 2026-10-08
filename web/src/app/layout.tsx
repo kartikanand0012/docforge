@@ -25,6 +25,8 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <Link href="/collections">Knowledge bases</Link>
             <Link href="/questions">Unanswered</Link>
             <Link href="/agents">AI agents</Link>
+            <Link href="/audit">Audit log</Link>
+            <Link href="/webhooks">Webhooks</Link>
             <Link href="/evals">Evals and cost</Link>
             {/* A file download through the session proxy, not a page. */}
             <a href="/api/v1/exports/documents.csv" download>

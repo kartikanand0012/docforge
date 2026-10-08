@@ -2,6 +2,31 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## C16 Audit log and webhook screens (2026-10-08)
+
+Branch `c16-audit-webhooks`. Plan: `docs/plans/c16-audit-webhooks.md` (ECC planner); built with the plan's default decisions, as the owner asked. Evidence: `docs/tdd/c16-audit-webhooks.tdd.md`. No eval or gate change (nothing here calls a model): gate 76/76 unchanged. Tests: 1,963 Python (one MinIO bucket check failed once in the full run and passes alone: local storage, untouched here); web 86; e2e 12/12.
+
+### What was built
+
+- **Audit log page** (administrators): every action newest first, filtered by action, person, target and dates (the filters live in the URL, so a view can be shared), names looked up when read (the log keeps ids only, so names stay erasable), only the details each action allows (an allow-list; others counted as hidden), the hash chain checked on request (with the limits of a chain without an outside anchor said plainly), and the filtered view exported as formula-safe CSV (at most 10,000 rows, a cut said; each export is itself logged).
+- **Webhooks page** (administrators): make (the secret shown once, with Copy), send a test, see deliveries with their last attempt and the next one as the queue will schedule it, send a failed delivery again (same event id, fresh attempts, once even on two clicks), rotate the secret (signing every later attempt, retries included), disable and enable (enabling re-checks the destination), delete (kept as a record, never sent to). At most ten per organisation. `document.ready_for_chat` can now be subscribed to.
+- **Every webhook change is in the hash-chained audit log**, in the change's own transaction, with the host only (a URL's path or query can hold a receiver's token). Before C16, making and removing a webhook were not audited at all.
+- **Migration 0024**: indexes to filter the log by action, actor and time, built concurrently (a plain build would block processing) and safe to re-run after a failure; webhook and delivery columns.
+- **Limits**: per organisation, 10 test sends and re-sends and 20 makes and enables a minute, 60 audit lists and 6 exports a minute; 6 chain checks a minute per caller.
+- **The web proxy** now passes a download's name and whether an export was cut (this also fixes the signed-records export's filename).
+
+### Review (ECC security-reviewer, python-reviewer, react-reviewer)
+
+No critical or high security finding; isolation, authorisation, SSRF on every send path, CSV injection and secrets held. Fixed with failing tests first: a destination refused said what the name resolved to (a probe of the server's network) - now one answer, the detail logged; making and enabling were not limited; two makes at once could pass the cap of ten; any read-only key could use up an administrator's chain checks; an unknown delivery read "No such webhook."; an out-of-range cursor or a NUL in a filter was an internal error; the audit list and export were not limited; changes could be recorded under a made-up "admin"; the migration could not be re-run after a failure; address checks held a row lock while resolving. The pages: the secret card took focus on every keystroke; the deliveries panel could show (and re-send) another webhook's delivery; a failed delete behaved as if it worked; Load more could mix an older query into a newer one; applying filters dropped the dates; a cut export was not said; a path token in a URL was shown.
+
+### Honest limits
+
+- **The pages are plain**: the owner plans a new UI; these are functional and accessible, not designed.
+- **Re-sends and retries can reach a receiver twice**: the same event id each time; receivers are told to ignore repeats.
+- **Rotation is immediate**: receivers refuse deliveries until they have the new secret (the page warns).
+- **No 200,000-entry query-plan test**: the indexes and a 5-second statement timeout bound the cost; measured in the coming load testing.
+- **Old deliveries are not pruned** (retention is not on the owner's list).
+
 ## C15 Claude and OpenAI as model providers (2026-10-06): built, not yet measured on real models
 
 Branch `c15-providers`. Plan: `docs/plans/c15-providers.md` (ECC planner). Evidence: `docs/tdd/c15-providers.tdd.md`. The owner marked the item needed; the providers, models, keys and budget to record with are still to come, so no Claude or OpenAI model has been measured yet. Everything up to recording is built and tested on fake replies through the real SDKs.

@@ -1,5 +1,7 @@
 /** The DocForge API, as the review screen uses it. */
 
+import type { ChainReport } from "@/lib/audit";
+
 import { readEvents, type Answer, type ChatStatus, type Citation } from "./chat";
 import type { Box } from "./geometry";
 
@@ -139,6 +141,49 @@ export type MadeKey = { token: string; prefix: string; name: string; role: strin
 
 export type AgentCall = { tool: string; outcome: string; key_name: string; scope: string; results: number; duration_ms: number; created_at: string };
 
+export type AuditEntry = {
+  id: number;
+  occurred_at: string;
+  actor: string;
+  actor_name: string;
+  action: string;
+  action_label: string;
+  target_type: string;
+  target_id: string;
+  target_label: string | null;
+  details: Record<string, unknown>;
+  hidden_details: number;
+};
+
+export type AuditPage = { items: AuditEntry[]; next_before: number | null };
+
+export type AuditChoices = { actions: { value: string; label: string }[]; actors: { value: string; label: string }[] };
+
+export type Webhook = {
+  id: string;
+  url: string;
+  events: string[];
+  active: boolean;
+  created_at: string;
+  created_by: string;
+  secret_rotated_at: string | null;
+  last_delivery: { status: string; last_status: number | null; created_at: string } | null;
+};
+
+export type Delivery = {
+  id: string;
+  event_id: string;
+  event_type: string;
+  status: string;
+  attempts: number;
+  last_status: number | null;
+  last_error: string | null;
+  delivered_at: string | null;
+  created_at: string;
+  last_attempt_at: string | null;
+  next_attempt_at: string | null;
+};
+
 export type ConversationSummary = { id: string; title: string; document_id: string | null; created_at: string };
 
 export type StoredMessage = { id: string; question: string; answer: string; status: ChatStatus; citations: Citation[]; created_at: string };
@@ -264,6 +309,26 @@ export const api = {
   makeKey: (name: string) => call<MadeKey>("/v1/api-keys", json({ name })),
   revokeKey: (prefix: string) => call<null>(`/v1/api-keys/${encodeURIComponent(prefix)}`, { method: "DELETE" }),
   agentCalls: () => call<AgentCall[]>("/v1/agent-calls"),
+  audit: (query: string) => call<AuditPage>(`/v1/audit${query ? `?${query}` : ""}`),
+  auditChoices: () => call<AuditChoices>("/v1/audit/filters"),
+  auditExport: async (query: string): Promise<{ blob: Blob; truncated: boolean }> => {
+    const response = await fetch(`${API_URL}/v1/audit/export.csv${query ? `?${query}` : ""}`, { cache: "no-store" });
+    if (!response.ok) throw await failure(response);
+    return { blob: await response.blob(), truncated: response.headers.get("x-docforge-truncated") === "true" };
+  },
+  verifyChain: () => call<ChainReport>("/v1/audit/verification"),
+  webhooks: () => call<Webhook[]>("/v1/webhooks"),
+  webhookEvents: () => call<string[]>("/v1/webhooks/events"),
+  makeWebhook: (url: string, events: string[]) => call<{ id: string; secret: string }>("/v1/webhooks", json({ url, events })),
+  setWebhookActive: (id: string, active: boolean) =>
+    call<{ active: boolean }>(`/v1/webhooks/${encodeURIComponent(id)}`, { ...json({ active }), method: "PATCH" }),
+  deleteWebhook: (id: string) => call<null>(`/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  rotateWebhook: (id: string) => call<{ secret: string }>(`/v1/webhooks/${encodeURIComponent(id)}/secret`, { method: "POST" }),
+  testWebhook: (id: string) => call<{ event_id: string }>(`/v1/webhooks/${encodeURIComponent(id)}/test`, { method: "POST" }),
+  deliveries: (id: string, before?: string) =>
+    call<Delivery[]>(`/v1/webhooks/${encodeURIComponent(id)}/deliveries${before ? `?before=${encodeURIComponent(before)}` : ""}`),
+  resendDelivery: (id: string, deliveryId: string) =>
+    call<{ event_id: string }>(`/v1/webhooks/${encodeURIComponent(id)}/deliveries/${encodeURIComponent(deliveryId)}/resend`, { method: "POST" }),
   unanswered: () => call<UnansweredReport>("/v1/questions/unanswered"),
   conversation: (id: string) => call<{ id: string; messages: StoredMessage[] }>(`/v1/conversations/${encodeURIComponent(id)}`),
   pageUrl: (id: string, page: number) => `${API_URL}/v1/documents/${encodeURIComponent(id)}/pages/${page}`,

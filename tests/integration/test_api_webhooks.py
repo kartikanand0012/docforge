@@ -93,7 +93,7 @@ def test_a_webhook_is_removed_and_another_tenants_cannot_be(
 
     assert theirs.delete(f"/v1/webhooks/{hook_id}").status_code == 404
     assert admin.delete(f"/v1/webhooks/{hook_id}").status_code == 204
-    assert admin.get("/v1/webhooks").json()[0]["active"] is False
+    assert admin.get("/v1/webhooks").json() == []  # deleted: out of the list, never sent to
 
 
 def test_only_administrators_manage_webhooks(

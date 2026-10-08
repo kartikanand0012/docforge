@@ -133,9 +133,11 @@ def signed_in(
     tenant_id: uuid.UUID | None = None,
     role: str = "admin",
     reviewer_id: uuid.UUID | None = None,
+    key_id: uuid.UUID | None = None,
 ) -> "FastAPI":
     """`app` with every request made as one caller, for tests about something other than
-    authentication. A `reviewer_id` makes the caller that reviewer, signed in."""
+    authentication. A `reviewer_id` makes the caller that reviewer, signed in; a `key_id`
+    makes it that API key (one key otherwise)."""
     from docforge.api.auth import current_principal
     from docforge.auth import Principal
     from docforge.db import DEFAULT_TENANT_ID
@@ -143,7 +145,7 @@ def signed_in(
     principal = Principal(
         tenant_id=tenant_id or DEFAULT_TENANT_ID,
         kind="session" if reviewer_id else "api_key",
-        subject_id=reviewer_id or uuid.UUID(int=1),
+        subject_id=reviewer_id or key_id or uuid.UUID(int=1),
         role="reviewer" if reviewer_id and role == "admin" else role,
         name="test caller",
     )
