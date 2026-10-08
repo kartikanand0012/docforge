@@ -7,11 +7,13 @@ signs in with a PIN, so runs never share data and nothing needs cleaning up.
 
 import json
 import os
+import re
 import secrets
 import ssl
 import subprocess
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -60,6 +62,41 @@ def compose(*args: str, stdin: str | None = None, timeout: float = 300) -> str:
         # The command, not its input: the input can carry a PIN.
         raise RuntimeError(f"docker compose {' '.join(args)} failed: {result.stderr[-2000:]}")
     return result.stdout
+
+
+_PSQL = ("docker", "compose", "exec", "-T", "postgres", "psql", "-U", "docforge", "-d", "docforge")
+_LOCK_KEY = re.compile(r"^[a-z]+:[0-9a-f-]{36}$")  # e.g. index:<document id>
+
+
+@contextmanager
+def advisory_lock(key: str) -> Iterator[None]:
+    """Hold the database's advisory lock on `hashtext(key)`, as the service would, so a worker
+    that needs it waits at that point; released when the block ends."""
+    if not _LOCK_KEY.match(key):
+        raise ValueError(f"not a lock key: {key!r}")
+    name = f"system_hold_{secrets.token_hex(4)}"  # both checked: safe to put in the SQL
+    hold = (
+        f"SET application_name = '{name}'; "
+        f"SELECT pg_advisory_lock(hashtext('{key}')); SELECT pg_sleep(900);"
+    )
+    by_name = f"FROM pg_stat_activity WHERE application_name = '{name}'"
+    holder = subprocess.Popen(  # noqa: S603 - fixed arguments, no shell
+        [*_PSQL, "-c", hold], cwd=STACK, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    try:
+        deadline = time.monotonic() + 30
+        while _psql(f"SELECT count(*) {by_name} AND wait_event = 'PgSleep'") != "1":
+            if time.monotonic() > deadline:
+                raise TimeoutError("the lock was not taken")
+            time.sleep(0.2)
+        yield
+    finally:
+        _psql(f"SELECT pg_terminate_backend(pid) {by_name}")
+        holder.wait(timeout=30)
+
+
+def _psql(sql: str) -> str:
+    return compose(*_PSQL[2:], "-Atc", sql).strip()
 
 
 def caddy_root_certificate(directory: Path) -> Path:
@@ -126,7 +163,7 @@ class Organisation:
 
     def wait(
         self, document_id: str, until: Callable[[Mapping[str, Any]], bool] | None = None,
-        timeout: float = 180,
+        timeout: float = 180, every: float = 1,
     ) -> dict[str, Any]:  # fmt: skip
         """The document once `until` holds (by default: processed or failed for good)."""
         done = until or (lambda d: d["status"] in FINAL_STATUSES and d["stage"] != "retrying")
@@ -140,7 +177,7 @@ class Organisation:
             if time.monotonic() > deadline:
                 where = f"{document['status']}/{document['stage']}"
                 raise TimeoutError(f"document {document_id} still {where}")
-            time.sleep(1)
+            time.sleep(every)
 
 
 def make_organisation(verify: Path) -> Organisation:
