@@ -276,3 +276,74 @@ def test_a_database_outage_is_service_unavailable(
 
     assert response.status_code == 503
     assert response.json()["detail"] == "The database is unavailable. Try again later."
+
+
+# --- V1 verification: what a refused upload says ----------------------------------------
+
+
+def _protected_pdf(*, needs_password_to_open: bool) -> bytes:
+    import io
+    import secrets
+
+    from pypdf import PdfReader, PdfWriter
+
+    writer = PdfWriter()
+    writer.append(PdfReader(io.BytesIO(PDF)))
+    to_open = secrets.token_hex(8) if needs_password_to_open else ""
+    writer.encrypt(user_password=to_open, owner_password=secrets.token_hex(8))
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
+
+
+def test_a_pdf_that_needs_a_password_is_refused_saying_so(api: Api) -> None:
+    response = api.upload(_protected_pdf(needs_password_to_open=True))
+
+    assert response.status_code == 422
+    assert "password" in response.json()["detail"]
+    assert api.queued == []
+
+
+def test_a_pdf_with_only_an_owner_password_opens_and_is_accepted(api: Api) -> None:
+    response = api.upload(_protected_pdf(needs_password_to_open=False))
+
+    assert response.status_code == 202, response.text
+
+
+def test_an_older_or_password_protected_office_file_is_refused_saying_why(api: Api) -> None:
+    # Legacy .doc/.xls/.ppt and password-protected .docx/.xlsx are both OLE containers.
+    ole = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 1024
+    files = {"file": ("budget.xlsx", ole, "application/octet-stream")}
+
+    response = api.client.post("/v1/documents", files=files, data={"doc_type": "invoice"})
+
+    assert response.status_code == 415
+    detail = response.json()["detail"]
+    assert "password" in detail and ".xlsx" in detail and "older" in detail
+
+
+def test_a_full_queue_says_when_to_try_again(api: Api, monkeypatch: pytest.MonkeyPatch) -> None:
+    from docforge.documents import QueueFull
+
+    def full(**kwargs: object) -> None:
+        raise QueueFull("too many documents are waiting to be processed")
+
+    monkeypatch.setattr(api.service, "ingest", full)
+
+    response = api.upload()
+
+    assert response.status_code == 503
+    assert int(response.headers["Retry-After"]) > 0
+
+
+def test_storage_being_down_says_when_to_try_again(api: Api) -> None:
+    class DownStore(MemoryObjectStore):
+        def exists(self, key: str) -> bool:
+            raise StorageUnavailable("connection refused")
+
+    api.service._store = DownStore()
+
+    response = api.upload()
+
+    assert response.status_code == 503
+    assert int(response.headers["Retry-After"]) > 0
