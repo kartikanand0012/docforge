@@ -210,7 +210,7 @@ def create_app(
     if collections is not None:
         app.include_router(collections_router(collections))
     if audit_log is not None:
-        app.include_router(audit_router(audit_log))
+        app.include_router(audit_router(audit_log, caps))
     if agents is not None and authenticator is not None:
         # AI agents, through the MCP server, with keys administrators make.
         app.include_router(agents_router(authenticator, agents))

@@ -28,6 +28,10 @@ SYSTEM_ACTORS = {
     "cli": "Command line",
 }
 EXPORT_LIMIT = 10_000
+EXPORT_COLUMNS = (
+    "id", "occurred_at", "actor", "actor_name", "action", "target_type", "target_id",
+    "details", "prev_hash", "hash",
+)  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -132,8 +136,6 @@ class AuditLogService:
                 target_id=str(tenant_id),
                 details={"rows": len(items), "truncated": truncated, "filtered": filters.any},
             )
-        header = ["id", "occurred_at", "actor", "actor_name", "action", "target_type",
-                  "target_id", "details", "prev_hash", "hash"]  # fmt: skip
         csv_rows = [
             {
                 "id": e.id,
@@ -149,7 +151,7 @@ class AuditLogService:
             }
             for e in items
         ]
-        body = to_csv(csv_rows) if csv_rows else ",".join(header) + "\n"
+        body = to_csv(csv_rows) if csv_rows else ",".join(EXPORT_COLUMNS) + "\n"
         return body, truncated
 
     # Helpers

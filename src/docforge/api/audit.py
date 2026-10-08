@@ -4,13 +4,14 @@ the filtered view as CSV. Only reads, except that an export is itself logged."""
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 from docforge.api.auth import require
 from docforge.audit_log import AuditLogService, Filters
 from docforge.auth import Principal
+from docforge.limits import Limits
 
 Admin = Annotated[Principal, Depends(require("admin"))]
 
@@ -51,11 +52,14 @@ def _utc(moment: datetime | None) -> datetime | None:
     return moment.replace(tzinfo=UTC)
 
 
+_TEXT = Query(max_length=200, pattern=r"^[^\x00]*$")  # no NUL: Postgres refuses it
+
+
 def _filters(
-    action: str | None = None,
-    actor: str | None = None,
-    target_type: str | None = None,
-    target_id: str | None = None,
+    action: Annotated[str | None, _TEXT] = None,
+    actor: Annotated[str | None, _TEXT] = None,
+    target_type: Annotated[str | None, _TEXT] = None,
+    target_id: Annotated[str | None, _TEXT] = None,
     since: Annotated[datetime | None, Query(alias="from")] = None,
     until: Annotated[datetime | None, Query(alias="to")] = None,
 ) -> Filters:
@@ -65,17 +69,26 @@ def _filters(
 Chosen = Annotated[Filters, Depends(_filters)]
 
 
-def audit_router(log: AuditLogService) -> APIRouter:
+LISTS_PER_MINUTE = 60
+EXPORTS_PER_MINUTE = 6  # each reads up to 10,000 entries, and is itself logged
+
+
+def audit_router(log: AuditLogService, limits: Limits) -> APIRouter:
     router = APIRouter(prefix="/v1/audit")
+
+    def take(principal: Principal, kind: str, per_minute: int) -> None:
+        if not limits.allow(f"audit-{kind}:{principal.tenant_id}", per_minute):
+            raise HTTPException(429, "Too many requests this minute; wait a minute.")
 
     @router.get("", response_model=PageOut)
     async def entries(
         principal: Admin,
         filters: Chosen,
-        before: int | None = None,
+        before: Annotated[int | None, Query(ge=1, le=2**63 - 1)] = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 50,
     ) -> PageOut:
         """Newest first. `before` is the `next_before` of the last page."""
+        await run_in_threadpool(take, principal, "list", LISTS_PER_MINUTE)
         page = await run_in_threadpool(
             lambda: log.entries(principal.tenant_id, filters, before=before, limit=limit)
         )
@@ -95,6 +108,7 @@ def audit_router(log: AuditLogService) -> APIRouter:
     @router.get("/export.csv", response_class=Response)
     async def export(principal: Admin, filters: Chosen) -> Response:
         """The filtered view, newest first, at most 10,000 rows; the export is logged."""
+        await run_in_threadpool(take, principal, "export", EXPORTS_PER_MINUTE)
         body, truncated = await run_in_threadpool(
             lambda: log.export(principal.tenant_id, filters, actor=principal.actor)
         )

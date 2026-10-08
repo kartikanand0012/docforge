@@ -184,7 +184,9 @@ def api(setup: Setup, role: str = "admin", limits: LocalLimits | None = None) ->
     app = create_app(
         None, service=setup.world.service, audit_log=setup.log, limits=limits or LocalLimits()
     )
-    return TestClient(signed_in(app, role=role))
+    # Each role a key of its own, so per-caller limits see different callers.
+    key = uuid.UUID(int=["admin", "reviewer", "integrator", "reader"].index(role) + 1)
+    return TestClient(signed_in(app, role=role, key_id=key))
 
 
 def test_only_administrators_read_the_log(setup: Setup) -> None:

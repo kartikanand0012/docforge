@@ -30,23 +30,38 @@ _INDEXES = (
 
 
 def upgrade() -> None:
+    # Safe to run again after a failure part way: each step checks what is already there.
     op.execute("SET LOCAL lock_timeout = '5s'")
-    op.add_column("webhooks", sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column(
-        "webhooks", sa.Column("secret_rotated_at", sa.DateTime(timezone=True), nullable=True)
-    )
-    op.create_check_constraint(
-        "ck_webhooks_deleted_inactive", "webhooks", "deleted_at IS NULL OR active = false"
-    )
-    op.add_column(
-        "webhook_deliveries",
-        sa.Column("last_attempt_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "webhook_deliveries",
-        sa.Column("next_attempt_at", sa.DateTime(timezone=True), nullable=True),
+    for table, column in (
+        ("webhooks", "deleted_at"),
+        ("webhooks", "secret_rotated_at"),
+        ("webhook_deliveries", "last_attempt_at"),
+        ("webhook_deliveries", "next_attempt_at"),
+    ):
+        op.execute(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} timestamptz")
+    op.execute(
+        "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint "
+        "WHERE conname = 'ck_webhooks_deleted_inactive') THEN "
+        "ALTER TABLE webhooks ADD CONSTRAINT ck_webhooks_deleted_inactive "
+        "CHECK (deleted_at IS NULL OR active = false); END IF; END $$"
     )
     with op.get_context().autocommit_block():
+        # A concurrent build that failed leaves an invalid index, which IF NOT EXISTS would
+        # keep: drop it first so it is built again.
+        for name in ("ix_audit_log_action", "ix_audit_log_actor", "ix_audit_log_occurred"):
+            invalid = (
+                op.get_bind()
+                .execute(
+                    sa.text(
+                        "SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid "
+                        "WHERE c.relname = :name AND NOT i.indisvalid"
+                    ),
+                    {"name": name},
+                )
+                .first()
+            )
+            if invalid:
+                op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {name}")
         for statement in _INDEXES:
             op.execute(statement)
 

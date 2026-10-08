@@ -28,7 +28,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 
 import httpx
-from sqlalchemy import func, select, true, tuple_, update
+from sqlalchemy import func, select, text, true, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -65,6 +65,10 @@ class WebhookDisabled(Exception):
 
 class DeliveryNotFailed(Exception):
     """Only a failed delivery is sent again."""
+
+
+class DeliveryNotFound(LookupError):
+    """No such delivery of this webhook."""
 
 
 def next_wait(attempts: int) -> int:
@@ -165,7 +169,7 @@ class WebhookService:
 
     @scoped
     def create(
-        self, tenant_id: uuid.UUID, *, url: str, events: Sequence[str], created_by: str = "admin"
+        self, tenant_id: uuid.UUID, *, url: str, events: Sequence[str], created_by: str
     ) -> tuple[uuid.UUID, str]:
         """A new webhook and its signing secret, which is shown only now."""
         unknown = sorted(set(events) - set(EVENTS))
@@ -173,6 +177,11 @@ class WebhookService:
             raise ValueError(f"events must be some of {', '.join(EVENTS)}")
         self._check(url)
         with self._sessions.begin() as session:
+            # One maker at a time per organisation: two at once cannot both take the last place.
+            session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+                {"key": f"webhooks:{tenant_id}"},
+            )
             live = session.scalar(
                 select(func.count())
                 .select_from(Webhook)
@@ -201,7 +210,7 @@ class WebhookService:
                 WebhookDelivery.created_at,
             )
             .where(WebhookDelivery.webhook_id == Webhook.id)
-            .order_by(WebhookDelivery.created_at.desc())
+            .order_by(WebhookDelivery.created_at.desc(), WebhookDelivery.id.desc())
             .limit(1)
             .lateral()
         )
@@ -236,10 +245,10 @@ class WebhookService:
     ) -> None:
         """Disable (stop sending, keep the webhook) or enable it again. Enabling checks the
         destination again: a name can come to resolve to a local address."""
+        if active:  # resolved before any lock is taken: a slow resolver holds nothing
+            self._check(self._url(tenant_id, webhook_id))
         with self._sessions.begin() as session:
             hook = self._live(session, tenant_id, webhook_id)
-            if active:
-                self._check(hook.url)
             if hook.active != active:
                 hook.active = active
                 action = "webhook.enabled" if active else "webhook.disabled"
@@ -252,10 +261,6 @@ class WebhookService:
             hook = self._live(session, tenant_id, webhook_id)
             hook.active, hook.deleted_at = False, datetime.now(UTC)
             self._audit(session, hook, actor, "webhook.deleted", host=host_of(hook.url))
-
-    def deactivate(self, tenant_id: uuid.UUID, webhook_id: uuid.UUID, actor: str = "admin") -> None:
-        """Stop sending to a webhook, for good (`DELETE /v1/webhooks/{id}`)."""
-        self.delete(tenant_id, webhook_id, actor=actor)
 
     @scoped
     def rotate(self, tenant_id: uuid.UUID, webhook_id: uuid.UUID, *, actor: str) -> str:
@@ -299,7 +304,7 @@ class WebhookService:
             if before is not None:
                 last = session.get(WebhookDelivery, before)
                 if last is None or last.webhook_id != webhook_id:
-                    raise LookupError("no such delivery")
+                    raise DeliveryNotFound("no such delivery")
                 query = query.where(
                     tuple_(WebhookDelivery.created_at, WebhookDelivery.id)
                     < tuple_(last.created_at, last.id)
@@ -336,11 +341,11 @@ class WebhookService:
     ) -> uuid.UUID:
         """A failed delivery, sent again with its own event id (a receiver that saw it can
         ignore it) and fresh attempts. Only a failed one: two clicks queue it once."""
+        self._check(self._url(tenant_id, webhook_id))  # before any lock is taken
         with self._sessions.begin() as session:
             hook = self._live(session, tenant_id, webhook_id)
             if not hook.active:
                 raise WebhookDisabled("enable the webhook first")
-            self._check(hook.url)
             previous = session.execute(
                 select(WebhookDelivery.attempts, WebhookDelivery.last_status).where(
                     WebhookDelivery.id == delivery_id,
@@ -349,7 +354,7 @@ class WebhookService:
                 )
             ).first()
             if previous is None:
-                raise LookupError("no such delivery")
+                raise DeliveryNotFound("no such delivery")
             reset = session.execute(
                 update(WebhookDelivery)
                 .where(
@@ -370,6 +375,20 @@ class WebhookService:
                 previous_attempts=previous.attempts, previous_status=previous.last_status,
             )  # fmt: skip
             return uuid.UUID(str(event))
+
+    def _url(self, tenant_id: uuid.UUID, webhook_id: uuid.UUID) -> str:
+        """A live webhook's URL, read without a lock (it never changes once made)."""
+        with self._sessions() as session:
+            url = session.scalar(
+                select(Webhook.url).where(
+                    Webhook.tenant_id == tenant_id,
+                    Webhook.id == webhook_id,
+                    Webhook.deleted_at.is_(None),
+                )
+            )
+        if url is None:
+            raise LookupError("no such webhook")
+        return url
 
     @staticmethod
     def _live(session: Session, tenant_id: uuid.UUID, webhook_id: uuid.UUID) -> Webhook:
@@ -453,16 +472,14 @@ class WebhookService:
         return event_id
 
     @scoped
-    def emit_test(
-        self, tenant_id: uuid.UUID, webhook_id: uuid.UUID, *, actor: str = "admin"
-    ) -> uuid.UUID:
+    def emit_test(self, tenant_id: uuid.UUID, webhook_id: uuid.UUID, *, actor: str) -> uuid.UUID:
         """A `webhook.test` event for this one webhook, whatever it subscribes to."""
         event_id = uuid.uuid4()
+        self._check(self._url(tenant_id, webhook_id))  # before any lock is taken
         with self._sessions.begin() as session:
             hook = self._live(session, tenant_id, webhook_id)
             if not hook.active:
                 raise WebhookDisabled("enable the webhook first")
-            self._check(hook.url)
             delivery_id = session.execute(
                 insert(WebhookDelivery)
                 .values(
@@ -548,8 +565,9 @@ class WebhookService:
         """POST once. Never raises: any failure comes back as an error to record."""
         try:
             address = self._check(url)
-        except UnsafeDestination as error:
-            return None, str(error)[:_ERROR_LIMIT]
+        except UnsafeDestination:
+            # Not what the name resolved to: an error a person reads must not map the network.
+            return None, "the destination is not allowed (it must be https and public)"
         body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
         secret = derive_secret(self._key, webhook_id, secret_version)
         parts = urlsplit(url)

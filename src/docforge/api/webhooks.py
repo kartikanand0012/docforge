@@ -1,6 +1,7 @@
 """Webhook management, for administrators: make, list, disable and enable, delete, rotate
 the secret, send a test, and see and re-send deliveries. Every change is audited."""
 
+import logging
 import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
@@ -15,6 +16,7 @@ from docforge.limits import Limits
 from docforge.webhooks import (
     EVENTS,
     DeliveryNotFailed,
+    DeliveryNotFound,
     TooManyWebhooks,
     UnsafeDestination,
     WebhookDisabled,
@@ -22,7 +24,9 @@ from docforge.webhooks import (
 )
 
 Admin = Annotated[Principal, Depends(require("admin"))]
+logger = logging.getLogger(__name__)
 SENDS_PER_MINUTE = 10  # test sends and re-sends, per organisation: not a way to flood anyone
+CHANGES_PER_MINUTE = 20  # making and enabling: each resolves a name, which must not be a probe
 _NOT_FOUND = "No such webhook."
 
 
@@ -79,8 +83,18 @@ class DeliveryOut(BaseModel):
     next_attempt_at: datetime | None
 
 
-def _unsafe(error: Exception) -> HTTPException:
-    return HTTPException(422, f"{str(error)[0].upper()}{str(error)[1:]}.")
+def _sentence(error: Exception) -> str:
+    text = str(error) or "that is not allowed"
+    return f"{text[0].upper()}{text[1:]}."
+
+
+def _unsafe(error: UnsafeDestination) -> HTTPException:
+    """The same answer whatever the name resolved to: an administrator's request must not map
+    the server's network. The reason is logged for the operator."""
+    logger.info("webhook destination refused: %s", error)
+    return HTTPException(
+        422, "That address is not allowed: a webhook must use https and a public address."
+    )
 
 
 def webhooks_router(hooks: WebhookService, limits: Limits) -> APIRouter:
@@ -90,8 +104,13 @@ def webhooks_router(hooks: WebhookService, limits: Limits) -> APIRouter:
         if not limits.allow(f"webhook-send:{principal.tenant_id}", SENDS_PER_MINUTE):
             raise HTTPException(429, "Too many sends this minute; wait a minute.")
 
+    def change(principal: Principal) -> None:
+        if not limits.allow(f"webhook-change:{principal.tenant_id}", CHANGES_PER_MINUTE):
+            raise HTTPException(429, "Too many changes this minute; wait a minute.")
+
     @router.post("", status_code=201, response_model=WebhookCreated)
     async def create(body: WebhookIn, principal: Admin, response: Response) -> WebhookCreated:
+        await run_in_threadpool(change, principal)
         try:
             hook_id, secret = await run_in_threadpool(
                 lambda: hooks.create(
@@ -102,9 +121,11 @@ def webhooks_router(hooks: WebhookService, limits: Limits) -> APIRouter:
                 )
             )
         except TooManyWebhooks as error:
-            raise HTTPException(409, f"{str(error)[0].upper()}{str(error)[1:]}.") from error
-        except (UnsafeDestination, ValueError) as error:
+            raise HTTPException(409, _sentence(error)) from error
+        except UnsafeDestination as error:
             raise _unsafe(error) from error
+        except ValueError as error:
+            raise HTTPException(422, _sentence(error)) from error
         response.headers["Cache-Control"] = "no-store"
         return WebhookCreated(id=hook_id, secret=secret)
 
@@ -120,6 +141,7 @@ def webhooks_router(hooks: WebhookService, limits: Limits) -> APIRouter:
     @router.patch("/{webhook_id}", response_model=dict[str, bool])
     def set_active(webhook_id: uuid.UUID, body: ActiveIn, principal: Admin) -> dict[str, bool]:
         """Disable (stop sending, keep it) or enable again (the destination is re-checked)."""
+        change(principal)
         try:
             hooks.set_active(principal.tenant_id, webhook_id, body.active, actor=principal.actor)
         except LookupError as error:
@@ -160,6 +182,8 @@ def webhooks_router(hooks: WebhookService, limits: Limits) -> APIRouter:
             page = hooks.deliveries(
                 principal.tenant_id, webhook_id, before=before, status=status, limit=limit
             )
+        except DeliveryNotFound as error:
+            raise HTTPException(404, "No such delivery.") from error
         except LookupError as error:
             raise HTTPException(404, _NOT_FOUND) from error
         return [DeliveryOut(**row) for row in page.items]
@@ -186,6 +210,8 @@ def webhooks_router(hooks: WebhookService, limits: Limits) -> APIRouter:
             event = hooks.resend(
                 principal.tenant_id, webhook_id, delivery_id, actor=principal.actor
             )
+        except DeliveryNotFound as error:
+            raise HTTPException(404, "No such delivery.") from error
         except LookupError as error:
             raise HTTPException(404, _NOT_FOUND) from error
         except DeliveryNotFailed as error:

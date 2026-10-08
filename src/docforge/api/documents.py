@@ -402,7 +402,9 @@ def documents_router(
         it cannot show that the log was not rewritten by someone able to redo them.
         """
         # Recomputing every hash is linear in the log: a few checks a minute per organisation.
-        if not limits.allow(f"audit-verify:{principal.tenant_id}", AUDIT_CHECKS_PER_MINUTE):
+        # Counted per caller: a read-only key cannot use up an administrator's checks.
+        key = f"audit-verify:{principal.tenant_id}:{principal.actor}"
+        if not limits.allow(key, AUDIT_CHECKS_PER_MINUTE):
             raise HTTPException(429, "The chain was checked a moment ago; wait a minute.")
         return ChainOut.model_validate(service.verify_audit_chain(principal.tenant_id))
 
