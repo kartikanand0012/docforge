@@ -446,5 +446,5 @@ def test_nothing_secret_is_ever_written_to_the_log(
         logged = " ".join(
             str(row) for row in session.execute(text("SELECT actor, details::text FROM audit_log"))
         )
-    for secret in (first, second, token, token.split("_")[2], "/hooks", "token=abc"):
+    for secret in (first, second, token, token.split("_", 2)[2], "/hooks", "token=abc"):
         assert secret not in logged, secret
