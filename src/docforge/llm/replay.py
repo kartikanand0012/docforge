@@ -16,6 +16,10 @@ from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
 from docforge.llm.schema import strict_json_schema
 
 
+class NotRecorded(LLMError):
+    """Replay only, and nothing was recorded for this request: asking again will not help."""
+
+
 class RecordingProvider:
     """Serves recorded responses. With `inner`, a miss is fetched live and recorded.
 
@@ -70,7 +74,7 @@ class RecordingProvider:
         if recorded is not None:
             return recorded
         if self._inner is None:
-            raise LLMError(
+            raise NotRecorded(
                 f"no recorded response for this request (key {key[:24]}); "
                 "record one with a live provider"
             )

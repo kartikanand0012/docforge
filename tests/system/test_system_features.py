@@ -124,9 +124,8 @@ def test_search_finds_a_document_by_its_words_in_both_modes(org: Organisation) -
 ANSWER_STATUSES = {"supported", "partly_supported", "unsupported", "not_found"}
 
 
-def test_a_streamed_answer_has_its_stages_then_one_ending(org: Organisation) -> None:
-    """The stream's shape. On this replayed stack a question never recorded ends in an error
-    event (finding F1 in docs/real-world-coverage.md); a recorded one in an answer."""
+def test_a_streamed_answer_has_its_stages_then_one_answer(org: Organisation) -> None:
+    """On this replaying stack an unrecorded question is answered as not recorded (F1)."""
     document_id = processed(org, "pair_006")
     with org.session().stream(
         "POST", "/v1/chat/stream",
@@ -137,14 +136,13 @@ def test_a_streamed_answer_has_its_stages_then_one_ending(org: Organisation) -> 
         received = events(stream)
 
     names = [name for name, _ in received]
-    assert names[:2] == ["stage", "stage"] and names[-1] in ("answer", "error"), received
-    assert names.count("answer") + names.count("error") == 1, received
-    ending = received[-1][1]
-    if names[-1] == "error":
-        assert ending["status"] == 503 and ending["detail"]
-        return
-    assert ending["status"] in ANSWER_STATUSES
-    for citation in ending["citations"]:
+    assert names[:2] == ["stage", "stage"] and names[-1] == "answer", received
+    assert names.count("answer") == 1 and "error" not in names
+    answer = received[-1][1]
+    assert answer["status"] in ANSWER_STATUSES
+    if answer["reason"] == "not_recorded":
+        assert answer["status"] == "not_found" and "recorded" in answer["text"]
+    for citation in answer["citations"]:
         assert citation["document_id"] == document_id  # the conversation's scope held
 
 
@@ -162,9 +160,8 @@ def test_a_knowledge_base_keeps_a_question_within_its_documents(org: Organisatio
     answer = org.session().post(
         "/v1/chat", json={"question": "Who is the supplier?", "collection_id": kb}
     )
-    assert answer.status_code in (200, 503), answer.text  # 503: not recorded (F1)
-    if answer.status_code == 200:
-        assert {c["document_id"] for c in answer.json()["citations"]} <= {inside}
+    assert answer.status_code == 200, answer.text
+    assert {c["document_id"] for c in answer.json()["citations"]} <= {inside}
 
 
 # --- C14: AI agents -----------------------------------------------------------------------

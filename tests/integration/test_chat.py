@@ -649,4 +649,4 @@ def test_a_question_never_recorded_is_answered_as_such_not_as_an_outage(setup: S
     assert (answer.status, answer.reason) == ("not_found", "not_recorded")
     assert "recorded" in answer.text and "try again" not in answer.text.lower()
     (message,) = setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", answer.conversation_id)
-    assert (message.status, message.reason) == ("not_found", "not_recorded")
+    assert (message.status, message.answer) == ("not_found", answer.text)

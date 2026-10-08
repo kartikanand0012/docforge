@@ -34,6 +34,7 @@ from docforge.db.models import Conversation, Document, Message
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
+from docforge.llm.replay import NotRecorded
 from docforge.search.service import Mode, SearchHit, SearchHits
 from docforge.telemetry import traced
 
@@ -41,6 +42,10 @@ logger = logging.getLogger(__name__)
 Status = Literal["supported", "partly_supported", "unsupported", "not_found"]
 
 NOT_FOUND = "The documents do not say."
+NOT_RECORDED = (
+    "This demo answers only the questions it has recorded, and this one was not recorded. "
+    "Ask one of its recorded questions; a deployment with a model key answers any question."
+)
 WITHHELD = (
     "An answer was drafted, but none of its quotes could be found in the documents, so it "
     "is not shown. Try asking about a specific document or value."
@@ -333,14 +338,22 @@ class ChatService:
                     text, dropped, dropped_statements = NOT_FOUND, 0, 0
                     reason, detail = "no_passages", {"scope": scope.kind}
                 else:
-                    raw, responses = self._ask(build_prompt(passages, question, history))
+                    try:
+                        raw, responses = self._ask(build_prompt(passages, question, history))
+                    except NotRecorded:
+                        # A replaying deployment (the demo): trying again would not help.
+                        raw = None
                     tell("checking", {})
-                    # Figures a statement repeats from the question or the conversation need
-                    # no quote of their own.
-                    given = " ".join([question, *(f"{q} {a}" for q, a in history)])
-                    status, text, citations, dropped, dropped_statements, reason, detail = _checked(
-                        raw, passages, hits, given
-                    )
+                    if raw is None:
+                        status, text, dropped, dropped_statements = "not_found", NOT_RECORDED, 0, 0
+                        reason, detail = "not_recorded", {}
+                    else:
+                        # Figures a statement repeats from the question or the conversation
+                        # need no quote of their own.
+                        given = " ".join([question, *(f"{q} {a}" for q, a in history)])
+                        (status, text, citations, dropped, dropped_statements, reason, detail) = (
+                            _checked(raw, passages, hits, given)
+                        )
                 if held_back:
                     detail = {**detail, "held_back": held_back}
                 span.set_attribute("docforge.chat.status", status)

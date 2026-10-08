@@ -118,6 +118,7 @@ export function reasonNote(reason: string | null | undefined, detail: Record<str
   if (reason === "figures_not_in_quotes") parts.push("The answer drafted gave figures its quotes do not show.");
   if (reason === "wording_not_in_passages") parts.push("The answer drafted said things its documents do not say.");
   if (reason === "model_error") parts.push("The model could not answer.");
+  if (reason === "not_recorded") parts.push("This demo answers only the questions it has recorded, and this one was not recorded.");
   const held = Number(detail.held_back ?? 0);
   if (held) {
     parts.push(
