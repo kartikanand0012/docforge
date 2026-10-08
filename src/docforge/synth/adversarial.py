@@ -51,7 +51,8 @@ def _pdf(objects: list[bytes], *, root: int = 1, trailer: bytes = b"") -> bytes:
     return out.getvalue()
 
 
-_PAGE = b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>"
+_FONT = b"/Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> "
+_PAGE = b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " + _FONT + b"/Contents 4 0 R >>"
 _TEXT = b"BT /F1 24 Tf 72 700 Td (Invoice INV-0001 Total 1,180.00) Tj ET"
 
 
@@ -130,7 +131,7 @@ def pages_pdf(count: int) -> bytes:
     first = 5
     kids = b" ".join(b"%d 0 R" % (first + i) for i in range(count))
     pages = [
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 3 0 R >>"
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " + _FONT + b"/Contents 3 0 R >>"
         for _ in range(count)
     ]
     return _pdf(
@@ -164,8 +165,8 @@ def deep_page_tree(depth: int = 10_000) -> bytes:
         objects.append(b"<< /Type /Pages %s/Kids [%d 0 R] /Count 1 >>" % (parent, number + 1))
     page = 2 + depth
     objects.append(
-        b"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 612 792] /Contents %d 0 R >>"
-        % (page - 1, page + 1)
+        b"<< /Type /Page /Parent %d 0 R /MediaBox [0 0 612 792] %s/Contents %d 0 R >>"
+        % (page - 1, _FONT, page + 1)
     )
     objects.append(_stream(_TEXT))
     return _pdf(objects)
@@ -202,7 +203,7 @@ def active_content() -> bytes:
             b"<< /Type /Catalog /Pages 2 0 R /OpenAction 5 0 R /Names << /EmbeddedFiles "
             b"<< /Names [(payload.exe) 7 0 R] >> >> >>",
             b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] " + _FONT + b"/Contents 4 0 R "
             b"/Annots [6 0 R] >>",
             _stream(_TEXT),
             b"<< /S /JavaScript /JS (app.alert('hello');) >>",
@@ -439,9 +440,21 @@ def tiff_frames(count: int) -> bytes:
     return out.getvalue()
 
 
+def _printed(size: tuple[int, int] = (900, 300)) -> Image.Image:
+    """A white image with an invoice's words on it, large enough for OCR to read."""
+    from PIL import ImageDraw, ImageFont
+
+    image = Image.new("RGB", size, "white")
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default(size=40)
+    draw.text((30, 60), "TAX INVOICE  INV-0001", fill="black", font=font)
+    draw.text((30, 160), "Grand Total  1,180.00", fill="black", font=font)
+    return image
+
+
 def _jpeg(mode: str) -> bytes:
     out = io.BytesIO()
-    Image.new(mode, (400, 300), color=(10, 20, 30, 40)[: len(mode)]).save(out, format="JPEG")
+    _printed().convert(mode).save(out, format="JPEG", quality=90)
     return out.getvalue()
 
 
@@ -451,10 +464,11 @@ def truncated_jpeg() -> bytes:
 
 
 def rotated_png() -> bytes:
+    """Stored on its side, with EXIF saying to turn it upright, as phone cameras do."""
     exif = Image.Exif()
-    exif[0x0112] = 6  # orientation: rotate 90 degrees to show
+    exif[0x0112] = 6  # orientation: turn 90 degrees clockwise to show
     out = io.BytesIO()
-    Image.new("RGB", (300, 200), color=(200, 200, 200)).save(out, format="PNG", exif=exif)
+    _printed().rotate(90, expand=True).save(out, format="PNG", exif=exif)
     return out.getvalue()
 
 
