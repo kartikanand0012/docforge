@@ -16,7 +16,10 @@ it finds becomes a fix checkpoint (V1-F1, F2 ...) or a recorded limit.
    process stack (`ENVIRONMENT=local`) for webhook lag (production refuses a local receiver).
 3. **Three load tiers, never mixed**: T1 infrastructure (parses and replies replayed, model
    time simulated); T2 capacity (real parser, model simulated); T3 a small live-Gemini run on a
-   budget. T1 and T2 spend nothing.
+   budget. T1 and T2 spend nothing. **Budget** (owner, 2026-10-08): the Gemini prepaid balance
+   (INR 493.20 that day; the INR 5.76K of "eligible GCP credits" is not counted, as it is not
+   confirmed to cover the Gemini API). Estimated V1 spend INR 200-300; the recorder sums the
+   tokens it is billed for and stops at a hard cap of INR 400.
 4. **k6 for uploads** (open arrival-rate model, right for bursts; a host binary, never
    shipped), **Locust for chat and MCP sessions** (a dev `load` group). `make load` stays.
 5. **Only permissive datasets in the repo** (MIT, CC BY 4.0, Apache-2.0, CDLA-Permissive), small
@@ -173,10 +176,23 @@ XLSX/DOCX, 5% 15-20 pages, 5% near 10 MB.
 | P4 chat with ingestion | T1 | Locust: 20 users asking, following up, streaming; 2 MCP keys; P2 elsewhere |
 | P5 chaos | T1 | during P2: kill a worker every 10 min; restart Postgres; stop MinIO 60 s; kill the converter mid-file; 5-min provider outage |
 | P6 stress to break | T1 | ramp until upload p95 > 2 s or errors > 1%: find the knee and what fails first |
-| P7 soak | T1 | P1 x 3 for 8 h overnight |
+| P7 big organisation | T1 | the database seeded to 1M documents, 5M chunks, 1M audit entries (bulk SQL, `generate_series`); P1 on top: list, search, review queue, audit and webhook pages stay within target |
 | P8 webhook lag | T1, process stack | P2 with 3 receivers, one slow, one failing |
 
-Every profile runs the cross-tenant probe.
+Every profile runs the cross-tenant probe. No overnight soak (owner: not required); P2's
+2-hour hold is sampled for memory and connection growth instead.
+
+**Bigger numbers than one laptop serves** (owner: client volumes unknown; show that more is
+possible). Three tools, each answering a different question:
+
+- *Arrival rate*: k6 `ramping-arrival-rate` (P6) raises uploads until the knee; the generator
+  mints any number of unique documents (target 50,000 for P3 at full size), so caching cannot
+  hide work.
+- *Stored volume*: P7 seeds the database at 1M documents, far beyond a year of the assumed
+  3,000 a month, and measures the screens and searches at that size.
+- *Capacity per worker*: T2 measures pages a minute per worker at 1 and 2 workers; the report
+  states the model (documents a day = workers x rate, checked for linearity between 1 and 2)
+  and the provider rate limit that caps it, so a client's volume can be sized against it.
 
 **Measured** (a 5-second sampler to JSONL, joined with k6 and Locust summaries into
 `evals/load/v1/<profile>.json`): upload p50/p95/p99 and errors by code; search, review queue,
@@ -223,7 +239,7 @@ or paused work.
 3. Adversarial generator (unit), then the robustness suite.
 4. Indian generator (unit), then `realworld` scoring in replay, then the live record run.
 5. Dataset fetcher (unit), then adapters and `realworld-answers`.
-6. Load tooling (unit), then runs: T1 baseline, P1-P8, T2, T3, the soak overnight.
+6. Load tooling (unit), then runs: T1 baseline, P1-P8, T2, T3 (within the budget).
 7. Reports, coverage matrix, gate changes, findings sorted; ECC python, security and mle
    reviewers.
 
@@ -238,16 +254,15 @@ runner exit non-zero.
 
 ## Needs the owner
 
-1. A disk cap for datasets (proposed 20 GB); only small permissive subsets committed; no
-   non-commercial sets.
-2. Real-model spend for T3 and recordings: about 600 generated documents, 100 dataset
-   documents and 250 questions on Gemini Flash-Lite; proposed cap USD 40 (about INR 3,500).
-3. Client volumes (monthly documents, mix, month-end peak) to replace the assumed profile.
-4. Pilot samples under NDA, if any client will share them.
-5. The Mac for an overnight soak, plugged in.
-6. After the results, which unsupported kinds to add first (credit notes, multi-invoice split,
+Decided 2026-10-08: datasets up to 20 GB outside the repo; real-model spend within the
+Gemini prepaid balance (cap INR 400); client volumes unknown, so the bigger-numbers tools
+above; NDA samples will be shared; no overnight soak; k6 and Locust approved.
+
+1. NDA samples: put in `data/private/` (ignored by git, never in a recording, report or
+   commit; only aggregate scores reported); deleted when the owner says.
+2. After the results, which unsupported kinds to add first (credit notes, multi-invoice split,
    QR and IRN, legacy `.doc`/`.xls`, receipts, bank statements, Hindi OCR, a higher page cap).
-7. New dev-only tools: k6 (Homebrew), Locust, `segno`.
+3. One more dev-only tool: `segno` (QR codes for e-invoices).
 
 ## Risks
 
