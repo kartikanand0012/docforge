@@ -5,12 +5,18 @@ from pathlib import PurePosixPath, PureWindowsPath
 
 from fastapi import HTTPException, UploadFile
 
-from docforge.formats import ACCEPTED, Format, sniff
+from docforge.formats import ACCEPTED, Format, is_ole, sniff
 
 DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MULTIPART_OVERHEAD = 64 * 1024  # boundaries and part headers around the file
 _PDF_MAGIC = b"%PDF-"
 _MAX_FILENAME = 255
+
+
+OLE_MESSAGE = (
+    "This is an older Office file (.doc, .xls or .ppt) or one protected by a password. "
+    "Save it as .docx, .xlsx or .pptx without a password, or as a PDF, and upload that."
+)
 
 
 def too_large_message(max_upload_bytes: int) -> str:
@@ -46,6 +52,8 @@ async def read_upload(file: UploadFile, max_upload_bytes: int) -> tuple[bytes, F
     if len(data) > max_upload_bytes:
         raise HTTPException(413, too_large_message(max_upload_bytes))
     fmt = sniff(data)
+    if fmt is None and is_ole(data):
+        raise HTTPException(415, OLE_MESSAGE)
     if fmt is None:
         raise HTTPException(415, f"This file type is not accepted. Accepted: {ACCEPTED}.")
     return data, fmt

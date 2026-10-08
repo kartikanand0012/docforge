@@ -271,3 +271,22 @@ def test_files_that_are_not_accepted_are_refused_with_a_reason(org: Organisation
     assert exe.status_code == 415 and exe.json()["detail"]
     kind = org.upload(PAIRS / "pair_001" / "invoice.pdf", "passport")
     assert kind.status_code == 422
+
+
+def test_protected_and_older_office_files_are_refused_saying_why(org: Organisation) -> None:
+    import io
+    import secrets
+
+    from pypdf import PdfReader, PdfWriter
+
+    writer = PdfWriter()
+    writer.append(PdfReader(PAIRS / "pair_001" / "invoice.pdf"))
+    writer.encrypt(user_password=secrets.token_hex(8), owner_password=secrets.token_hex(8))
+    locked = io.BytesIO()
+    writer.write(locked)
+    pdf = org.upload(PAIRS / "pair_001" / "invoice.pdf", content=locked.getvalue())
+    assert pdf.status_code == 422 and "password" in pdf.json()["detail"]
+
+    ole = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\0" * 1024
+    office = org.upload(PAIRS / "pair_001" / "invoice.pdf", content=ole, filename="old.xls")
+    assert office.status_code == 415 and "password" in office.json()["detail"]

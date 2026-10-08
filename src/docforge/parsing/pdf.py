@@ -4,7 +4,7 @@ import threading
 
 import pypdfium2 as pdfium
 
-from docforge.parsing.base import ParseError
+from docforge.parsing.base import ParseError, PasswordProtected
 
 # PDFium is not thread-safe and the API calls this from a thread pool. Every use of PDFium
 # in the package takes this lock.
@@ -20,6 +20,10 @@ def pdf_page_count(data: bytes) -> int:
                 count = len(document)
             finally:
                 document.close()
+        except pdfium.PdfiumError as error:
+            if getattr(error, "err_code", None) == pdfium.raw.FPDF_ERR_PASSWORD:
+                raise PasswordProtected("the PDF needs a password to open") from error
+            raise ParseError("not a readable PDF") from error
         except Exception as error:  # a malformed file can fail in more ways than PdfiumError
             raise ParseError("not a readable PDF") from error
     if count < 1:

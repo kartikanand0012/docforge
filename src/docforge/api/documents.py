@@ -30,11 +30,19 @@ from docforge.documents import (
 )
 from docforge.formats import ACCEPTED, extension
 from docforge.limits import LimitReached, Limits
-from docforge.parsing.base import ParseError
+from docforge.parsing.base import ParseError, PasswordProtected
 from docforge.parsing.pdf import pdf_page_count
 from docforge.storage import StorageUnavailable
 
 logger = logging.getLogger(__name__)
+PROTECTED_PDF_MESSAGE = (
+    "The PDF is protected by a password. Remove the password, or print it to a new PDF, "
+    "and upload that."
+)
+# Seconds a client should wait before sending again: the queue drains in minutes; storage
+# coming back is usually quicker.
+QUEUE_FULL_RETRY_AFTER = "60"
+UNAVAILABLE_RETRY_AFTER = "30"
 
 Reader = Annotated[Principal, Depends(require("documents:read"))]
 Writer = Annotated[Principal, Depends(require("documents:write"))]
@@ -196,6 +204,8 @@ def documents_router(
         if fmt == "pdf":
             try:
                 pages = await run_in_threadpool(pdf_page_count, data)
+            except PasswordProtected as error:
+                raise HTTPException(422, PROTECTED_PDF_MESSAGE) from error
             except ParseError as error:
                 raise HTTPException(422, "The file could not be read as a PDF.") from error
             if pages > max_pages:
@@ -222,10 +232,18 @@ def documents_router(
             raise HTTPException(409, f"{str(error).capitalize()}.") from error
         except QueueFull as error:
             logger.warning("upload refused: %s", error)
-            raise HTTPException(503, "The processing queue is full. Try again later.") from error
+            raise HTTPException(
+                503,
+                "The processing queue is full. Try again later.",
+                headers={"Retry-After": QUEUE_FULL_RETRY_AFTER},
+            ) from error
         except StorageUnavailable as error:
             logger.warning("upload refused, storage unavailable: %r", error.__cause__)
-            raise HTTPException(503, "Storage is unavailable. Try again later.") from error
+            raise HTTPException(
+                503,
+                "Storage is unavailable. Try again later.",
+                headers={"Retry-After": UNAVAILABLE_RETRY_AFTER},
+            ) from error
         response.headers["Location"] = f"/v1/documents/{result.document.id}"
         if not result.created:
             response.status_code = 200
