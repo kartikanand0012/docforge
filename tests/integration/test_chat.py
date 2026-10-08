@@ -629,3 +629,24 @@ def test_an_answer_records_which_provider_answered_it(
             text("SELECT provider, model FROM messages WHERE id = :m"), {"m": answer.message_id}
         ).one()
     assert tuple(row) == ("fake", "fake-chat-1")
+
+
+# --- V1 finding F1: a replaying demo asked something it never recorded ---------------------
+
+
+def test_a_question_never_recorded_is_answered_as_such_not_as_an_outage(setup: Setup) -> None:
+    """On a deployment that replays recorded answers (the demo), trying again never helps: the
+    answer says the question was not recorded, rather than "try again shortly"."""
+    from docforge.llm.replay import NotRecorded
+
+    def miss(passages: dict[int, str]) -> str:
+        raise NotRecorded("no recorded response for this request")
+
+    setup.model.reply = miss
+
+    answer = setup.ask("Who signed the delivery challan?")
+
+    assert (answer.status, answer.reason) == ("not_found", "not_recorded")
+    assert "recorded" in answer.text and "try again" not in answer.text.lower()
+    (message,) = setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", answer.conversation_id)
+    assert (message.status, message.reason) == ("not_found", "not_recorded")

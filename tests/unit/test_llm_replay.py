@@ -126,3 +126,11 @@ def test_a_truncated_recording_in_replay_only_mode_is_reported_as_missing(
 
     with pytest.raises(LLMError, match="no recorded response"):
         RecordingProvider(tmp_path, model="fake-1").generate(request())
+
+
+def test_a_miss_in_replay_only_mode_says_it_was_not_recorded(tmp_path: Path) -> None:
+    from docforge.llm.replay import NotRecorded
+
+    with pytest.raises(NotRecorded):
+        RecordingProvider(tmp_path, model="fake-1").generate(request())
+    assert issubclass(NotRecorded, LLMError)  # anything that handled a model error still does
