@@ -30,6 +30,17 @@ _ERRORS: dict[str, type[ParseError]] = {
 }
 _SECRET_MARKERS = ("KEY", "SECRET", "TOKEN", "PASSWORD", "DATABASE_URL")
 _POLL_SECONDS = 0.2
+_RECYCLE_AT = 0.75  # of the memory limit, held after a document: replace the process
+
+
+class _OverMemory(ParserLimitExceeded):
+    """Over the memory limit; `shared` if the process had read other documents first."""
+
+    def __init__(self, message: str, *, shared: bool) -> None:
+        super().__init__(message)
+        self.shared = shared
+
+
 _GIB = 1024**3
 
 
@@ -95,45 +106,61 @@ class IsolatedParser:
 
     def parse(self, pdf: bytes) -> ParsedDocument:
         with self._lock:
-            process, connection = self._ready()
-            self._served += 1
-            deadline = time.monotonic() + self._timeout_seconds
             try:
-                connection.send_bytes(pdf)
-                while not connection.poll(_POLL_SECONDS):
-                    if not process.is_alive():
-                        raise ParserLimitExceeded(
-                            "Parsing was stopped: the parser process stopped unexpectedly "
-                            f"(exit code {process.exitcode})."
-                        )
-                    if time.monotonic() > deadline:
-                        raise ParserLimitExceeded(
-                            "Parsing was stopped: it exceeded the time limit of "
-                            f"{self._timeout_seconds:.0f} s."
-                        )
-                    used = self._rss(process)
-                    if used > self._max_rss_bytes:
-                        raise ParserLimitExceeded(
-                            "Parsing was stopped: it exceeded the memory limit of "
-                            f"{self._max_rss_bytes // 1024**2} MB."
-                        )
-                kind, payload = json.loads(connection.recv_bytes())
-            except ParserLimitExceeded:
-                self._stop()
-                raise
-            except (EOFError, OSError, ValueError) as error:
-                self._stop()
-                raise ParserLimitExceeded(
-                    "Parsing was stopped: the parser process stopped unexpectedly."
-                ) from error
-            except BaseException:
-                # Interrupted mid-exchange: a reply left in the pipe must never be read as
-                # the answer for the next document.
-                self._stop()
-                raise
+                kind, payload = self._exchange(pdf)
+            except _OverMemory as error:
+                if not error.shared:
+                    raise
+                # The process had read other documents first, and what they left behind
+                # counts towards the limit: only a fresh process can tell whether this
+                # document is too large by itself.
+                kind, payload = self._exchange(pdf)
         if kind != "ok":
             raise _ERRORS.get(kind, ParseError)(payload)
         return ParsedDocument.model_validate_json(payload)
+
+    def _exchange(self, pdf: bytes) -> tuple[str, str]:
+        """Send one document to the child and wait for its reply, within the limits."""
+        process, connection = self._ready()
+        shared = self._served > 0
+        self._served += 1
+        deadline = time.monotonic() + self._timeout_seconds
+        try:
+            connection.send_bytes(pdf)
+            while not connection.poll(_POLL_SECONDS):
+                if not process.is_alive():
+                    raise ParserLimitExceeded(
+                        "Parsing was stopped: the parser process stopped unexpectedly "
+                        f"(exit code {process.exitcode})."
+                    )
+                if time.monotonic() > deadline:
+                    raise ParserLimitExceeded(
+                        "Parsing was stopped: it exceeded the time limit of "
+                        f"{self._timeout_seconds:.0f} s."
+                    )
+                if self._rss(process) > self._max_rss_bytes:
+                    raise _OverMemory(
+                        "Parsing was stopped: it exceeded the memory limit of "
+                        f"{self._max_rss_bytes // 1024**2} MB.",
+                        shared=shared,
+                    )
+            kind, payload = json.loads(connection.recv_bytes())
+        except ParserLimitExceeded:
+            self._stop()
+            raise
+        except (EOFError, OSError, ValueError) as error:
+            self._stop()
+            raise ParserLimitExceeded(
+                "Parsing was stopped: the parser process stopped unexpectedly."
+            ) from error
+        except BaseException:
+            # Interrupted mid-exchange: a reply left in the pipe must never be read as
+            # the answer for the next document.
+            self._stop()
+            raise
+        if self._rss(process) > self._max_rss_bytes * _RECYCLE_AT:
+            self._stop()  # nearly full already: the next document starts in a fresh process
+        return str(kind), str(payload)
 
     def close(self) -> None:
         """Stop the child. The next `parse` starts a new one.
