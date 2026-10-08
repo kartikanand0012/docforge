@@ -37,11 +37,14 @@ dependencies = [
 dev = [
     "httpx>=0.28.1",
     "mypy>=1.10",
-    "pypdf>=4.2",
+    "pypdf>=6.19.0",
     "pytest>=8.2",
     "pytest-cov>=5.0",
     "ruff>=0.5",
     "types-psutil>=7.2.2.20260906",
+]
+load = [
+    "locust>=2.37",
 ]
 
 # Docling needs PyTorch. On Linux the default wheel bundles CUDA (several GB); the service
@@ -68,6 +71,7 @@ addopts = "--strict-markers --cov=docforge --cov-report=term-missing --cov-fail-
 markers = [
     "integration: needs the Docker Compose services (run `make up` first)",
     "docling: runs the real Docling models (slow; downloads weights on first use)",
+    "system: drives the running demo stack over HTTPS (`make verify`; not part of `make test`)",
     "no_ambient_tenant: run without the default tenant scope, as a real request would",
 ]
 

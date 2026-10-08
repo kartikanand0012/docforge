@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate api worker test test-unit lint format generate generate-scans models web web-check e2e eval eval-record gate ops-check
+.PHONY: help install up down migrate api worker test test-unit lint format generate generate-scans models web web-check e2e eval eval-record gate ops-check verify audit
 
 SYNTH_DIR := tests/fixtures/synthetic
 SYNTH_SEED := 20261002
@@ -28,11 +28,11 @@ api: ## Run the API on http://127.0.0.1:8000 (needs GEMINI_API_KEY)
 worker: ## Run a worker that processes uploaded documents (needs GEMINI_API_KEY)
 	uv run python -m docforge.worker
 
-test: ## Run all tests (integration tests need `make up`)
-	uv run pytest
+test: ## Run all tests except the system tests (integration tests need `make up`)
+	uv run pytest -m "not system"
 
 test-unit: ## Run fast tests that need no services or models
-	uv run pytest -m "not integration and not docling" --no-cov
+	uv run pytest -m "not integration and not docling and not system" --no-cov
 
 lint: ## Lint, format check and type check
 	uv run ruff check .
@@ -77,6 +77,13 @@ eval: ## Re-run the invoice eval offline from recordings and rewrite the baselin
 
 gate: ## Check the eval reports against the floors in evals/gate.json (CI blocks on a failure)
 	uv run python -m docforge.evals.gate
+
+verify: ## Check the running demo stack (.deploytest, https://localhost) end to end over HTTPS
+	uv run pytest -m system --no-cov tests/system
+
+audit: ## Look for known vulnerabilities in every locked dependency
+	uv export -q --frozen --all-groups --no-emit-project --format requirements-txt -o .audit-requirements.txt
+	uvx pip-audit@2.10.1 --disable-pip --progress-spinner off -r .audit-requirements.txt; status=$$?; rm -f .audit-requirements.txt; exit $$status
 
 ops-check: ## What in the running system needs a person (exit 0 ok, 1 warning, 2 critical)
 	uv run python -m docforge.ops check
