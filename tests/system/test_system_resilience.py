@@ -80,10 +80,13 @@ def test_with_storage_down_an_upload_is_refused_as_unavailable(
     finally:
         compose("start", "minio")
 
-    deadline = time.monotonic() + 60
+    # Seen once (2026-10-08, the first run after an image rebuild): still refused after 60 s.
+    # The wait is longer and a failure says what storage was doing.
+    deadline = time.monotonic() + 120
     while True:
         reply = org.upload(PAIRS / "pair_003" / "purchase_order.pdf", "purchase_order")
         if reply.status_code in (200, 202) or time.monotonic() > deadline:
             break
         time.sleep(2)
-    assert reply.status_code in (200, 202), reply.text
+    storage = compose("ps", "-a", "minio", "--format", "{{.Status}}").strip()
+    assert reply.status_code in (200, 202), f"{reply.text} (storage: {storage})"
