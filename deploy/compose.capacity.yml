@@ -1,0 +1,14 @@
+# Robustness and capacity runs only - never on a server anyone uses. Laid over compose.yml:
+#   docker compose -f compose.yml -f compose.capacity.yml up -d --wait
+# The real parser and converter read every file; the model is simulated (no key, no cost),
+# and ops-check warns while this is on. Take it off by starting without this file.
+x-capacity: &capacity
+  PIPELINE_FACTORY: docforge.loadtest.pipelines:build_capacity_pipelines
+  SIMULATED_MODEL: "true"
+  SIMULATED_MODEL_TIME: ${SIMULATED_MODEL_TIME:-zero}
+
+services:
+  api:
+    environment: *capacity
+  worker:
+    environment: *capacity

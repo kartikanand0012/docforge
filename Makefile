@@ -1,5 +1,5 @@
 .DEFAULT_GOAL := help
-.PHONY: help install up down migrate api worker test test-unit lint format generate generate-scans models web web-check e2e eval eval-record gate ops-check verify audit
+.PHONY: help install up down migrate api worker test test-unit lint format generate generate-scans models web web-check e2e eval eval-record gate ops-check verify audit robustness
 
 SYNTH_DIR := tests/fixtures/synthetic
 SYNTH_SEED := 20261002
@@ -79,7 +79,12 @@ gate: ## Check the eval reports against the floors in evals/gate.json (CI blocks
 	uv run python -m docforge.evals.gate
 
 verify: ## Check the running demo stack (.deploytest, https://localhost) end to end over HTTPS
-	uv run pytest -m system --no-cov tests/system
+	uv run pytest -m "system and not robustness" --no-cov tests/system
+
+robustness: ## Every hostile file through the real parser and converter on the demo stack, then back to replay
+	cd .deploytest && docker compose -f compose.yml -f ../deploy/compose.capacity.yml up -d --wait api worker
+	uv run pytest -m robustness --no-cov -rA tests/system; status=$$?; \
+		cd .deploytest && docker compose up -d --wait api worker; exit $$status
 
 audit: ## Look for known vulnerabilities in every locked dependency
 	uv export -q --frozen --all-groups --no-emit-project --format requirements-txt -o .audit-requirements.txt

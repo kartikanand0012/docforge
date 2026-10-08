@@ -72,6 +72,7 @@ markers = [
     "integration: needs the Docker Compose services (run `make up` first)",
     "docling: runs the real Docling models (slow; downloads weights on first use)",
     "system: drives the running demo stack over HTTPS (`make verify`; not part of `make test`)",
+    "robustness: hostile files through the real parser on the capacity stack (`make robustness`)",
     "no_ambient_tenant: run without the default tenant scope, as a real request would",
 ]
 
