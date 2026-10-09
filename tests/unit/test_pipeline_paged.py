@@ -179,7 +179,7 @@ def test_purchase_orders_are_paged_the_same_way(raw_order_from_label: RawFromLab
 
     assert result.extraction.po_no.raw == whole["po_no"]["text"]
     assert len(result.extraction.lines) == len(whole["lines"])
-    assert provider.requests[0].prompt_version == "purchase-order-v1+paged-1"
+    assert provider.requests[0].prompt_version == "purchase-order-v2+paged-1"
 
 
 def test_two_pages_that_give_different_values_for_one_field_send_the_document_to_review(

@@ -187,3 +187,46 @@ def test_an_order_line_with_no_readable_product_is_reported(pair: Pair) -> None:
     assert ("line.unchecked", "error", "lines[0].product_name") in [
         (d.code, d.severity, d.order_path) for d in found
     ]
+
+
+def printed(text: str | None) -> dict[str, Any]:
+    return {"text": text, "block_ids": []}
+
+
+def test_an_order_total_equal_to_the_invoice_total_with_or_without_tax_agrees(
+    pair: Pair,
+) -> None:
+    for total in ("grand_total", "taxable_value"):
+        pair.order["total"] = printed(pair.invoice["totals"][total]["text"])
+
+        assert pair.match() == (), total
+
+
+def test_an_order_total_unlike_both_invoice_totals_is_a_warning_with_both_values(
+    pair: Pair,
+) -> None:
+    pair.order["total"] = printed("1.00")
+
+    (found,) = pair.match()
+
+    assert (found.code, found.severity) == ("order.total", "warning")
+    assert (found.invoice_path, found.order_path) == ("totals.grand_total", "total")
+    assert found.order_value == "1.00"
+
+
+def test_an_order_without_a_total_is_not_compared(pair: Pair) -> None:
+    pair.order["total"] = printed(None)
+
+    assert pair.match() == ()
+
+
+def test_a_different_hsn_on_a_matched_line_is_a_warning(pair: Pair) -> None:
+    billed = pair.invoice["lines"][0]["hsn"]["text"]
+    pair.order["lines"][0]["hsn"] = printed(billed)
+    pair.order["lines"][1]["hsn"] = printed("99999999")
+
+    found = pair.match()
+
+    assert [(d.code, d.severity) for d in found] == [("line.hsn", "warning")]
+    assert (found[0].invoice_path, found[0].order_path) == ("lines[1].hsn", "lines[1].hsn")
+    assert found[0].order_value == "99999999"

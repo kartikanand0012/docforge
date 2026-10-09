@@ -126,10 +126,11 @@ def raw_order_from_label() -> Callable[[dict[str, Any]], dict[str, Any]]:
             "lines": [
                 {
                     name: field(f"lines[{index}].{name}")
-                    for name in ("product_name", "pack", "qty", "scheme", "rate")
+                    for name in ("product_name", "pack", "hsn", "qty", "scheme", "rate", "amount")
                 }
                 for index in range(len(label["purchase_order"]["lines"]))
             ],
+            "total": field("total"),
         }
 
     return build
