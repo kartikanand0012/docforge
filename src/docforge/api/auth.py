@@ -7,9 +7,9 @@ from typing import Annotated, Self
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from docforge.accounts import MAX_NAME, MAX_PASSWORD, AccountTaken
+from docforge.accounts import MAX_NAME, MAX_PASSWORD, AccountTaken, has_control
 from docforge.auth import Authenticator, LoginFailed, NotAWorkspace, Principal, TooManyAttempts
 from docforge.limits import Limits
 
@@ -87,6 +87,14 @@ class LoginIn(BaseModel):
     email: str = Field(max_length=320)
     pin: str | None = Field(default=None, max_length=MAX_PASSWORD)
     password: str | None = Field(default=None, max_length=MAX_PASSWORD)
+
+    @field_validator("tenant", "email")
+    @classmethod
+    def _no_control(cls, value: str | None) -> str | None:
+        # Refused here: the database cannot store a NUL byte, and would fail on one.
+        if value is not None and has_control(value):
+            raise ValueError("no control characters")
+        return value
 
     @model_validator(mode="after")
     def _one_secret(self) -> Self:

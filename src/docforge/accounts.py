@@ -45,7 +45,16 @@ def check_name(name: str) -> str:
     return name
 
 
+def has_control(value: str) -> bool:
+    """A control character (a NUL byte among them), which the database or a log would not
+    keep as given."""
+    return _CONTROL.search(value) is not None
+
+
 def check_email(email: str) -> str:
+    # Before trimming: some control characters count as space and would be trimmed away.
+    if has_control(email):
+        raise ValueError("that is not an email address")
     email = normalise_email(email)
     # ASCII only: Python and Postgres would otherwise lower-case some letters differently.
     if len(email) > MAX_EMAIL or not email.isascii() or not _EMAIL.fullmatch(email):
