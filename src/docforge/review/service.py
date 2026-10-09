@@ -33,6 +33,7 @@ from docforge.db.models import (
 from docforge.db.models import (
     Correction as CorrectionRow,
 )
+from docforge.db.models import live as not_deleted
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.documents import DocumentNotFound, EventSink, current_match, event_id
@@ -381,6 +382,7 @@ class ReviewService:
                 select(Document)
                 .where(
                     Document.tenant_id == tenant_id,
+                    not_deleted(),
                     Document.status == "extracted",
                     # Only types with something to review; a general document has nothing.
                     Document.doc_type.in_(list(self._specs)),
@@ -560,7 +562,7 @@ class ReviewService:
                 select(Review, DocumentVersion, Document)
                 .join(DocumentVersion, DocumentVersion.id == Review.document_version_id)
                 .join(Document, Document.id == DocumentVersion.document_id)
-                .where(Review.tenant_id == tenant_id)
+                .where(Review.tenant_id == tenant_id, not_deleted())
                 .order_by(Review.signed_at.desc())
                 .limit(limit)
             ).all()
@@ -805,7 +807,9 @@ class ReviewService:
     def _find(
         session: Session, tenant_id: uuid.UUID, document_id: uuid.UUID, *, lock: bool = False
     ) -> Document:
-        query = select(Document).where(Document.tenant_id == tenant_id, Document.id == document_id)
+        query = select(Document).where(
+            Document.tenant_id == tenant_id, Document.id == document_id, not_deleted()
+        )
         document = session.scalar(query.with_for_update(key_share=True) if lock else query)
         if document is None:
             raise DocumentNotFound(document_id)
@@ -986,6 +990,7 @@ class ReviewService:
             .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
             .where(
                 Document.tenant_id == document.tenant_id,
+                not_deleted(),
                 Extraction.tenant_id == document.tenant_id,
                 Document.doc_type == "coa",
                 DocumentVersion.version_no == newest,

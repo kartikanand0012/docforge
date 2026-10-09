@@ -25,6 +25,7 @@ from docforge.db.models import (
     DocumentVersion,
     Extraction,
     ParseOutput,
+    live,
 )
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
@@ -149,7 +150,7 @@ class SearchService:
                 .join(DocumentVersion, DocumentVersion.document_id == Document.id)
                 .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
                 .join(ParseOutput, ParseOutput.document_version_id == DocumentVersion.id)
-                .where(Document.tenant_id == tenant_id, Document.id == document_id)
+                .where(Document.tenant_id == tenant_id, Document.id == document_id, live())
                 .order_by(DocumentVersion.version_no.desc())
                 .limit(1)
             ).first()
@@ -344,6 +345,7 @@ class SearchService:
         filters: list[Any] = [
             ChunkRow.tenant_id == tenant_id,
             ChunkRow.document_version_id == Document.indexed_version_id,
+            live(),
         ]
         if doc_type is not None:
             filters.append(Document.doc_type == doc_type)
@@ -463,7 +465,7 @@ class SearchService:
             for row in session.execute(
                 select(ChunkRow, Document)
                 .join(Document, Document.id == ChunkRow.document_id)
-                .where(ChunkRow.id.in_(chunk_ids))
+                .where(ChunkRow.id.in_(chunk_ids), live())
             ).all()
         }
         versions = {chunk.document_version_id for chunk, _ in rows.values()}
@@ -488,6 +490,8 @@ class SearchService:
             }
         hits = []
         for chunk_id in chunk_ids:
+            if chunk_id not in rows:
+                continue  # its document was deleted since it was found
             chunk, document = rows[chunk_id]
             found = blocks.get(chunk.document_version_id, {})
             hits.append(

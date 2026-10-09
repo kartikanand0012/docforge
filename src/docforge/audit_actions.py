@@ -36,6 +36,7 @@ ACTIONS: dict[str, Action] = {
     ),
     "processing.failed": Action("Reading failed", ("version_no", "error")),
     "indexing.completed": Action("Ready to search and ask", ("version_no",)),
+    "document.deleted": Action("Document deleted"),
     # People
     "reviewer.pin_failed": Action("Wrong PIN", ("attempt", "at")),
     "review.corrected": Action("Value corrected", ("path", "version_no", "changed")),

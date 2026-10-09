@@ -30,7 +30,7 @@ from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passag
 from docforge.chat.statements import CODE, RawStatement, check_statements
 from docforge.chat.verify import cited_blocks
 from docforge.collections import CollectionNotFound, CollectionService
-from docforge.db.models import Conversation, Document, Message
+from docforge.db.models import Conversation, Document, Message, live
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
@@ -537,7 +537,10 @@ class ChatService:
                 # Its document or knowledge base was deleted: continuing would widen the
                 # question to the whole organisation, so it is refused instead. Checked
                 # first: resending the deleted id is not a conflict, it is gone.
-                if conversation.scope != scope.kind:
+                if conversation.scope != scope.kind or (
+                    scope.document_id is not None
+                    and not _live_documents(session, [scope.document_id])
+                ):
                     raise ScopeGone(conversation.scope)
                 if asked.kind != "organisation" and asked != scope:
                     raise ScopeConflict("a conversation keeps the scope it began with")
@@ -548,9 +551,18 @@ class ChatService:
                     .limit(_HISTORY)
                 ).all()
                 # What was asked, and what was answered: a non-answer is not an answer to
-                # build on.
+                # build on, and nor is one drawn from a document deleted since.
+                cited = _live_documents(
+                    session, [uuid.UUID(c["document_id"]) for m in earlier for c in m.citations]
+                )
                 history = [
-                    (m.question, m.answer if m.status in _ANSWERED else "(no answer found)")
+                    (
+                        m.question,
+                        m.answer
+                        if m.status in _ANSWERED
+                        and all(uuid.UUID(c["document_id"]) in cited for c in m.citations)
+                        else "(no answer found)",
+                    )
                     for m in reversed(earlier)
                 ]
                 # The documents the conversation is about: those its answers cited, newest
@@ -561,6 +573,7 @@ class ChatService:
                         for m in earlier
                         if m.status in _ANSWERED
                         for c in m.citations
+                        if uuid.UUID(c["document_id"]) in cited
                     )
                 )[:_ANCHORS]
             else:
@@ -568,7 +581,9 @@ class ChatService:
                 if scope.document_id is not None:
                     found = session.scalar(
                         select(Document.id).where(
-                            Document.tenant_id == tenant_id, Document.id == scope.document_id
+                            Document.tenant_id == tenant_id,
+                            Document.id == scope.document_id,
+                            live(),
                         )
                     )
                     if found is None:
@@ -680,13 +695,17 @@ class ChatService:
                 .where(Message.conversation_id == conversation_id, Message.status != "pending")
                 .order_by(Message.created_at, Message.id)
             ).all()
+            # Quotes from a document deleted since are not shown again.
+            kept = _live_documents(
+                session, [uuid.UUID(c["document_id"]) for m in rows for c in m.citations]
+            )
             return [
                 StoredMessage(
                     id=m.id,
                     question=m.question,
                     answer=m.answer,
                     status=m.status,
-                    citations=list(m.citations),
+                    citations=[c for c in m.citations if uuid.UUID(c["document_id"]) in kept],
                     model=m.model,
                     input_tokens=m.input_tokens,
                     output_tokens=m.output_tokens,
@@ -765,6 +784,13 @@ class ChatService:
         if conversation is None:
             raise ConversationNotFound(conversation_id)
         return conversation
+
+
+def _live_documents(session: Session, ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:
+    """Those of `ids` that are documents of the tenant in scope and not deleted."""
+    if not ids:
+        return set()
+    return set(session.scalars(select(Document.id).where(Document.id.in_(set(ids)), live())))
 
 
 def _follow_up_query(question: str, history: Sequence[tuple[str, str]]) -> str:

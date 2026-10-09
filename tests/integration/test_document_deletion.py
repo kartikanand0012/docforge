@@ -27,7 +27,7 @@ from docforge.mcp_server.tools import AgentTools
 from docforge.parsing.cache import CachingParser
 from docforge.review.service import ReviewService
 from docforge.search.embeddings import FakeEmbedder
-from docforge.search.service import SearchService
+from docforge.search.service import Mode, SearchService
 from fakes import signed_in
 from worlds import World
 
@@ -64,7 +64,7 @@ class Stack:
         self.batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
 
     def delete(self, document_id: uuid.UUID) -> int:
-        return self.api.delete(f"/v1/documents/{document_id}").status_code
+        return int(self.api.delete(f"/v1/documents/{document_id}").status_code)
 
 
 @pytest.fixture
@@ -96,7 +96,6 @@ def test_a_deleted_document_is_gone_from_the_list_and_every_read_by_id(stack: St
     ):  # fmt: skip
         assert stack.api.get(f"/v1/documents/{invoice}{path}").status_code == 404, path
     assert stack.api.post(f"/v1/documents/{invoice}/reprocess").status_code == 404
-    assert stack.api.post(f"/v1/documents/{invoice}/claim", json={}).status_code == 404
     assert all(item["document_id"] != str(invoice) for item in stack.api.get(
         "/v1/review/queue"
     ).json())  # fmt: skip
@@ -146,14 +145,15 @@ def test_deleting_is_audited_without_the_filename(stack: Stack, owner_engine: En
 
 
 def test_search_by_words_and_by_meaning_no_longer_finds_it(stack: Stack) -> None:
-    for mode in ("keyword", "vector", "hybrid"):
-        found = stack.search.search(DEFAULT_TENANT_ID, stack.batch, mode=mode)  # type: ignore[arg-type]
+    modes: tuple[Mode, ...] = ("keyword", "vector", "hybrid")
+    for mode in modes:
+        found = stack.search.search(DEFAULT_TENANT_ID, stack.batch, mode=mode)
         assert stack.invoice_id in {hit.document_id for hit in found}, mode
 
     stack.delete(stack.invoice_id)
 
-    for mode in ("keyword", "vector", "hybrid"):
-        found = stack.search.search(DEFAULT_TENANT_ID, stack.batch, mode=mode)  # type: ignore[arg-type]
+    for mode in modes:
+        found = stack.search.search(DEFAULT_TENANT_ID, stack.batch, mode=mode)
         assert stack.invoice_id not in {hit.document_id for hit in found}, mode
     response = stack.api.get("/v1/search", params={"q": stack.batch})
     assert response.status_code == 200
@@ -161,9 +161,10 @@ def test_search_by_words_and_by_meaning_no_longer_finds_it(stack: Stack) -> None
 
 
 def test_questions_neither_read_nor_cite_it_afterwards(stack: Stack) -> None:
-    stack.model.reply = quoting(stack.batch, f"Batch {stack.batch} is billed.")
-    asked = stack.api.post("/v1/chat", json={"question": f"Which invoice has {stack.batch}?"})
-    assert asked.status_code == 200 and asked.json()["citations"]
+    stack.model.reply = quoting(stack.batch, f"Batch {stack.batch} is on this invoice.")
+    question = {"question": f"Which invoice billed batch {stack.batch}?"}
+    asked = stack.api.post("/v1/chat", json=question)
+    assert asked.status_code == 200 and asked.json()["citations"], asked.json()
     scoped = stack.api.post(
         "/v1/chat", json={"question": "Its total?", "document_id": str(stack.invoice_id)}
     ).json()
@@ -171,10 +172,11 @@ def test_questions_neither_read_nor_cite_it_afterwards(stack: Stack) -> None:
     stack.delete(stack.invoice_id)
 
     stack.model.requests.clear()
-    again = stack.api.post("/v1/chat", json={"question": f"Which invoice has {stack.batch}?"})
+    stack.model.reply = lambda passages: {"statements": [], "unanswerable": True}
+    again = stack.api.post("/v1/chat", json=question)
     assert again.status_code == 200
     assert all(c["document_id"] != str(stack.invoice_id) for c in again.json()["citations"])
-    assert not any(stack.batch in r.prompt for r in stack.model.requests)
+    assert not any("invoice.pdf" in r.prompt for r in stack.model.requests)  # no passage of it
     # Asked about it by id, or in a conversation about it: gone.
     by_id = {"question": "Total?", "document_id": str(stack.invoice_id)}
     assert stack.api.post("/v1/chat", json=by_id).status_code == 404

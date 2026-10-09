@@ -18,7 +18,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from docforge import audit
-from docforge.db.models import Collection, CollectionDocument, Document
+from docforge.db.models import Collection, CollectionDocument, Document, live
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 
@@ -99,7 +99,8 @@ class CollectionService:
         with self._sessions() as session:
             counts = (
                 select(CollectionDocument.collection_id, func.count().label("n"))
-                .where(CollectionDocument.tenant_id == tenant_id)
+                .join(Document, Document.id == CollectionDocument.document_id)
+                .where(CollectionDocument.tenant_id == tenant_id, live())
                 .group_by(CollectionDocument.collection_id)
                 .subquery()
             )
@@ -166,7 +167,7 @@ class CollectionService:
             found = set(
                 session.scalars(
                     select(Document.id).where(
-                        Document.tenant_id == tenant_id, Document.id.in_(wanted)
+                        Document.tenant_id == tenant_id, Document.id.in_(wanted), live()
                     )
                 )
             )
@@ -228,7 +229,7 @@ class CollectionService:
             rows = session.execute(
                 select(Document, CollectionDocument.added_at)
                 .join(CollectionDocument, CollectionDocument.document_id == Document.id)
-                .where(CollectionDocument.collection_id == collection_id)
+                .where(CollectionDocument.collection_id == collection_id, live())
                 .order_by(CollectionDocument.added_at, Document.id)
             ).all()
             return [

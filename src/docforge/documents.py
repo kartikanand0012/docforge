@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel
-from sqlalchemy import case, func, select, tuple_
+from sqlalchemy import case, exists, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -40,6 +40,7 @@ from docforge.db.models import (
     MatchRecord,
     ModelRun,
     ParseOutput,
+    live,
 )
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
@@ -238,6 +239,8 @@ def current_match(
             == select(func.max(newer.version_no))
             .where(newer.document_id == other.document_id)
             .scalar_subquery(),
+            # A deleted counterpart is no longer one.
+            exists().where(Document.id == other.document_id, live()),
         )
         .order_by(MatchRecord.created_at.desc())
         .limit(1)
@@ -358,7 +361,9 @@ class DocumentService:
                         filename=filename,
                         size_bytes=len(data),
                     )
-                    .on_conflict_do_nothing(index_elements=["tenant_id", "sha256"])
+                    .on_conflict_do_nothing(
+                        index_elements=["tenant_id", "sha256"], index_where=live()
+                    )
                     .returning(Document.id)
                 ).scalar_one_or_none()
                 if inserted is None:  # a concurrent upload of the same bytes won
@@ -426,6 +431,30 @@ class DocumentService:
             )
             self._enqueue(session, version)
             return version
+
+    @scoped
+    def delete(
+        self,
+        tenant_id: uuid.UUID,
+        document_id: uuid.UUID,
+        *,
+        actor: str,
+        reviewer_id: uuid.UUID | None = None,
+    ) -> None:
+        """Delete a document: kept, with its history, but gone from everything a caller can
+        read - lists, reads by id, search, questions, knowledge bases, exports and matching.
+
+        Raises `DocumentNotFound` (also when already deleted) and `ClaimedByOther` while a
+        reviewer other than `reviewer_id` has it open.
+        """
+        with self._sessions.begin() as session:
+            document = self._document(session, tenant_id, document_id, lock=True)
+            refuse_if_claimed(session, document.id, reviewer_id, _now())
+            # The application cannot mark it itself: once marked it cannot see the row.
+            if not session.scalar(select(func.docforge_delete_document(document.id))):
+                raise DocumentNotFound(f"no document {document_id}")
+            # No filename: this log can never be edited, and a filename may be personal data.
+            self._audit(session, document, actor, "document.deleted")
 
     # --- processing -------------------------------------------------------------------------
 
@@ -741,7 +770,9 @@ class DocumentService:
         """
         with self._sessions.begin() as session:
             version = session.get_one(DocumentVersion, version_id)
-            document = session.get_one(Document, version.document_id)
+            document = session.get(Document, version.document_id)
+            if document is None or document.deleted_at is not None:
+                return  # deleted meanwhile: nothing to compare
             other_type = _COUNTERPART.get(document.doc_type)
             mine = session.scalar(
                 select(Extraction).where(Extraction.document_version_id == version.id)
@@ -765,6 +796,7 @@ class DocumentService:
                 .join(Document, Document.id == DocumentVersion.document_id)
                 .where(
                     Document.tenant_id == document.tenant_id,
+                    live(),
                     Document.doc_type == other_type,
                     DocumentVersion.version_no == newest,
                     order_number == ORDER_NUMBER,
@@ -896,7 +928,7 @@ class DocumentService:
     ) -> list[Document]:
         """The organisation's documents, newest first; `before` is the last one already seen
         (its created_at and id), so a page never repeats or skips one."""
-        query = select(Document).where(Document.tenant_id == tenant_id)
+        query = select(Document).where(Document.tenant_id == tenant_id, live())
         if doc_type is not None:
             query = query.where(Document.doc_type == doc_type)
         if stage is not None:
@@ -1056,7 +1088,9 @@ class DocumentService:
     @staticmethod
     def _by_hash(session: Session, tenant_id: uuid.UUID, sha256: str) -> Document | None:
         return session.scalar(
-            select(Document).where(Document.tenant_id == tenant_id, Document.sha256 == sha256)
+            select(Document).where(
+                Document.tenant_id == tenant_id, Document.sha256 == sha256, live()
+            )
         )
 
     @staticmethod
@@ -1076,7 +1110,9 @@ class DocumentService:
     def _document(
         session: Session, tenant_id: uuid.UUID, document_id: uuid.UUID, *, lock: bool = False
     ) -> Document:
-        query = select(Document).where(Document.tenant_id == tenant_id, Document.id == document_id)
+        query = select(Document).where(
+            Document.tenant_id == tenant_id, Document.id == document_id, live()
+        )
         # FOR NO KEY UPDATE: enough to serialise writers without blocking new child rows.
         document = session.scalar(query.with_for_update(key_share=True) if lock else query)
         if document is None:
@@ -1092,8 +1128,12 @@ class DocumentService:
         if document_id is None:
             raise DocumentNotFound(f"no version {version_id}")
         document = session.execute(
-            select(Document).where(Document.id == document_id).with_for_update(key_share=True)
-        ).scalar_one()
+            select(Document)
+            .where(Document.id == document_id, live())
+            .with_for_update(key_share=True)
+        ).scalar_one_or_none()
+        if document is None:  # deleted while it was being read: its work is dropped
+            raise DocumentNotFound(f"no document {document_id}")
         version = session.execute(
             select(DocumentVersion)
             .where(DocumentVersion.id == version_id)

@@ -326,6 +326,24 @@ def documents_router(
             raise HTTPException(409, str(error)) from None
         return VersionOut.model_validate(version)
 
+    @router.delete("/documents/{document_id}", status_code=204)
+    def delete_document(document_id: uuid.UUID, principal: Writer) -> Response:
+        """Delete a document. It is kept for its audit trail but disappears from every list,
+        read, search, answer, knowledge base and export; the same file can be uploaded again
+        as a new document."""
+        try:
+            service.delete(
+                principal.tenant_id,
+                document_id,
+                actor=principal.actor,
+                reviewer_id=principal.subject_id if principal.kind == "session" else None,
+            )
+        except DocumentNotFound:
+            raise _NOT_FOUND from None
+        except ClaimedByOther as error:
+            raise HTTPException(409, str(error)) from None
+        return Response(status_code=204)
+
     @router.get("/documents", response_model=DocumentPage)
     def list_documents(
         principal: Reader,

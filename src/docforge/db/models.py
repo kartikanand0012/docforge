@@ -80,6 +80,14 @@ class Document(Base):
     # The version whose chunks search shows: the newest one indexed.
     indexed_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = _created_at()
+    # Set when deleted. The application's role cannot see a deleted document at all (its
+    # row-level policy), so `live` in a query is a second guard, not the only one.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+def live(document: Any = Document) -> ColumnElement[bool]:
+    """The condition that a document (or an alias of it) has not been deleted."""
+    return document.deleted_at.is_(None)  # type: ignore[no-any-return]
 
 
 class DocumentVersion(Base):
