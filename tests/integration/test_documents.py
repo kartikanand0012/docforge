@@ -825,7 +825,7 @@ def test_a_parse_never_recorded_fails_saying_so(sessions: SessionFactory) -> Non
 
     harness = Harness(sessions, [])
 
-    def miss(pdf: bytes) -> object:
+    def miss(pdf: bytes) -> ParsedDocument:
         raise NotCached("no cached parse for this file")
 
     harness.parser.parse = miss  # type: ignore[method-assign]

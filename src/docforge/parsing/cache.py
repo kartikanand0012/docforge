@@ -11,6 +11,10 @@ from pathlib import Path
 from docforge.parsing.base import ParsedDocument, ParseError, Parser
 
 
+class NotCached(ParseError):
+    """Replay only, and no parse was recorded for this file: reading it again will not help."""
+
+
 class CachingParser:
     """Serves cached parses. With `inner`, a miss is parsed and stored.
 
@@ -37,7 +41,7 @@ class CachingParser:
         if cached is not None and self._is_current(cached):
             return cached
         if self._inner is None:
-            raise ParseError(f"no cached parse for this file (sha256 {key[:24]})")
+            raise NotCached(f"no cached parse for this file (sha256 {key[:24]})")
         document = self._inner.parse(pdf)
         self._directory.mkdir(parents=True, exist_ok=True)
         # Write then rename, so an interrupted run never leaves half a file behind.

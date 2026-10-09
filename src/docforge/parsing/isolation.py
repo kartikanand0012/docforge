@@ -31,6 +31,7 @@ _ERRORS: dict[str, type[ParseError]] = {
 _SECRET_MARKERS = ("KEY", "SECRET", "TOKEN", "PASSWORD", "DATABASE_URL")
 _POLL_SECONDS = 0.2
 _RECYCLE_AT = 0.75  # of the memory limit, held after a document: replace the process
+_RETRY_IF_HELD = 0.25  # held before a document: enough left behind to be worth a retry
 
 
 class _OverMemory(ParserLimitExceeded):
@@ -103,6 +104,7 @@ class IsolatedParser:
         self._connection: Connection | None = None
         self._served = 0
         self.peak_rss_bytes = 0  # highest memory use seen in any child, for measurement
+        self.spawned = 0  # processes started, for measurement and tests
 
     def parse(self, pdf: bytes) -> ParsedDocument:
         with self._lock:
@@ -122,7 +124,10 @@ class IsolatedParser:
     def _exchange(self, pdf: bytes) -> tuple[str, str]:
         """Send one document to the child and wait for its reply, within the limits."""
         process, connection = self._ready()
-        shared = self._served > 0
+        # Retried only if the process already held a good part of the limit: memory earlier
+        # documents left behind. A nearly empty one gains nothing from a second try, and a
+        # hostile file must not cost twice.
+        shared = self._served > 0 and self._rss(process) > self._max_rss_bytes * _RETRY_IF_HELD
         self._served += 1
         deadline = time.monotonic() + self._timeout_seconds
         try:
@@ -192,6 +197,7 @@ class IsolatedParser:
         process.start()
         theirs.close()
         self._process, self._connection, self._served = process, ours, 0
+        self.spawned += 1
         return process, ours
 
     def _rss(self, process: SpawnProcess) -> int:

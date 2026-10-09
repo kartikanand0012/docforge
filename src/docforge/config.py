@@ -114,6 +114,8 @@ class Settings(BaseSettings):
     # Robustness and capacity runs only: no model is called; every reply is empty and marked
     # simulated, after SIMULATED_MODEL_TIME (zero, c1, fixed:N). Needs the capacity factory.
     simulated_model: bool = False
+    # A production stack refuses the simulated model unless told it is a test stack.
+    allow_simulated_model_in_production: bool = False
     simulated_model_time: str = "zero"
 
     # Signs webhook deliveries; each webhook's secret is derived from it. Changing it changes
@@ -324,6 +326,12 @@ class Settings(BaseSettings):
         if self.pipeline_factory == "docforge.wiring:build_replay_pipelines":
             return self  # the demo replays recorded replies and embeddings: no provider is called
         if self.simulated_model:
+            if not self.allow_simulated_model_in_production:
+                raise ValueError(
+                    "SIMULATED_MODEL answers every document with empty values: it is for "
+                    "robustness and capacity runs. On a test stack set "
+                    "ALLOW_SIMULATED_MODEL_IN_PRODUCTION=true"
+                )
             return self  # a capacity run: no provider is called (ops-check says so)
         keys = {"anthropic": self.anthropic_api_key, "openai": self.openai_api_key}
         for provider in dict.fromkeys((self.extraction_provider, self.chat_provider)):

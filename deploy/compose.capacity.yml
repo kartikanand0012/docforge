@@ -5,6 +5,7 @@
 x-capacity: &capacity
   PIPELINE_FACTORY: docforge.loadtest.pipelines:build_capacity_pipelines
   SIMULATED_MODEL: "true"
+  ALLOW_SIMULATED_MODEL_IN_PRODUCTION: "true"  # this stack is for tests only
   SIMULATED_MODEL_TIME: ${SIMULATED_MODEL_TIME:-zero}
 
 services:

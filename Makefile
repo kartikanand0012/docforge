@@ -82,9 +82,10 @@ verify: ## Check the running demo stack (.deploytest, https://localhost) end to 
 	uv run pytest -m "system and not robustness" --no-cov tests/system
 
 robustness: ## Every hostile file through the real parser and converter on the demo stack, then back to replay
-	cd .deploytest && docker compose -f compose.yml -f ../deploy/compose.capacity.yml up -d --wait api worker
-	uv run pytest -m robustness --no-cov -rA tests/system; status=$$?; \
-		cd .deploytest && docker compose up -d --wait api worker; exit $$status
+	@restore() { cd .deploytest && docker compose up -d --wait api worker; }; \
+	trap restore EXIT INT TERM; \
+	(cd .deploytest && docker compose -f compose.yml -f ../deploy/compose.capacity.yml up -d --wait api worker) && \
+	uv run pytest -m robustness --no-cov -rA tests/system
 
 audit: ## Look for known vulnerabilities in every locked dependency
 	uv export -q --frozen --all-groups --no-emit-project --format requirements-txt -o .audit-requirements.txt

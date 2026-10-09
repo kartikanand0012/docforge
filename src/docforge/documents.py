@@ -48,12 +48,14 @@ from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.formats import ACCEPTED, FORMAT_OF, MEDIA_TYPES, Format, sniff
 from docforge.llm.base import LLMError
+from docforge.llm.replay import NotRecorded
 from docforge.parsing.base import (
     DocumentTooLarge,
     NoTextLayer,
     ParseError,
     ParserLimitExceeded,
 )
+from docforge.parsing.cache import NotCached
 from docforge.parsing.pdf import pdf_page_count
 from docforge.stages import stage_listener
 from docforge.storage import (
@@ -97,6 +99,10 @@ class DocumentNotFound(LookupError):
 
 class ReprocessInProgress(Exception):
     """The document's newest version has not finished yet."""
+
+
+PARSER_LIMIT = "Reading it was stopped: it needed more time or memory than one document may use."
+NOT_RECORDED = "This demo reads only its recorded sample documents; this file was not recorded."
 
 
 class QueueFull(Exception):
@@ -479,7 +485,12 @@ class DocumentService:
         except DocumentTooLarge as error:
             return self._fail(version_id, turn, f"The {error}.")
         except ParserLimitExceeded as error:
-            return self._fail(version_id, turn, str(error))
+            # The limits stay in the log: shown, they help someone tune a file to sit under them.
+            logger.warning("parser limit for version %s: %s", version_id, error)
+            return self._fail(version_id, turn, PARSER_LIMIT)
+        except (NotCached, NotRecorded):
+            # A replaying deployment (the demo) has nothing recorded for this file.
+            return self._fail(version_id, turn, NOT_RECORDED)
         except ParseError:
             message = (
                 "The file could not be read as a PDF."
