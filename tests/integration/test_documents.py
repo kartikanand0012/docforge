@@ -798,3 +798,38 @@ def test_a_document_that_exceeds_a_parser_limit_fails_with_the_reason(
         harness.version(ingested.version.id).error
         == "Parsing was stopped: it exceeded the time limit of 900 s."
     )
+
+
+# --- V1 review: a replaying deployment and a file it never recorded ------------------------
+
+
+def test_a_reply_never_recorded_fails_at_once_saying_so(sessions: SessionFactory) -> None:
+    from docforge.llm.replay import NotRecorded
+
+    harness = Harness(sessions, [NotRecorded("no recorded response")], max_attempts=5)
+    ingested = harness.ingest()
+
+    assert harness.service.process(ingested.version.id) == "failed"  # not retried: it cannot help
+    version = harness.version(ingested.version.id)
+    assert version.attempts == 1
+    assert (
+        version.error
+        == "This demo reads only its recorded sample documents; this file was not recorded."
+    )
+
+
+def test_a_parse_never_recorded_fails_saying_so(sessions: SessionFactory) -> None:
+    from docforge.parsing.cache import NotCached
+
+    harness = Harness(sessions, [])
+
+    def miss(pdf: bytes) -> object:
+        raise NotCached("no cached parse for this file")
+
+    harness.parser.parse = miss  # type: ignore[method-assign]
+    ingested = harness.ingest()
+
+    assert harness.service.process(ingested.version.id) == "failed"
+    assert harness.version(ingested.version.id).error == (
+        "This demo reads only its recorded sample documents; this file was not recorded."
+    )

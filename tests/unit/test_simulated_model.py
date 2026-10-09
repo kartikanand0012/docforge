@@ -88,7 +88,9 @@ def test_the_capacity_pipelines_need_the_simulated_model_said_out_loud() -> None
     assert settings(PIPELINE_FACTORY=CAPACITY, SIMULATED_MODEL="true").simulated_model
 
 
-def test_in_production_it_needs_no_model_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_in_production_it_must_be_allowed_and_then_needs_no_model_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     for name, value in {
         "ENVIRONMENT": "production",
         "DATABASE_URL": "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge",
@@ -101,7 +103,14 @@ def test_in_production_it_needs_no_model_key(monkeypatch: pytest.MonkeyPatch) ->
         monkeypatch.setenv(name, value)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
 
-    on = settings(PIPELINE_FACTORY=CAPACITY, SIMULATED_MODEL="true")
+    with pytest.raises(ValueError, match="ALLOW_SIMULATED_MODEL_IN_PRODUCTION"):
+        settings(PIPELINE_FACTORY=CAPACITY, SIMULATED_MODEL="true")  # never by accident (V1 review)
+
+    on = settings(
+        PIPELINE_FACTORY=CAPACITY,
+        SIMULATED_MODEL="true",
+        ALLOW_SIMULATED_MODEL_IN_PRODUCTION="true",
+    )
 
     assert on.simulated_model
 

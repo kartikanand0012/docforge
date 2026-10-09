@@ -116,6 +116,21 @@ def test_a_document_over_the_limit_in_a_used_process_is_tried_again_in_a_fresh_o
     parsed = parser.parse(b"spike:80")  # 220 MB here; 110 MB in a fresh process
 
     assert parsed.blocks[0].text == "spike:80"
+    assert parser.spawned >= 2  # it really was read again in a new process
+
+
+def test_a_heavy_document_in_a_nearly_empty_process_is_not_tried_twice(
+    parser: IsolatedParser,
+) -> None:
+    """The retry is for memory others left behind: a process that held little before the
+    document gains nothing from a second try (V1 review: a hostile file must not cost twice)."""
+    first = pid(parser)  # a process that has read one small document
+
+    with pytest.raises(ParserLimitExceeded, match="memory limit"):
+        parser.parse(b"hoard")
+
+    assert parser.spawned == 1  # one process started so far: the file was not tried again
+    assert pid(parser) != first
 
 
 def test_a_process_left_near_the_limit_is_replaced_before_the_next_document(
