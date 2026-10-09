@@ -44,9 +44,10 @@ RUN if [ "$WARM_MODELS" = "0" ]; then rm /tmp/scan-probe.pdf; exit 0; fi; python
     [DoclingParser().parse(Path(p).read_bytes()) \
      for p in ('/app/demo/synthetic/pair_001/invoice.pdf', '/tmp/scan-probe.pdf')]" \
     && rm /tmp/scan-probe.pdf && chown -R app:app /home/app/.cache
+COPY deploy/start.sh /app/deploy/start.sh
+RUN chmod 0555 /app/deploy/start.sh
 USER app
 EXPOSE 8000
-# Only Caddy and the review app reach this port (it is not published), so the client address
-# they forward is trusted.
-CMD ["uvicorn", "docforge.api.main:create_default_app", "--factory", "--host", "0.0.0.0", \
-     "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]
+# The API by default; DOCFORGE_ROLE=worker|converter|admin for hosts that cannot set a command
+# per service (deploy/start.sh). Compose sets its own commands.
+CMD ["/app/deploy/start.sh"]

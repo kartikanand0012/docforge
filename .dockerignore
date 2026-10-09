@@ -1,6 +1,7 @@
 # Never in an image: secrets, local state, and what the image builds itself.
 .env
 .env.*
+.deploytest
 .git
 .venv
 **/__pycache__
