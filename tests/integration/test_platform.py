@@ -239,8 +239,9 @@ def test_looking_in_changes_nothing(platform: Platform) -> None:
     for method, path in attempts:
         response = platform.api.request(method, path, headers=looking, json={})
         assert response.status_code == 403, (method, path, response.status_code)
-    # A person's review screen and the administration are not read-only views.
-    for path in ("/v1/review/queue", f"/v1/documents/{doc}/review", "/v1/audit"):
+    # The queue (a reviewer's work list) and the administration are not read-only views; a
+    # document's review detail is (see above).
+    for path in ("/v1/review/queue", "/v1/audit"):
         assert platform.api.get(path, headers=looking).status_code == 403, path
     # The administrator's own session still works without the header.
     assert platform.api.get("/v1/documents", headers=platform.admin).status_code == 200

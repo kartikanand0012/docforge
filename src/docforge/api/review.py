@@ -242,7 +242,10 @@ def review_router(
         ]
 
     @router.get("/documents/{document_id}/review", response_model=ReviewOut)
-    def review_detail(document_id: uuid.UUID, principal: Reviewing) -> ReviewOut:
+    def review_detail(document_id: uuid.UUID, principal: Reader) -> ReviewOut:
+        """The values, their checks and the signature, as a reviewer sees them. Reading it
+        needs only read access (the same values are in the extraction and the assessment);
+        changing anything needs `review`."""
         try:
             return _review_out(
                 review.detail(principal.tenant_id, document_id, viewer=_viewer(principal))
