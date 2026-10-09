@@ -83,11 +83,17 @@ def approval_draft(
     invoice: InvoiceExtraction, *, reviewer: str, signed_at: datetime, record_sha256: str
 ) -> dict[str, Any]:
     """What an approved invoice turns into: a payment approval for a person or a system to
-    act on. Nothing is paid here."""
+    act on. Nothing is paid here.
+
+    The draft is not part of what a signature covers (the record and what is said about
+    it are) and is made after the signature's hash, so its fields can grow without voiding
+    any signature."""
     total = invoice.totals.grand_total.value
     return {
         "type": "payment_approval_draft",
+        # The draft's own lifecycle: DocForge never pays; the ERP acts on the draft.
         "status": "draft",
+        "approval_status": "approved",  # a draft is made only for an approval
         "payee": {"name": invoice.seller.name.value, "gstin": invoice.seller.gstin.value},
         "invoice_no": invoice.invoice_no.value,
         "invoice_date": invoice.invoice_date.value.isoformat()

@@ -325,6 +325,14 @@ Each delivery is a POST with JSON `{id, type, created_at, data}`, the header
 (HMAC-SHA256 of `"<t>." + body` with the webhook's secret). A 2xx answer is delivered;
 anything else is retried for about half an hour.
 
+`review.signed` data: `{document_id, doc_type, version_no, outcome, meaning, signed_by,
+signed_at, record_sha256, draft}`. `draft` is null unless an invoice was approved; then it is
+the payment approval draft `{type: "payment_approval_draft", status: "draft", approval_status:
+"approved", payee {name, gstin}, invoice_no, invoice_date, amount, currency, po_no,
+approved_by, approved_at, record_sha256}`. `status` is the draft's own lifecycle and is
+always `draft`: DocForge never pays, the receiving system (the ERP) acts on it.
+`approval_status` is the decision. The draft is not part of what the signature covers.
+
 ---
 
 ## 9. States every screen should handle
