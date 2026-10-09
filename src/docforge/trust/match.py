@@ -1,5 +1,6 @@
 """Compare an invoice with the purchase order it claims to fulfil."""
 
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -65,6 +66,50 @@ def _differs[T](
     ]
 
 
+def _warning(
+    code: str,
+    message: str,
+    invoice: tuple[str, object],
+    order: tuple[str, object],
+) -> Discrepancy:
+    return Discrepancy(
+        code=code,
+        severity="warning",
+        message=message,
+        invoice_path=invoice[0],
+        order_path=order[0],
+        invoice_value=_text(invoice[1]),
+        order_value=_text(order[1]),
+    )
+
+
+def _hsn_key(hsn: str) -> str:
+    return "".join(hsn.split())
+
+
+def _total(invoice: InvoiceExtraction, order: PurchaseOrderExtraction) -> list[Discrepancy]:
+    """The order's total against the invoice's. A PO total may be printed with tax or
+    without it, so it agrees if it equals either the invoice's grand total or its taxable
+    value. Only a warning: a part shipment or a changed price is billed for less or more,
+    and the lines are compared one by one anyway."""
+    ordered = order.total.value
+    grand, taxable = invoice.totals.grand_total.value, invoice.totals.taxable_value.value
+    billed = [value for value in (grand, taxable) if value is not None]
+    if ordered is None or not billed:
+        return []
+    if any(abs(value - ordered) <= Decimal("0.01") for value in billed):
+        return []
+    return [
+        _warning(
+            "order.total",
+            f"The order total ({ordered}) is neither the invoice's grand total ({grand}) nor "
+            f"its taxable value ({taxable}).",
+            ("totals.grand_total", grand),
+            ("total", ordered),
+        )
+    ]
+
+
 def _free_quantity(scheme: str | None, qty: int) -> int:
     if scheme is None:
         return 0
@@ -93,6 +138,18 @@ def _line(
             "Pack",
             (f"{invoice_path}.pack", billed.pack),
             (f"{order_path}.pack", ordered.pack),
+        )
+    billed_hsn, ordered_hsn = billed.hsn.value, ordered.hsn.value
+    if billed_hsn and ordered_hsn and _hsn_key(billed_hsn) != _hsn_key(ordered_hsn):
+        # A warning: the classification is the supplier's to state, and it does not change
+        # what was ordered; a person decides whether it matters.
+        found.append(
+            _warning(
+                "line.hsn",
+                f"HSN on the invoice ({billed_hsn}) differs from the order ({ordered_hsn}).",
+                (f"{invoice_path}.hsn", billed_hsn),
+                (f"{order_path}.hsn", ordered_hsn),
+            )
         )
     # A scheme that was printed but could not be read is unknown, not absent.
     if ordered.scheme.raw is not None and ordered.scheme.value is None:
@@ -199,4 +256,5 @@ def match_invoice_to_order(
                     order_value=line.product_name.value,
                 )
             )
+    found += _total(invoice, order)
     return tuple(found)

@@ -152,6 +152,11 @@ The heart of the product. Needs:
   `corrections`, `match_status`, `discrepancies`, `counterpart_document_id`, `review` (the
   signature if signed), `signature_valid`, `record_sha256`, `meanings` (what a signature may
   mean), `superseded`, `certificates` (CoAs linked by batch).
+- A purchase order's `record` (since `purchase-order-2`) also has each line's `hsn` and
+  `amount` and the order's `total`; older orders show them as not printed. A total that is
+  not the sum of the line amounts fails the `order.total` check, and the match adds
+  `order.total` (the order total is neither the invoice's grand total nor its taxable value)
+  and `line.hsn` (a matched line's HSN differs) - all warnings: shown, never blocking.
 - `POST /v1/documents/{id}/corrections` `{path, text, reason, email, pin,
   expected_record_sha256?}` -> `ReviewOut`. `path` is one of `editable_paths` (e.g.
   `invoice_no`, `lines[0].qty`). Send the `record_sha256` you showed as

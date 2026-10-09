@@ -2,7 +2,7 @@
   "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
   "invoice_prompt_version": "invoice-v1",
-  "order_prompt_version": "purchase-order-v1",
+  "order_prompt_version": "purchase-order-v2",
   "summary": {
     "clean_pairs": 20,
     "clean_pairs_accepted": 12,
@@ -15,8 +15,8 @@
   },
   "usage": {
     "model_calls": 58,
-    "input_tokens": 85112,
-    "output_tokens": 194636
+    "input_tokens": 86446,
+    "output_tokens": 205211
   },
   "clean": [
     {
