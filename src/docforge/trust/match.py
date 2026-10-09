@@ -1,5 +1,6 @@
 """Compare an invoice with the purchase order it claims to fulfil."""
 
+import re
 from decimal import Decimal
 from typing import Literal
 
@@ -19,6 +20,18 @@ class Discrepancy(BaseModel):
     order_path: str | None
     invoice_value: str | None
     order_value: str | None
+
+
+# A company's suffix written another way: "Private Limited", "Pvt. Ltd." and "pvt ltd" agree.
+_COMPANY_WORDS = {"private": "pvt", "limited": "ltd"}
+
+
+def company_key(name: object) -> str | None:
+    """A company name as compared: case, full stops, commas and spacing aside."""
+    if not isinstance(name, str):
+        return None
+    words = re.sub(r"[.,]", " ", name).casefold().split()
+    return " ".join(_COMPANY_WORDS.get(word, word) for word in words) or None
 
 
 def _key(product_name: str) -> str:
@@ -178,12 +191,28 @@ def match_invoice_to_order(
 ) -> tuple[Discrepancy, ...]:
     """Every difference between what was ordered and what was billed. Empty means they agree."""
     found = _differs("po_no", "Order number", ("po_no", invoice.po_no), ("po_no", order.po_no))
-    found += _differs(
-        "supplier.gstin",
-        "Supplier GSTIN",
-        ("seller.gstin", invoice.seller.gstin),
-        ("supplier_gstin", order.supplier_gstin),
-    )
+    gstins = (invoice.seller.gstin.value, order.supplier_gstin.value)
+    named = company_key(invoice.seller.name.value)
+    if None in gstins and named is not None and named == company_key(order.supplier_name.value):
+        # Many orders print only the supplier's name: the pair was made by it, so a person
+        # is told, but it is not a mismatch.
+        missing = "order" if order.supplier_gstin.value is None else "invoice"
+        found.append(
+            _warning(
+                "supplier.by_name",
+                f"The {missing} prints no supplier GSTIN; the supplier was matched by name "
+                f"({order.supplier_name.value}).",
+                ("seller.name", invoice.seller.name.value),
+                ("supplier_name", order.supplier_name.value),
+            )
+        )
+    else:
+        found += _differs(
+            "supplier.gstin",
+            "Supplier GSTIN",
+            ("seller.gstin", invoice.seller.gstin),
+            ("supplier_gstin", order.supplier_gstin),
+        )
     found += _differs(
         "buyer.gstin",
         "Buyer GSTIN",

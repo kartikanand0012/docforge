@@ -15,7 +15,6 @@ Row locks are always taken in the order document, version, then the audit lock.
 
 import hashlib
 import logging
-import re
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -68,7 +67,7 @@ from docforge.storage import (
     rendition_key,
 )
 from docforge.telemetry import current_prices, document_cost, traced
-from docforge.trust.match import match_invoice_to_order
+from docforge.trust.match import company_key, match_invoice_to_order
 
 if TYPE_CHECKING:
     from docforge.anchors import AnchoredReport, AnchorStore
@@ -252,7 +251,7 @@ _MATCH_CANDIDATES = 20
 @dataclass(frozen=True)
 class _Parties:
     supplier_gstin: str | None
-    supplier_name: str | None  # as compared: see `_company`
+    supplier_name: str | None  # as compared: see `company_key`
     buyer_gstin: str | None
 
     def pair_with(self, other: "_Parties") -> bool:
@@ -265,18 +264,6 @@ class _Parties:
         return self.supplier_name is not None and self.supplier_name == other.supplier_name
 
 
-# A company's suffix written another way: "Private Limited", "Pvt. Ltd." and "pvt ltd" agree.
-_COMPANY_WORDS = {"private": "pvt", "limited": "ltd"}
-
-
-def _company(name: object) -> str | None:
-    """A company name as compared: case, full stops, commas and spacing aside."""
-    if not isinstance(name, str):
-        return None
-    words = re.sub(r"[.,]", " ", name).casefold().split()
-    return " ".join(_COMPANY_WORDS.get(word, word) for word in words) or None
-
-
 def _parties(data: Mapping[str, Any], *, invoice: bool) -> _Parties:
     """Supplier and buyer from a stored invoice or purchase-order extraction."""
 
@@ -286,7 +273,9 @@ def _parties(data: Mapping[str, Any], *, invoice: bool) -> _Parties:
     seller = data.get("seller") or {}
     return _Parties(
         supplier_gstin=value(seller.get("gstin") if invoice else data.get("supplier_gstin")),
-        supplier_name=_company(value(seller.get("name") if invoice else data.get("supplier_name"))),
+        supplier_name=company_key(
+            value(seller.get("name") if invoice else data.get("supplier_name"))
+        ),
         buyer_gstin=value((data.get("buyer") or {}).get("gstin")),
     )
 
