@@ -79,6 +79,7 @@ questions, AI agents).
   (8 hours). Wrong details: 401 with one message whatever was wrong. Repeated failures: 429
   with `Retry-After`; five wrong PINs lock a reviewer for 15 minutes.
 - **Sign out:** `DELETE /v1/sessions/current`.
+- **Who is signed in:** `GET /v1/sessions/current` -> `{kind, name, email, role, organisation}` (`kind` is `session` for a person; `email` is null for a key). Use it for the person's name and to show administration only when `role` is `admin`.
 - **Correcting and signing ask for the PIN again** (`email` + `pin` in the body): a signature
   is a deliberate act, not a click.
 - Admin-only screens answer **403** to others; show "Only administrators can see this page."

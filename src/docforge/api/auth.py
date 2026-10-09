@@ -60,6 +60,14 @@ class SessionOut(BaseModel):
     expires_in_seconds: int
 
 
+class CallerOut(BaseModel):
+    kind: str  # "session" (a person) or "api_key"
+    name: str
+    email: str | None
+    role: str
+    organisation: str
+
+
 def sessions_router(authenticator: Authenticator, session_hours: int = 8) -> APIRouter:
     router = APIRouter(prefix="/v1")
 
@@ -77,6 +85,18 @@ def sessions_router(authenticator: Authenticator, session_hours: int = 8) -> API
         except LoginFailed as error:
             raise HTTPException(401, "The organisation, email or PIN is not right.") from error
         return SessionOut(token=token, expires_in_seconds=session_hours * 3600)
+
+    @router.get("/sessions/current", response_model=CallerOut)
+    def who_am_i(
+        response: Response, principal: Annotated[Principal, Depends(current_principal)]
+    ) -> CallerOut:
+        """Who the credential stands for: for the web app's name and role-aware navigation."""
+        email, organisation = authenticator.describe(principal)
+        response.headers["Cache-Control"] = "no-store"
+        return CallerOut(
+            kind=principal.kind, name=principal.name, email=email, role=principal.role,
+            organisation=organisation,
+        )  # fmt: skip
 
     @router.delete("/sessions/current", status_code=204)
     def sign_out(

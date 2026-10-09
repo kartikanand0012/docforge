@@ -505,6 +505,23 @@
             }
         },
         "/v1/sessions/current": {
+            "get": {
+                "summary": "Who Am I",
+                "description": "Who the credential stands for: for the web app's name and role-aware navigation.",
+                "operationId": "who_am_i_v1_sessions_current_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CallerOut"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
             "delete": {
                 "summary": "Sign Out",
                 "operationId": "sign_out_v1_sessions_current_delete",
@@ -2618,6 +2635,46 @@
                     "file"
                 ],
                 "title": "Body_upload_document_v1_documents_post"
+            },
+            "CallerOut": {
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "title": "Kind"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "email": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Email"
+                    },
+                    "role": {
+                        "type": "string",
+                        "title": "Role"
+                    },
+                    "organisation": {
+                        "type": "string",
+                        "title": "Organisation"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "kind",
+                    "name",
+                    "email",
+                    "role",
+                    "organisation"
+                ],
+                "title": "CallerOut"
             },
             "ChainOut": {
                 "properties": {
