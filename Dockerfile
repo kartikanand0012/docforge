@@ -38,7 +38,9 @@ ENV PATH=/app/.venv/bin:$PATH \
 # scanned page, so a live deployment parses with PARSER_OFFLINE=true (no download at run time).
 # As root: RapidOCR keeps its models inside its own package; the rest go to HF_HOME.
 COPY tests/fixtures/scanned/scan_good/pair_001/invoice.pdf /tmp/scan-probe.pdf
-RUN python -c "from pathlib import Path; from docforge.parsing.docling_parser import DoclingParser; \
+# WARM_MODELS=0 for an image that only replays recordings (a public demo): no models needed.
+ARG WARM_MODELS=1
+RUN if [ "$WARM_MODELS" = "0" ]; then rm /tmp/scan-probe.pdf; exit 0; fi; python -c "from pathlib import Path; from docforge.parsing.docling_parser import DoclingParser; \
     [DoclingParser().parse(Path(p).read_bytes()) \
      for p in ('/app/demo/synthetic/pair_001/invoice.pdf', '/tmp/scan-probe.pdf')]" \
     && rm /tmp/scan-probe.pdf && chown -R app:app /home/app/.cache
