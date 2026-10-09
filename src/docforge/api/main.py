@@ -70,5 +70,6 @@ def create_default_app() -> FastAPI:
             max_documents=settings.member_max_documents,
             uploads_per_day=settings.member_uploads_per_day,
             questions_per_day=settings.member_questions_per_day,
+            readings_per_day_total=settings.member_readings_per_day_total,
         ),
     )

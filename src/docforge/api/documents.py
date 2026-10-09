@@ -21,10 +21,11 @@ from docforge.api.auth import require
 from docforge.api.uploads import read_upload, safe_filename
 from docforge.auth import MEMBER, Principal
 from docforge.documents import (
-    DailyUploadsUsed,
+    DailyReadingsUsed,
     DocumentNotFound,
     DocumentService,
     DocumentTypeConflict,
+    FreeReadingsUsed,
     QueueFull,
     ReprocessInProgress,
     UnknownDocumentType,
@@ -204,6 +205,18 @@ def seconds_to_midnight_utc() -> int:
     return max(1, int((tomorrow - now).total_seconds()))
 
 
+def _readings_used(error: DailyReadingsUsed | FreeReadingsUsed) -> HTTPException:
+    """A free workspace's readings for today, or every free workspace's, are used up."""
+    if isinstance(error, FreeReadingsUsed):
+        detail = "Free workspaces have reached today's limit. Try again tomorrow."
+    else:
+        detail = (
+            f"This free workspace takes up to {error.args[0]} readings a day "
+            "(uploads and readings again). Try again tomorrow."
+        )
+    return HTTPException(429, detail, headers={"Retry-After": str(seconds_to_midnight_utc())})
+
+
 def documents_router(
     service: DocumentService,
     *,
@@ -256,7 +269,8 @@ def documents_router(
                 data=data,
                 actor=principal.actor,
                 max_documents=member.max_documents if free else None,
-                uploads_per_day=member.uploads_per_day if free else None,
+                readings_per_day=member.uploads_per_day if free else None,
+                free_readings_per_day=member.readings_per_day_total if free else None,
             )
         except UnknownDocumentType as error:
             raise HTTPException(422, "Unknown document type.") from error
@@ -272,13 +286,8 @@ def documents_router(
                 f"This free workspace holds up to {member.max_documents} documents. "
                 "Delete one to upload another.",
             ) from error
-        except DailyUploadsUsed as error:
-            raise HTTPException(
-                429,
-                f"This free workspace takes up to {member.uploads_per_day} uploads a day. "
-                "Try again tomorrow.",
-                headers={"Retry-After": str(seconds_to_midnight_utc())},
-            ) from error
+        except (DailyReadingsUsed, FreeReadingsUsed) as error:
+            raise _readings_used(error) from error
         except QueueFull as error:
             logger.warning("upload refused: %s", error)
             raise HTTPException(
@@ -361,18 +370,24 @@ def documents_router(
 
     @router.post("/documents/{document_id}/reprocess", status_code=202, response_model=VersionOut)
     def reprocess_document(document_id: uuid.UUID, principal: Writer) -> VersionOut:
-        """Queue a new version. Earlier versions and their extractions are kept."""
+        """Queue a new version. Earlier versions and their extractions are kept. In a free
+        workspace each is a reading, counted with uploads toward its readings a day."""
+        free = principal.role == MEMBER
         try:
             version = service.reprocess(
                 tenant_id=principal.tenant_id,
                 document_id=document_id,
                 actor=principal.actor,
                 reviewer_id=principal.subject_id if principal.kind == "session" else None,
+                readings_per_day=member.uploads_per_day if free else None,
+                free_readings_per_day=member.readings_per_day_total if free else None,
             )
         except DocumentNotFound:
             raise _NOT_FOUND from None
         except ReprocessInProgress:
             raise HTTPException(409, "This document is still being processed.") from None
+        except (DailyReadingsUsed, FreeReadingsUsed) as error:
+            raise _readings_used(error) from error
         except ClaimedByOther as error:
             raise HTTPException(409, str(error)) from None
         return VersionOut.model_validate(version)

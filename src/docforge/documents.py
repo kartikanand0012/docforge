@@ -117,8 +117,16 @@ class WorkspaceFull(Exception):
     """The workspace holds as many documents as it may (a free workspace's cap)."""
 
 
-class DailyUploadsUsed(Exception):
-    """The workspace has taken as many new documents today as it may."""
+# The audit actions that are a paid model reading: an upload, and a reading again.
+READINGS = ("document.received", "document.reprocess_requested")
+
+
+class DailyReadingsUsed(Exception):
+    """The workspace has had as many readings today (uploads and readings again) as it may."""
+
+
+class FreeReadingsUsed(Exception):
+    """Free workspaces together have had as many readings today as the deployment allows."""
 
 
 class TransientProcessingError(Exception):
@@ -365,17 +373,19 @@ class DocumentService:
         data: bytes,
         actor: str,
         max_documents: int | None = None,
-        uploads_per_day: int | None = None,
+        readings_per_day: int | None = None,
+        free_readings_per_day: int | None = None,
     ) -> IngestResult:
         """Record an upload. The content hash is the identity: the same bytes for the same
         tenant return the existing document and start no new work.
 
-        `max_documents` and `uploads_per_day`, when given, cap a new document: the live
-        documents the tenant holds, and those received today (UTC), deleted ones included.
+        `max_documents`, `readings_per_day` and `free_readings_per_day`, when given, cap a
+        new document: the live documents the tenant holds, its readings today (UTC: uploads
+        and readings again, deleted documents' included), and every free workspace's.
 
         Raises `UnknownDocumentType`, `UnsupportedFormat`, `DocumentTypeConflict`,
-        `QueueFull`, `WorkspaceFull`, `DailyUploadsUsed` or `StorageUnavailable`. Nothing is
-        recorded when it raises.
+        `QueueFull`, `WorkspaceFull`, `DailyReadingsUsed`, `FreeReadingsUsed` or
+        `StorageUnavailable`. Nothing is recorded when it raises.
         """
         if doc_type not in self._pipelines:
             raise UnknownDocumentType(f"unknown document type {doc_type!r}")
@@ -392,8 +402,9 @@ class DocumentService:
             if existing is None:
                 if self._pending(session, tenant_id) >= self._max_pending:
                     raise QueueFull("too many documents are waiting to be processed")
-                if max_documents is not None or uploads_per_day is not None:
-                    self._within_caps(session, tenant_id, max_documents, uploads_per_day)
+                self._within_caps(
+                    session, tenant_id, max_documents, readings_per_day, free_readings_per_day
+                )
                 # Store before the row: an object without a row is harmless and is reused
                 # by the next upload of the same bytes; a row without its object is not.
                 if not self._store.exists(key):
@@ -451,12 +462,16 @@ class DocumentService:
         document_id: uuid.UUID,
         actor: str,
         reviewer_id: uuid.UUID | None = None,
+        readings_per_day: int | None = None,
+        free_readings_per_day: int | None = None,
     ) -> DocumentVersion:
         """Queue a new version of an existing document. Earlier versions are kept.
 
         Raises `ReprocessInProgress` while the newest version is queued or running, so a
         document has at most one version in flight, and `ClaimedByOther` while a reviewer
-        other than `reviewer_id` (the signed-in person asking, if any) has it open.
+        other than `reviewer_id` (the signed-in person asking, if any) has it open. A reading
+        again is a reading: `readings_per_day` and `free_readings_per_day` cap it as they
+        cap an upload (`DailyReadingsUsed`, `FreeReadingsUsed`).
         """
         with self._sessions.begin() as session:
             document = self._document(session, tenant_id, document_id, lock=True)
@@ -469,6 +484,7 @@ class DocumentService:
             )
             if newest is not None and newest.status in IN_FLIGHT:
                 raise ReprocessInProgress(f"version {newest.version_no} is {newest.status}")
+            self._within_caps(session, tenant_id, None, readings_per_day, free_readings_per_day)
             version_no = (newest.version_no if newest is not None else 0) + 1
             version = self._new_version(session, document, version_no=version_no)
             # Back to the start: not ready to chat with until the new version is indexed.
@@ -1262,10 +1278,17 @@ class DocumentService:
         session: Session,
         tenant_id: uuid.UUID,
         max_documents: int | None,
-        uploads_per_day: int | None,
+        readings_per_day: int | None,
+        free_readings_per_day: int | None,
     ) -> None:
-        """Refuse a new document over the caps. One upload at a time per tenant counts, so
-        two arriving together cannot both take the last place."""
+        """Refuse a new document, or a reading again, over the caps. One at a time per
+        tenant counts, so two arriving together cannot both take the last place.
+
+        Every free workspace's readings are counted without a lock across workspaces: two
+        arriving together in different workspaces may both take the last place, which a
+        safety valve can allow."""
+        if max_documents is None and readings_per_day is None and free_readings_per_day is None:
+            return
         session.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"uploads:{tenant_id}"))))
         if max_documents is not None:
             held = session.scalar(
@@ -1275,19 +1298,25 @@ class DocumentService:
             )
             if (held or 0) >= max_documents:
                 raise WorkspaceFull(max_documents)
-        if uploads_per_day is not None:
-            # From the audit log, which keeps deleted documents' arrivals too.
-            today = session.scalar(
+        today = func.date_trunc("day", func.now(), "UTC")
+        if readings_per_day is not None:
+            # From the audit log, which keeps deleted documents' arrivals and readings too.
+            readings = session.scalar(
                 select(func.count())
                 .select_from(AuditEntry)
                 .where(
                     AuditEntry.tenant_id == tenant_id,
-                    AuditEntry.action == "document.received",
-                    AuditEntry.occurred_at >= func.date_trunc("day", func.now(), "UTC"),
+                    AuditEntry.action.in_(READINGS),
+                    AuditEntry.occurred_at >= today,
                 )
             )
-            if (today or 0) >= uploads_per_day:
-                raise DailyUploadsUsed(uploads_per_day)
+            if (readings or 0) >= readings_per_day:
+                raise DailyReadingsUsed(readings_per_day)
+        if free_readings_per_day is not None:
+            # Across every free workspace, which only the owner's function can count.
+            everyone = session.scalar(select(func.docforge_member_readings_since(today)))
+            if (everyone or 0) >= free_readings_per_day:
+                raise FreeReadingsUsed(free_readings_per_day)
 
     @staticmethod
     def _pending(session: Session, tenant_id: uuid.UUID) -> int:

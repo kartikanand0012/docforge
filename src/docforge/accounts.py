@@ -22,8 +22,11 @@ class MemberCaps:
     """What one free workspace may hold and do; organisations are not held to these."""
 
     max_documents: int = 30  # live documents at once
-    uploads_per_day: int = 15  # new documents a day (UTC), deleted ones included
+    # Readings a day (UTC): uploads and readings again, deleted documents' included.
+    uploads_per_day: int = 15
     questions_per_day: int = 40  # questions a day (UTC), however asked
+    # Every free workspace's readings a day together: a safety valve on the model's bill.
+    readings_per_day_total: int = 1000
 
 
 class AccountTaken(Exception):

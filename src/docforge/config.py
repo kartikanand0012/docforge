@@ -132,8 +132,11 @@ class Settings(BaseSettings):
     signups_per_day: int = Field(default=200, ge=0)
     # What one free workspace may hold and do (organisations are not held to these).
     member_max_documents: int = Field(default=30, ge=1)
+    # Readings a day: uploads and readings again (each a paid model reading).
     member_uploads_per_day: int = Field(default=15, ge=1)
     member_questions_per_day: int = Field(default=40, ge=1)
+    # Every free workspace's readings a day together: a safety valve on the model's bill.
+    member_readings_per_day_total: int = Field(default=1000, ge=1)
     # The review screen's origin(s), comma-separated, e.g. http://localhost:3000.
     cors_origins: str = ""
     # Traces are exported over OTLP/HTTP here (e.g. http://collector:4318); unset, none are.

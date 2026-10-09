@@ -451,8 +451,9 @@ A free workspace's caps (organisations are not held to them), each **429** with 
 | Cap (setting, default) | `detail` |
 | --- | --- |
 | live documents (`MEMBER_MAX_DOCUMENTS`, 30) | `This free workspace holds up to 30 documents. Delete one to upload another.` |
-| new uploads a day, UTC, deleted ones included (`MEMBER_UPLOADS_PER_DAY`, 15) | `This free workspace takes up to 15 uploads a day. Try again tomorrow.` (+ `Retry-After`, seconds to midnight UTC) |
-| questions a day, UTC (`MEMBER_QUESTIONS_PER_DAY`, 40) | `This free workspace has 40 questions a day. Try again tomorrow.` (also as the `error` event of `/v1/chat/stream`) |
+| readings a day, UTC: new uploads and `POST /v1/documents/{id}/reprocess`, deleted documents' included (`MEMBER_UPLOADS_PER_DAY`, 15) | `This free workspace takes up to 15 readings a day (uploads and readings again). Try again tomorrow.` (+ `Retry-After`, seconds to midnight UTC) |
+| every free workspace's readings a day together, a safety valve (`MEMBER_READINGS_PER_DAY_TOTAL`, 1000) | `Free workspaces have reached today's limit. Try again tomorrow.` (+ `Retry-After`) |
+| questions a day, UTC, deleted conversations' included (`MEMBER_QUESTIONS_PER_DAY`, 40) | `This free workspace has 40 questions a day. Try again tomorrow.` (also as the `error` event of `/v1/chat/stream`) |
 
 Uploading a file the workspace already holds is not a new upload (200, `created: false`).
 
