@@ -269,6 +269,19 @@ class Authenticator:
             if row is not None:
                 row.revoked_at = row.revoked_at or datetime.now(UTC)
 
+    def describe(self, principal: Principal) -> tuple[str | None, str]:
+        """The caller's email (a person's; None for a key) and their organisation's name."""
+        with tenant_scope(principal.tenant_id), self._sessions() as session:
+            organisation = session.scalar(
+                select(Tenant.name).where(Tenant.id == principal.tenant_id)
+            )
+            email = (
+                session.scalar(select(Reviewer.email).where(Reviewer.id == principal.subject_id))
+                if principal.kind == "session"
+                else None
+            )
+        return email, organisation or ""
+
     # Checking
 
     def authenticate(self, token: str) -> Principal | None:
