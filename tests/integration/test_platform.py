@@ -196,6 +196,12 @@ def test_the_platform_functions_are_for_the_application_alone(owner_engine: Engi
         assert config == ["search_path=pg_catalog, public, pg_temp"], name
 
 
+def test_the_platform_functions_give_nothing_unless_the_service_checked(engine: Engine) -> None:
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT count(*) FROM docforge_platform_workspaces()"))
+        assert rows.scalar_one() == 0
+
+
 # Looking into a workspace
 
 

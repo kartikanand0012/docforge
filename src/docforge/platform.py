@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.orm import Session
 
 from docforge.audit_actions import label
 from docforge.db.session import SessionFactory
@@ -27,6 +28,12 @@ TARGETS = {
     "audit_log": "Audit log",
 }
 MAX_ACTIVITY = 200
+
+
+def _checked(session: Session) -> None:
+    """Tell the owner's functions, for this transaction only, that the caller was checked:
+    without it they return nothing."""
+    session.execute(text("SELECT set_config('docforge.platform_admin', 'checked', true)"))
 
 
 @dataclass(frozen=True)
@@ -77,7 +84,8 @@ class PlatformService:
 
     def overview(self) -> Overview:
         """Every workspace's figures, most recently active first, and their totals."""
-        with self._sessions() as session:
+        with self._sessions.begin() as session:
+            _checked(session)
             rows = session.execute(select(func.docforge_platform_workspaces().table_valued(
                 "tenant_id", "organisation", "kind", "created_at", "owner_name", "owner_email",
                 "last_active_at", "documents", "documents_last_7_days", "pages", "signed",
@@ -140,7 +148,8 @@ class PlatformService:
         """Audit entries across every workspace, newest first, as labels; and the `before`
         for the next page (None at the end)."""
         limit = max(1, min(limit, MAX_ACTIVITY))
-        with self._sessions() as session:
+        with self._sessions.begin() as session:
+            _checked(session)
             rows = session.execute(
                 select(
                     func.docforge_platform_activity(before, limit + 1, tenant_id).table_valued(

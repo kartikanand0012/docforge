@@ -20,6 +20,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _APP_ROLE = "docforge_app"
+_ASKED = "current_setting('docforge.platform_admin', true) = 'checked'"
 _DEFINER = "LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp"
 
 _WORKSPACES = """
@@ -113,7 +114,10 @@ _FUNCTIONS = {
 
 def upgrade() -> None:
     for signature, (returns, body) in _FUNCTIONS.items():
-        op.execute(f"CREATE FUNCTION {signature} {returns} {_DEFINER} AS $$ {body} $$")
+        # Empty unless the platform service said, in this transaction, that it checked the
+        # caller: a stray call (a bug, an injected query) gets nothing.
+        guarded = f"SELECT * FROM ({body}) found WHERE {_ASKED}"  # noqa: S608 - fixed text
+        op.execute(f"CREATE FUNCTION {signature} {returns} {_DEFINER} AS $$ {guarded} $$")
         op.execute(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC")
         op.execute(f"GRANT EXECUTE ON FUNCTION {signature} TO {_APP_ROLE}")
 

@@ -44,7 +44,8 @@ def check_name(name: str) -> str:
 
 def check_email(email: str) -> str:
     email = normalise_email(email)
-    if len(email) > MAX_EMAIL or not _EMAIL.fullmatch(email):
+    # ASCII only: Python and Postgres would otherwise lower-case some letters differently.
+    if len(email) > MAX_EMAIL or not email.isascii() or not _EMAIL.fullmatch(email):
         raise ValueError("that is not an email address")
     return email
 

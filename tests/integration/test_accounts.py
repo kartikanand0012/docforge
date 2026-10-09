@@ -110,6 +110,7 @@ def test_an_email_has_one_account_whatever_its_case(stack: FullStack) -> None:
         {"password": "x" * 129},
         {"email": "not-an-email"},
         {"email": "a@b"},
+        {"email": "\u0130sha@example.com"},
         {"name": ""},
         {"name": "   "},
         {"name": "n" * 121},
