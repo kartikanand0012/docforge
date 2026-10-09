@@ -16,7 +16,7 @@ Row locks are always taken in the order document, version, then the audit lock.
 import hashlib
 import logging
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol
@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
 from pydantic import BaseModel
-from sqlalchemy import case, exists, func, select, tuple_
+from sqlalchemy import case, exists, func, select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -38,8 +38,10 @@ from docforge.db.models import (
     DocumentVersion,
     Extraction,
     MatchRecord,
+    Message,
     ModelRun,
     ParseOutput,
+    Review,
     live,
 )
 from docforge.db.session import SessionFactory
@@ -67,7 +69,7 @@ from docforge.storage import (
     original_key,
     rendition_key,
 )
-from docforge.telemetry import current_prices, document_cost, traced
+from docforge.telemetry import Prices, current_prices, document_cost, traced
 from docforge.trust.match import company_key, match_invoice_to_order
 
 if TYPE_CHECKING:
@@ -164,6 +166,30 @@ class IngestResult:
 class DocumentDetail:
     document: Document
     versions: list[DocumentVersion]
+
+
+@dataclass(frozen=True)
+class Usage:
+    """What reading a document took, over every reading of it. Thinking tokens are billed
+    as output, so they are counted in `output_tokens`."""
+
+    model_calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    model_cost_usd: float | None = None
+
+
+@dataclass(frozen=True)
+class Stats:
+    """A workspace's figures, its live documents only."""
+
+    documents: int
+    ready: int  # read and finished (ready to ask, or processed)
+    signed: int  # with a signed review of any version
+    failed: int
+    documents_last_7_days: int
+    median_read_seconds: float | None  # from upload (or reprocess) to a finished reading
+    model_cost_usd: float | None  # readings and questions; None when a model has no price
 
 
 @dataclass(frozen=True)
@@ -1113,6 +1139,122 @@ class DocumentService:
             select(Document).where(
                 Document.tenant_id == tenant_id, Document.sha256 == sha256, live()
             )
+        )
+
+    @scoped
+    def usage(
+        self, tenant_id: uuid.UUID, document_ids: Sequence[uuid.UUID], prices: Prices
+    ) -> dict[uuid.UUID, Usage]:
+        """Each document's model calls, tokens and cost; a document never read has none."""
+        found: dict[uuid.UUID, list[tuple[str, str, int, int, int, int]]] = {}
+        if document_ids:
+            with self._sessions() as session:
+                rows = session.execute(
+                    select(
+                        DocumentVersion.document_id, ModelRun.provider, ModelRun.model,
+                        func.coalesce(func.sum(ModelRun.input_tokens), 0),
+                        func.coalesce(func.sum(ModelRun.output_tokens), 0),
+                        func.coalesce(func.sum(ModelRun.thinking_tokens), 0),
+                        func.count(),
+                    )
+                    .join(DocumentVersion, DocumentVersion.id == ModelRun.document_version_id)
+                    .where(
+                        ModelRun.tenant_id == tenant_id,
+                        DocumentVersion.document_id.in_(set(document_ids)),
+                    )
+                    .group_by(DocumentVersion.document_id, ModelRun.provider, ModelRun.model)
+                ).all()  # fmt: skip
+            for document_id, provider, model, i, o, t, n in rows:
+                found.setdefault(document_id, []).append(
+                    (provider, model, int(i or 0), int(o or 0), int(t or 0), int(n))
+                )
+        out = {}
+        for document_id in document_ids:
+            calls = found.get(document_id, [])
+            out[document_id] = Usage(
+                model_calls=sum(c[5] for c in calls),
+                input_tokens=sum(c[2] for c in calls),
+                output_tokens=sum(c[3] + c[4] for c in calls),
+                model_cost_usd=document_cost([c[:5] for c in calls], prices),
+            )
+        return out
+
+    @scoped
+    def stats(self, tenant_id: uuid.UUID, prices: Prices) -> Stats:
+        """The workspace's figures, deleted documents left out."""
+        week = func.now() - text("interval '7 days'")
+        finished = Document.stage.in_(("ready", "processed"))
+        with self._sessions() as session:
+            counts = session.execute(
+                select(
+                    func.count(),
+                    func.count().filter(finished),
+                    func.count().filter(Document.stage == "failed"),
+                    func.count().filter(Document.created_at >= week),
+                ).where(Document.tenant_id == tenant_id, live())
+            ).one()
+            signed = session.scalar(
+                select(func.count(func.distinct(DocumentVersion.document_id)))
+                .select_from(Review)
+                .join(DocumentVersion, DocumentVersion.id == Review.document_version_id)
+                .join(Document, Document.id == DocumentVersion.document_id)
+                .where(Review.tenant_id == tenant_id, live())
+            )
+            median = session.scalar(
+                select(
+                    func.percentile_cont(0.5).within_group(
+                        # Never below zero: the two times come from two clocks.
+                        func.greatest(
+                            0,
+                            func.extract(
+                                "epoch", DocumentVersion.finished_at - DocumentVersion.created_at
+                            ),
+                        )
+                    )
+                )
+                .join(Document, Document.id == DocumentVersion.document_id)
+                .where(
+                    DocumentVersion.tenant_id == tenant_id,
+                    DocumentVersion.status == "succeeded",
+                    DocumentVersion.finished_at.is_not(None),
+                    live(),
+                )
+            )
+            readings = session.execute(
+                select(
+                    ModelRun.provider, ModelRun.model,
+                    func.coalesce(func.sum(ModelRun.input_tokens), 0),
+                    func.coalesce(func.sum(ModelRun.output_tokens), 0),
+                    func.coalesce(func.sum(ModelRun.thinking_tokens), 0),
+                )
+                .join(DocumentVersion, DocumentVersion.id == ModelRun.document_version_id)
+                .join(Document, Document.id == DocumentVersion.document_id)
+                .where(ModelRun.tenant_id == tenant_id, live())
+                .group_by(ModelRun.provider, ModelRun.model)
+            ).all()  # fmt: skip
+            questions = session.execute(
+                select(
+                    Message.provider, Message.model,
+                    func.coalesce(func.sum(Message.input_tokens), 0),
+                    func.coalesce(func.sum(Message.output_tokens), 0),
+                )
+                .where(
+                    Message.tenant_id == tenant_id,
+                    Message.provider.is_not(None),
+                    Message.model.is_not(None),
+                )
+                .group_by(Message.provider, Message.model)
+            ).all()  # fmt: skip
+        usages = [(p, m, int(i or 0), int(o or 0), int(t or 0)) for p, m, i, o, t in readings]
+        usages += [(str(p), str(m), int(i or 0), int(o or 0), 0) for p, m, i, o in questions]
+        return Stats(
+            documents=int(counts[0]),
+            ready=int(counts[1]),
+            signed=int(signed or 0),
+            failed=int(counts[2]),
+            documents_last_7_days=int(counts[3]),
+            median_read_seconds=round(float(median), 3) if median is not None else None,
+            model_cost_usd=document_cost(usages, prices),
         )
 
     @staticmethod

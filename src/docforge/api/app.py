@@ -36,6 +36,7 @@ from docforge.api.exports import exports_router
 from docforge.api.platform import platform_router
 from docforge.api.review import review_router
 from docforge.api.search import search_router
+from docforge.api.stats import stats_router
 from docforge.api.uploads import (
     DEFAULT_MAX_UPLOAD_BYTES,
     MULTIPART_OVERHEAD,
@@ -134,6 +135,7 @@ def create_app(
     signups_per_address_per_hour: int = 5,
     member_caps: MemberCaps | None = None,
     platform: PlatformService | None = None,
+    model_prices: dict[str, tuple[float, float]] | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     # FastAPI's own telemetry is off: its request spans record the query string (a search
@@ -229,8 +231,10 @@ def create_app(
                 max_pages=max_pages,
                 limits=caps,
                 member_caps=member_caps,
+                prices=model_prices,
             )
         )
+        app.include_router(stats_router(service, review, model_prices))
     limiter = authenticator.limiter if authenticator else FailureLimiter(20, 300)
     if authenticator is not None:
         app.include_router(sessions_router(authenticator))

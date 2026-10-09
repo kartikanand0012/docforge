@@ -37,6 +37,7 @@ from docforge.parsing.base import ParseError, PasswordProtected
 from docforge.parsing.pdf import pdf_page_count
 from docforge.review.claims import ClaimedByOther
 from docforge.storage import StorageUnavailable
+from docforge.telemetry import Prices
 
 logger = logging.getLogger(__name__)
 PROTECTED_PDF_MESSAGE = (
@@ -72,6 +73,8 @@ class DocumentOut(_Out):
     stage: str  # stored, parsing, extracting, checking, indexing, processed, ready, ...
     ready_for_chat: bool
     created_at: datetime
+    # What reading it cost, in the list (null when a model's price is unknown).
+    model_cost_usd: float | None = None
 
 
 class VersionOut(_Out):
@@ -121,9 +124,19 @@ class StepOut(BaseModel):
     detail: str | None
 
 
+class CostOut(BaseModel):
+    """Every reading of the document; thinking tokens are counted as output."""
+
+    model_cost_usd: float | None  # null when a model's price is unknown
+    input_tokens: int
+    output_tokens: int
+    model_calls: int
+
+
 class DocumentDetailOut(BaseModel):
     document: DocumentOut
     versions: list[VersionOut]
+    cost: CostOut
 
 
 class ModelRunOut(_Out):
@@ -198,9 +211,11 @@ def documents_router(
     max_pages: int,
     limits: Limits,
     member_caps: MemberCaps | None = None,
+    prices: Prices | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
     member = member_caps or MemberCaps()
+    priced = prices or {}
 
     @router.post("/documents", status_code=202, response_model=UploadOut)
     async def upload_document(
@@ -293,9 +308,12 @@ def documents_router(
             detail = service.detail(principal.tenant_id, document_id)
         except DocumentNotFound:
             raise _NOT_FOUND from None
+        used = service.usage(principal.tenant_id, [document_id], priced)[document_id]
+        document = DocumentOut.model_validate(detail.document)
         return DocumentDetailOut(
-            document=DocumentOut.model_validate(detail.document),
+            document=document.model_copy(update={"model_cost_usd": used.model_cost_usd}),
             versions=[VersionOut.model_validate(version) for version in detail.versions],
+            cost=CostOut(**vars(used)),
         )
 
     @router.get("/documents/{document_id}/extraction", response_model=ExtractionOut)
@@ -390,7 +408,14 @@ def documents_router(
         rows = service.list_documents(
             principal.tenant_id, limit=limit + 1, before=cursor, doc_type=doc_type, stage=stage
         )
-        items = [DocumentOut.model_validate(row) for row in rows[:limit]]
+        page = rows[:limit]
+        used = service.usage(principal.tenant_id, [row.id for row in page], priced)
+        items = [
+            DocumentOut.model_validate(row).model_copy(
+                update={"model_cost_usd": used[row.id].model_cost_usd}
+            )
+            for row in page
+        ]
         return DocumentPage(
             items=items, next_before=_cursor(items[-1]) if len(rows) > limit else None
         )

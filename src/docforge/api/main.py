@@ -62,6 +62,7 @@ def create_default_app() -> FastAPI:
         agents=agents,
         audit_log=AuditLogService(sessions),
         platform=PlatformService(sessions, settings.prices()),
+        model_prices=settings.prices(),
         signup_enabled=settings.signup_enabled,
         signups_per_day=settings.signups_per_day,
         signups_per_address_per_hour=settings.signups_per_address_per_hour,
