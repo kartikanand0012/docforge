@@ -198,6 +198,72 @@ def test_five_wrong_passwords_lock_the_account(stack: FullStack) -> None:
     assert locked.status_code == 401 and locked.json() == {"detail": WRONG}
 
 
+def from_address(stack: FullStack, address: str) -> TestClient:
+    return TestClient(stack.app, client=(address, 50000))
+
+
+def test_wrong_passwords_from_elsewhere_do_not_lock_the_person_out(stack: FullStack) -> None:
+    """Five wrong passwords lock the account, but only for the addresses they came from:
+    someone else cannot keep its person out by getting the password wrong on purpose."""
+    stack.sign_up("Asha", "asha@example.com")
+    attacker, asha = from_address(stack, "203.0.113.9"), from_address(stack, "198.51.100.1")
+    for _ in range(5):
+        wrong = attacker.post(
+            "/v1/sessions", json={"email": "asha@example.com", "password": "wrong password!"}
+        )
+        assert wrong.status_code == 401
+
+    mine = asha.post("/v1/sessions", json={"email": "asha@example.com", "password": PASSWORD})
+    theirs = attacker.post("/v1/sessions", json={"email": "asha@example.com", "password": PASSWORD})
+
+    assert mine.status_code == 201, mine.text
+    assert theirs.status_code == 401 and theirs.json() == {"detail": WRONG}
+
+
+def test_while_locked_an_address_gets_one_wrong_password(stack: FullStack) -> None:
+    """While the account is locked, a new address may try, but one wrong password and it
+    is locked out too: many addresses together get one guess each, not five."""
+    stack.sign_up("Asha", "asha@example.com")
+    first = from_address(stack, "203.0.113.9")
+    for _ in range(5):
+        first.post("/v1/sessions", json={"email": "asha@example.com", "password": "nope nope!"})
+    second = from_address(stack, "203.0.113.10")
+
+    wrong = second.post(
+        "/v1/sessions", json={"email": "asha@example.com", "password": "still wrong!"}
+    )
+    right = second.post("/v1/sessions", json={"email": "asha@example.com", "password": PASSWORD})
+
+    assert wrong.status_code == right.status_code == 401
+
+
+def test_a_locked_sign_in_still_checks_a_password_so_it_takes_as_long(
+    stack: FullStack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import docforge.auth
+
+    stack.sign_up("Asha", "asha@example.com")
+    for _ in range(5):
+        stack.client.post(
+            "/v1/sessions", json={"email": "asha@example.com", "password": "wrong password!"}
+        )
+    checked: list[str] = []
+    real = docforge.auth.verify_pin
+
+    def counted(secret: str, stored: str) -> bool:
+        checked.append(stored)
+        return real(secret, stored)
+
+    monkeypatch.setattr(docforge.auth, "verify_pin", counted)
+
+    locked = stack.client.post(
+        "/v1/sessions", json={"email": "asha@example.com", "password": PASSWORD}
+    )
+
+    assert locked.status_code == 401
+    assert len(checked) == 1
+
+
 def test_failed_sign_ins_without_an_organisation_are_limited_per_address(
     sessions: SessionFactory, world: World
 ) -> None:
