@@ -229,6 +229,7 @@ def test_approval_signs_the_record_and_produces_a_payment_approval_draft(
     assert len(signed.record_sha256) == 64
     assert signed.draft is not None and signed.draft["type"] == "payment_approval_draft"
     assert signed.draft["record_sha256"] == signed.record_sha256
+    assert (signed.draft["status"], signed.draft["approval_status"]) == ("draft", "approved")
     detail = review.detail(DEFAULT_TENANT_ID, invoice_id)
     assert detail.review is not None and detail.signature_valid
     assert actions(sessions)[-1] == "review.signed"

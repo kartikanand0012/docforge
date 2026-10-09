@@ -146,6 +146,9 @@ def test_an_approved_invoice_becomes_a_payment_approval_draft(
     invoice = LABEL["invoice"]
     assert draft["type"] == "payment_approval_draft"
     assert draft["status"] == "draft"  # nothing is paid: a person or a system acts on it
+    # The decision itself, so a receiver need not infer it from the event: a draft is only
+    # made for an approval. "status" stays the draft's own lifecycle, as receivers expect.
+    assert draft["approval_status"] == "approved"
     assert draft["payee"] == {
         "name": invoice["seller"]["name"],
         "gstin": invoice["seller"]["gstin"],
