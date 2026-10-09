@@ -310,3 +310,24 @@ def test_a_shared_account_with_a_public_pin_is_never_locked(stack: Stack) -> Non
         )
 
     assert stack.login("demo@example.com", "111111")
+
+
+# --- for the web app: who is signed in ------------------------------------------------------
+
+
+def test_a_caller_can_ask_who_they_are(stack: Stack) -> None:
+    """The web app shows the person's name and shows administration only to administrators;
+    sign-in returns a token only, so it asks."""
+    me = stack.client.get("/v1/sessions/current", headers=stack.login())
+
+    assert me.status_code == 200
+    assert me.headers["cache-control"] == "no-store"
+    assert me.json() == {
+        "kind": "session", "name": "Asha Rao", "email": "asha@example.com",
+        "role": "reviewer", "organisation": "default",
+    }  # fmt: skip
+    key = stack.client.get("/v1/sessions/current", headers=stack.key("integrator")).json()
+    assert (key["kind"], key["name"], key["email"], key["role"]) == (
+        "api_key", "integrator key", None, "integrator",
+    )  # fmt: skip
+    assert stack.client.get("/v1/sessions/current").status_code == 401
