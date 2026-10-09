@@ -349,6 +349,26 @@ def test_a_free_workspace_asks_a_few_questions_a_day(
     assert "This free workspace has 1 questions a day" in streamed.text
 
 
+def test_deleting_a_conversation_does_not_give_back_a_free_workspaces_questions(
+    sessions: SessionFactory, world: World
+) -> None:
+    stack = member_stack(sessions, world, questions_per_day=2)
+    me = stack.sign_up("Asha", "asha@example.com")
+    for question in ("Hi?", "Again?"):
+        asked = stack.client.post("/v1/chat", headers=me, json={"question": question})
+        assert asked.status_code == 200
+        conversation = asked.json()["conversation_id"]
+        deleted = stack.client.delete(f"/v1/conversations/{conversation}", headers=me)
+        assert deleted.status_code == 204
+
+    third = stack.client.post("/v1/chat", headers=me, json={"question": "And again?"})
+
+    assert third.status_code == 429
+    assert third.json()["detail"] == (
+        "This free workspace has 2 questions a day. Try again tomorrow."
+    )
+
+
 def test_an_organisation_is_not_held_to_a_free_workspaces_caps(
     sessions: SessionFactory, world: World
 ) -> None:

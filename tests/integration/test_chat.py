@@ -323,6 +323,31 @@ def test_a_person_can_delete_their_conversation(setup: Setup) -> None:
         setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", first.conversation_id)
 
 
+def test_deleting_conversations_does_not_give_back_the_days_questions(setup: Setup) -> None:
+    """The count is kept where a person cannot delete it: the audit log."""
+    for _ in range(5):
+        answer = setup.ask("What is the supplier's bank account number?")
+        setup.chat.delete(DEFAULT_TENANT_ID, "reviewer:a", answer.conversation_id)
+
+    with pytest.raises(QuestionLimitReached):
+        setup.ask("One more?")
+
+
+def test_deleting_conversations_does_not_give_a_person_their_questions_back(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    chat = ChatService(
+        sessions, setup.search, setup.model, daily_limit=10, daily_limit_per_person=2
+    )
+    for _ in range(2):
+        answer = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Bank account?")
+        chat.delete(DEFAULT_TENANT_ID, "reviewer:a", answer.conversation_id)
+
+    with pytest.raises(QuestionLimitReached):
+        chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Bank account?")
+    assert chat.ask(DEFAULT_TENANT_ID, "reviewer:b", "Bank account?").status == "not_found"
+
+
 # --- follow-ups keep their subject (hardening) --------------------------------------------
 
 
