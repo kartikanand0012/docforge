@@ -111,6 +111,8 @@ def test_an_email_has_one_account_whatever_its_case(stack: FullStack) -> None:
         {"email": "not-an-email"},
         {"email": "a@b"},
         {"email": "\u0130sha@example.com"},
+        {"email": "asha\x00@example.com"},
+        {"email": "asha@exam\x07ple.com"},
         {"name": ""},
         {"name": "   "},
         {"name": "n" * 121},
@@ -182,6 +184,23 @@ def test_a_sign_in_needs_exactly_one_secret(stack: FullStack) -> None:
         "/v1/sessions", json={"email": "a@example.com", "pin": "123456", "password": PASSWORD}
     )
     assert neither.status_code == both.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"email": "asha\x00@example.com", "password": PASSWORD},
+        {"email": "asha@example.com\x1f", "password": PASSWORD},
+        {"tenant": "def\x00ault", "email": "asha@example.com", "pin": "482913"},
+        {"tenant": "default\x7f", "email": "asha@example.com", "pin": "482913"},
+    ],
+)
+def test_a_sign_in_with_a_control_character_is_refused(
+    stack: FullStack, body: dict[str, str]
+) -> None:
+    response = stack.client.post("/v1/sessions", json=body)
+
+    assert response.status_code == 422
 
 
 def test_five_wrong_passwords_lock_the_account(stack: FullStack) -> None:
