@@ -153,6 +153,68 @@ def test_an_order_from_another_supplier_with_the_same_number_is_not_the_counterp
     assert detail.match_status == "no_counterpart"
 
 
+def _without_supplier_gstin(world: World) -> None:
+    """Many orders print the buyer's GSTIN but not the supplier's."""
+    world.order_raw["supplier_gstin"] = {"text": None, "block_ids": []}
+
+
+@pytest.mark.parametrize("first", ["invoice", "purchase_order"])
+def test_an_order_without_the_supplier_gstin_is_matched_by_the_supplier_name(
+    world: World, first: str
+) -> None:
+    _without_supplier_gstin(world)
+    # The same name written another way: case, full stops and the company suffix aside.
+    world.order_parsed = reprint(
+        world.order_parsed, world.order_raw, "supplier_name", "NAVJIVAN MEDICAL AGENCIES PVT. LTD."
+    )
+    world.reprint_invoice("seller.name", "Navjivan  Medical Agencies Private Limited")
+    second = "purchase_order" if first == "invoice" else "invoice"
+    ids = {first: world.process(first)}
+    ids[second] = world.process(second)
+
+    invoice, order = world.assessment(ids["invoice"]), world.assessment(ids["purchase_order"])
+
+    assert invoice.match is not None
+    assert order.match is not None
+    assert invoice.match.id == order.match.id
+    assert invoice.counterpart_document_id == ids["purchase_order"]
+
+
+def test_an_order_without_the_supplier_gstin_from_another_named_supplier_is_not_matched(
+    world: World,
+) -> None:
+    _without_supplier_gstin(world)
+    world.order_parsed = reprint(
+        world.order_parsed, world.order_raw, "supplier_name", "Navjivan Pharma Distributors"
+    )
+    world.process("purchase_order")
+
+    detail = world.assessment(world.process("invoice"))
+
+    assert (detail.match, detail.match_status) == (None, "no_counterpart")
+
+
+def test_an_order_without_the_supplier_gstin_or_name_is_not_matched(world: World) -> None:
+    _without_supplier_gstin(world)
+    world.order_raw["supplier_name"] = {"text": None, "block_ids": []}
+    world.process("purchase_order")
+
+    assert world.assessment(world.process("invoice")).match is None
+
+
+def test_two_different_supplier_gstins_are_not_matched_even_under_one_name(
+    world: World,
+) -> None:
+    # Both print a GSTIN, so the GSTIN decides: one name can cover two registrations.
+    world.order_parsed = reprint(
+        world.order_parsed, world.order_raw, "supplier_gstin", "27AAPFU0939F1ZV"
+    )
+    assert world.order_raw["supplier_name"]["text"] == world.invoice_raw["seller"]["name"]["text"]
+    world.process("purchase_order")
+
+    assert world.assessment(world.process("invoice")).match is None
+
+
 def test_reprocessing_an_invoice_matches_its_new_version_too(world: World) -> None:
     world.process("purchase_order")
     document_id = world.process("invoice")

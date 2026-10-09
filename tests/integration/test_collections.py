@@ -58,7 +58,7 @@ def setup(
 
 def test_a_knowledge_base_is_created_named_and_listed_with_its_size(setup: Setup) -> None:
     kb = setup.create("Invoices", description="Supplier invoices for 2026")
-    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.invoice_id])
+    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.invoice_id], actor="admin:a")
 
     (listed,) = setup.collections.list(DEFAULT_TENANT_ID)
     assert (listed.name, listed.description, listed.documents) == (
@@ -74,10 +74,14 @@ def test_names_are_unique_in_an_organisation_whatever_their_case(setup: Setup) -
 
 def test_documents_are_added_once_and_removed(setup: Setup) -> None:
     kb = setup.create()
-    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.invoice_id, setup.order_id])
-    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.invoice_id])  # again: nothing new
+    setup.collections.add(
+        DEFAULT_TENANT_ID, kb.id, [setup.invoice_id, setup.order_id], actor="admin:a"
+    )
+    setup.collections.add(
+        DEFAULT_TENANT_ID, kb.id, [setup.invoice_id], actor="admin:a"
+    )  # again: nothing new
 
-    setup.collections.remove(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
+    setup.collections.remove(DEFAULT_TENANT_ID, kb.id, [setup.order_id], actor="admin:a")
 
     members = setup.collections.documents(DEFAULT_TENANT_ID, kb.id)
     assert [d.id for d in members] == [setup.invoice_id]
@@ -90,7 +94,9 @@ def test_a_document_not_in_the_organisation_is_not_added(
     from docforge.collections import DocumentsNotFound
 
     with pytest.raises(DocumentsNotFound):
-        setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.invoice_id, uuid.uuid4()])
+        setup.collections.add(
+            DEFAULT_TENANT_ID, kb.id, [setup.invoice_id, uuid.uuid4()], actor="admin:a"
+        )
     assert setup.collections.documents(DEFAULT_TENANT_ID, kb.id) == []  # all or nothing
 
 
@@ -103,14 +109,14 @@ def test_another_organisation_cannot_see_or_change_it(
     with pytest.raises(CollectionNotFound):
         setup.collections.documents(other_tenant, kb.id)
     with pytest.raises(CollectionNotFound):
-        setup.collections.rename(other_tenant, kb.id, "Mine now")
+        setup.collections.rename(other_tenant, kb.id, "Mine now", actor="admin:a")
     with pytest.raises(CollectionNotFound):
-        setup.collections.delete(other_tenant, kb.id)
+        setup.collections.delete(other_tenant, kb.id, actor="admin:a")
 
 
 def test_search_within_a_knowledge_base_finds_only_its_documents(setup: Setup) -> None:
     kb = setup.create()
-    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
+    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id], actor="admin:a")
 
     hits = setup.search.search(
         DEFAULT_TENANT_ID, "invoice order", mode="keyword", collection_id=kb.id
@@ -121,7 +127,7 @@ def test_search_within_a_knowledge_base_finds_only_its_documents(setup: Setup) -
 
 def test_a_question_within_a_knowledge_base_reads_only_its_documents(setup: Setup) -> None:
     kb = setup.create()
-    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
+    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id], actor="admin:a")
 
     first = setup.chat.ask(
         DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id
@@ -151,12 +157,12 @@ def test_a_follow_up_after_its_knowledge_base_is_deleted_is_refused_not_widened(
     setup: Setup,
 ) -> None:
     kb = setup.create()
-    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
+    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id], actor="admin:a")
     first = setup.chat.ask(
         DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id
     )
 
-    setup.collections.delete(DEFAULT_TENANT_ID, kb.id)
+    setup.collections.delete(DEFAULT_TENANT_ID, kb.id, actor="admin:a")
 
     with pytest.raises(ScopeGone):
         setup.chat.ask(
@@ -181,11 +187,11 @@ def test_a_knowledge_base_of_another_organisation_cannot_be_asked(
 
 def test_resending_a_deleted_knowledge_base_is_gone_not_a_conflict(setup: Setup) -> None:
     kb = setup.create()
-    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id])
+    setup.collections.add(DEFAULT_TENANT_ID, kb.id, [setup.order_id], actor="admin:a")
     first = setup.chat.ask(
         DEFAULT_TENANT_ID, "reviewer:a", "What was ordered?", collection_id=kb.id
     )
-    setup.collections.delete(DEFAULT_TENANT_ID, kb.id)
+    setup.collections.delete(DEFAULT_TENANT_ID, kb.id, actor="admin:a")
 
     with pytest.raises(ScopeGone):
         setup.chat.ask(
@@ -208,11 +214,79 @@ def test_a_progress_listener_that_fails_does_not_fail_the_question(setup: Setup)
 def test_more_documents_than_one_call_takes_are_refused_not_cut(setup: Setup) -> None:
     kb = setup.create()
     with pytest.raises(ValueError, match="500"):
-        setup.collections.add(DEFAULT_TENANT_ID, kb.id, [uuid.uuid4() for _ in range(501)])
+        setup.collections.add(
+            DEFAULT_TENANT_ID, kb.id, [uuid.uuid4() for _ in range(501)], actor="admin:a"
+        )
 
 
 def test_renaming_to_a_name_taken_in_another_case_is_refused(setup: Setup) -> None:
     setup.create("Invoices")
     other = setup.create("Orders")
     with pytest.raises(CollectionNameTaken):
-        setup.collections.rename(DEFAULT_TENANT_ID, other.id, "INVOICES")
+        setup.collections.rename(DEFAULT_TENANT_ID, other.id, "INVOICES", actor="admin:a")
+
+
+def _entries(setup: Setup) -> list[tuple[str, str, str, str, dict[str, Any]]]:
+    from sqlalchemy import select
+
+    from docforge.db.models import AuditEntry
+
+    with setup.world.sessions() as session:
+        rows = session.scalars(
+            select(AuditEntry)
+            .where(AuditEntry.action.startswith("collection."))
+            .order_by(AuditEntry.id)
+        )
+        return [(e.action, e.actor, e.target_type, e.target_id, e.details) for e in rows]
+
+
+def test_every_change_to_a_knowledge_base_is_in_the_audit_log(setup: Setup) -> None:
+    from docforge import audit
+
+    kb = setup.create("Invoices")
+    setup.collections.rename(DEFAULT_TENANT_ID, kb.id, "Supplier invoices", actor="admin:b")
+    setup.collections.add(
+        DEFAULT_TENANT_ID, kb.id, [setup.invoice_id, setup.order_id], actor="admin:b"
+    )
+    setup.collections.remove(DEFAULT_TENANT_ID, kb.id, [setup.order_id], actor="admin:b")
+    setup.collections.delete(DEFAULT_TENANT_ID, kb.id, actor="admin:c")
+
+    target = str(kb.id)
+    assert _entries(setup) == [
+        ("collection.created", "admin:a", "collection", target, {"name": "Invoices"}),
+        ("collection.renamed", "admin:b", "collection", target, {"name": "Supplier invoices"}),
+        ("collection.documents_added", "admin:b", "collection", target, {"count": 2}),
+        ("collection.documents_removed", "admin:b", "collection", target, {"count": 1}),
+        ("collection.deleted", "admin:c", "collection", target, {"name": "Supplier invoices"}),
+    ]
+    with setup.world.sessions() as session:
+        assert audit.verify_chain(session, DEFAULT_TENANT_ID).consistent
+
+
+def test_a_change_that_is_refused_leaves_no_audit_entry(
+    setup: Setup, other_tenant: uuid.UUID
+) -> None:
+    from docforge.collections import DocumentsNotFound
+
+    kb = setup.create("Invoices")
+    other = setup.create("Orders")
+    before = _entries(setup)
+
+    with pytest.raises(CollectionNameTaken):
+        setup.create("INVOICES")
+    with pytest.raises(CollectionNameTaken):
+        setup.collections.rename(DEFAULT_TENANT_ID, other.id, "invoices", actor="admin:a")
+    with pytest.raises(DocumentsNotFound):
+        setup.collections.add(DEFAULT_TENANT_ID, kb.id, [uuid.uuid4()], actor="admin:a")
+    missing = uuid.uuid4()
+    for change in (
+        lambda: setup.collections.rename(DEFAULT_TENANT_ID, missing, "X", actor="admin:a"),
+        lambda: setup.collections.delete(DEFAULT_TENANT_ID, missing, actor="admin:a"),
+        lambda: setup.collections.add(DEFAULT_TENANT_ID, missing, [], actor="admin:a"),
+        lambda: setup.collections.remove(DEFAULT_TENANT_ID, missing, [], actor="admin:a"),
+        lambda: setup.collections.delete(other_tenant, kb.id, actor="admin:a"),
+    ):
+        with pytest.raises(CollectionNotFound):
+            change()
+
+    assert _entries(setup) == before
