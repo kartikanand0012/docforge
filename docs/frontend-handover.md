@@ -79,7 +79,8 @@ questions, AI agents).
 
 - **Sign in:** `POST /v1/sessions` `{tenant, email, pin}` -> `{token, expires_in_seconds}`
   (8 hours). Wrong details: 401 with one message whatever was wrong. Repeated failures: 429
-  with `Retry-After`; five wrong PINs lock a reviewer for 15 minutes.
+  with `Retry-After`; five wrong PINs lock a reviewer for 15 minutes from the addresses
+  they came from (the reviewer still signs in from elsewhere).
 - **Sign out:** `DELETE /v1/sessions/current`.
 - **Who is signed in:** `GET /v1/sessions/current` -> `{kind, name, email, role, organisation, credential, platform_admin, workspace}` (`kind` is `session` for a person; `email` and `credential` are null for a key). Use it for the person's name, to say "PIN" or "password" (`credential`), to show administration only when `role` is `admin`, and the platform screens only when `platform_admin` (section 14).
 - **Correcting and signing ask for the PIN again** (`email` + `pin` in the body): a signature
@@ -423,8 +424,10 @@ person in it as a `member`.
 - An organisation's reviewer, as before: `{"tenant", "email", "pin"}`; 401
   `The organisation, email or PIN is not right.`
 - Send exactly one of `pin` and `password` (either field carries either secret); both or
-  neither is 422. Five wrong secrets lock the person for 15 minutes; too many failures from one
-  address give 429 with `Retry-After`.
+  neither is 422, as is a control character in `email` or `tenant`. Five wrong secrets lock
+  the person for 15 minutes, only from the addresses that got it wrong (the person still
+  signs in from their own; while locked a new address is locked out after one wrong secret);
+  too many failures from one address give 429 with `Retry-After`.
 - Correcting and signing still ask for the secret again: a member sends its **password** in
   the same `pin` field (up to 128 characters) with its `email`.
 

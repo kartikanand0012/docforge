@@ -312,7 +312,7 @@
         "/v1/documents/{document_id}/reprocess": {
             "post": {
                 "summary": "Reprocess Document",
-                "description": "Queue a new version. Earlier versions and their extractions are kept.",
+                "description": "Queue a new version. Earlier versions and their extractions are kept. In a free\nworkspace each is a reading, counted with uploads toward its readings a day.",
                 "operationId": "reprocess_document_v1_documents__document_id__reprocess_post",
                 "parameters": [
                     {
