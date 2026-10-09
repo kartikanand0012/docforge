@@ -19,6 +19,7 @@ from typing import Literal
 
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from docforge import audit
 from docforge.accounts import (
@@ -59,6 +60,9 @@ _SESSION_HOURS = 8
 _DUMMY_PIN_HASH = "scrypt$16384$8$1$00$00"
 _MAX_FAILED_PINS = 5  # as for a PIN re-entered to correct or sign
 _LOCK_FOR = timedelta(minutes=15)
+# An address that got a reviewer's secret wrong this recently stays locked out while the
+# reviewer is locked: longer than the lock, so its own failures cannot age out before it ends.
+_FAILED_HERE_FOR = 2 * _LOCK_FOR
 
 
 @dataclass(frozen=True)
@@ -158,6 +162,41 @@ class FailureLimiter:
             self._failures.setdefault(client, deque()).append(time.monotonic())
 
 
+def _failure_key(reviewer_id: uuid.UUID, client: str) -> str:
+    # Hashed: the shared counts table keeps neither the address nor whose it was.
+    digest = hashlib.sha256(f"{reviewer_id}:{client}".encode()).hexdigest()
+    return f"sign-in-failed:{digest}"
+
+
+def _record_failure(session: Session, reviewer_id: uuid.UUID, client: str) -> None:
+    """A wrong secret for this reviewer from this address, in the shared counts table, so
+    every API process sees it (cleared with the rest of it after two hours)."""
+    session.execute(
+        text(
+            "INSERT INTO rate_windows (key, window_start, count) "
+            "VALUES (:key, date_trunc('minute', now()), 1) ON CONFLICT (key, window_start) "
+            "DO UPDATE SET count = rate_windows.count + 1"
+        ),
+        {"key": _failure_key(reviewer_id, client)},
+    )
+
+
+def _failed_here(session: Session, reviewer_id: uuid.UUID, client: str) -> bool:
+    """Whether this address got this reviewer's secret wrong recently."""
+    return bool(
+        session.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM rate_windows WHERE key = :key "
+                "AND window_start >= now() - make_interval(secs => :seconds))"
+            ),
+            {
+                "key": _failure_key(reviewer_id, client),
+                "seconds": _FAILED_HERE_FOR.total_seconds(),
+            },
+        ).scalar_one()
+    )
+
+
 class Authenticator:
     def __init__(
         self,
@@ -238,7 +277,10 @@ class Authenticator:
 
         Without `tenant_name` the email is an account's, and its workspace is the account's.
         A wrong PIN or password counts against both the client address and the reviewer:
-        five in a row lock the reviewer for 15 minutes, from wherever the attempts come.
+        five in a row, from wherever they come, lock the reviewer for 15 minutes - but only
+        for the addresses that got it wrong, so no one elsewhere can keep its person out on
+        purpose. While locked, an address with no recent failure is still checked; one wrong
+        guess and it is locked out too, so many addresses together get one guess each.
         """
         self.limiter.check(client)
         with self._sessions() as session:
@@ -264,13 +306,22 @@ class Authenticator:
                 .with_for_update(key_share=True)
             )
             now = datetime.now(UTC)
+            locked = (
+                reviewer is not None
+                and reviewer.locked_until is not None
+                and reviewer.locked_until > now
+            )
             if reviewer is None:
                 verify_pin(pin, _DUMMY_PIN_HASH)
                 ok = False
-            elif reviewer.locked_until is not None and reviewer.locked_until > now:
+            elif locked and _failed_here(session, reviewer.id, client):
+                # Checked against nothing, but checked: a lock takes as long as a wrong secret.
+                verify_pin(pin, _DUMMY_PIN_HASH)
                 ok = False
             elif verify_pin(pin, reviewer.pin_hash):
-                reviewer.failed_attempts, reviewer.locked_until = 0, None
+                # Signing in from elsewhere does not lift a lock on the addresses that failed.
+                if not locked:
+                    reviewer.failed_attempts, reviewer.locked_until = 0, None
                 ok = True
             else:
                 # Committed with this transaction, which then ends normally: the count holds.
@@ -286,6 +337,7 @@ class Authenticator:
                 reviewer.failed_attempts += 1
                 if reviewer.failed_attempts >= _MAX_FAILED_PINS and not reviewer.shared:
                     reviewer.failed_attempts, reviewer.locked_until = 0, now + _LOCK_FOR
+                _record_failure(session, reviewer.id, client)
                 ok = False
             token = None
             if ok and reviewer is not None:
