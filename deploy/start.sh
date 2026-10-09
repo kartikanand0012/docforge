@@ -26,6 +26,14 @@ case "${DOCFORGE_ROLE:-api}" in
     if [ -n "${DEMO_PIN:-}" ]; then
       python -m docforge.demo seed
     fi
+    # An owner's first organisation and admin on a host with no shell into its containers. Set
+    # the four OWNER_* variables for one release, then remove them; a repeat run only reports
+    # that both exist. The PIN goes in on standard input, never on a command line.
+    if [ -n "${OWNER_ORG:-}" ] && [ -n "${OWNER_EMAIL:-}" ] && [ -n "${OWNER_PIN:-}" ]; then
+      python -m docforge.admin create-tenant "$OWNER_ORG" || true
+      printf '%s\n' "$OWNER_PIN" | python -m docforge.review add-reviewer --admin \
+        --tenant "$OWNER_ORG" --name "${OWNER_NAME:-Owner}" --email "$OWNER_EMAIL" || true
+    fi
     echo "admin: done"
     ;;
   *)
