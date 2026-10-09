@@ -785,6 +785,8 @@ def test_reprocess_and_the_worker_on_one_document_never_deadlock(
 def test_a_document_that_exceeds_a_parser_limit_fails_with_the_reason(
     sessions: SessionFactory,
 ) -> None:
+    """In words, without the limits themselves (V1 security review: they help someone tune
+    a file to sit just under them); the detail is logged for the operator."""
     harness = Harness(sessions, [])
 
     def over_the_limit(pdf: bytes) -> ParsedDocument:
@@ -796,7 +798,7 @@ def test_a_document_that_exceeds_a_parser_limit_fails_with_the_reason(
     assert harness.service.process(ingested.version.id) == "failed"
     assert (
         harness.version(ingested.version.id).error
-        == "Parsing was stopped: it exceeded the time limit of 900 s."
+        == "Reading it was stopped: it needed more time or memory than one document may use."
     )
 
 
