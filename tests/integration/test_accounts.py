@@ -427,12 +427,13 @@ ADMIN_ROUTES = {
 
 
 def routes(app: Any) -> set[tuple[str, str]]:
-    found = set()
-    for route in app.routes:
-        for method in getattr(route, "methods", None) or ():
-            if method != "HEAD" and route.path.startswith("/v1/"):
-                found.add((method, route.path))
-    return found
+    """Every /v1 operation the app serves, from its OpenAPI description."""
+    return {
+        (method.upper(), path)
+        for path, operations in app.openapi()["paths"].items()
+        if path.startswith("/v1/")
+        for method in operations
+    }
 
 
 def filled(path: str) -> str:
@@ -450,8 +451,7 @@ def test_a_member_is_refused_every_administrators_route_and_only_those(stack: Fu
     refused = {
         (method, path)
         for method, path in every
-        if path != "/v1/mcp"
-        and (method, path) != ("DELETE", "/v1/sessions/current")  # would sign it out
+        if (method, path) != ("DELETE", "/v1/sessions/current")  # would sign it out
         and stack.client.request(method, filled(path), headers=me, json={}).status_code == 403
     }
 

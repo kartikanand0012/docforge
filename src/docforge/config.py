@@ -125,6 +125,15 @@ class Settings(BaseSettings):
     webhook_allow_local: bool = False
     # Failed sign-ins and PINs allowed per client address in five minutes, per API process.
     failed_logins_per_window: int = 20
+    # Self-service accounts (POST /v1/accounts): off unless switched on. Each is a private
+    # workspace; new ones per client address an hour, and in all a day.
+    signup_enabled: bool = False
+    signups_per_address_per_hour: int = Field(default=5, ge=1)
+    signups_per_day: int = Field(default=200, ge=0)
+    # What one free workspace may hold and do (organisations are not held to these).
+    member_max_documents: int = Field(default=30, ge=1)
+    member_uploads_per_day: int = Field(default=15, ge=1)
+    member_questions_per_day: int = Field(default=40, ge=1)
     # The review screen's origin(s), comma-separated, e.g. http://localhost:3000.
     cors_origins: str = ""
     # Traces are exported over OTLP/HTTP here (e.g. http://collector:4318); unset, none are.

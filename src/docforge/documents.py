@@ -111,6 +111,14 @@ class QueueFull(Exception):
     """Too many documents are waiting to be processed."""
 
 
+class WorkspaceFull(Exception):
+    """The workspace holds as many documents as it may (a free workspace's cap)."""
+
+
+class DailyUploadsUsed(Exception):
+    """The workspace has taken as many new documents today as it may."""
+
+
 class TransientProcessingError(Exception):
     """Processing failed in a way that may succeed later; the queue should retry the job."""
 
@@ -323,13 +331,25 @@ class DocumentService:
 
     @scoped
     def ingest(
-        self, *, tenant_id: uuid.UUID, doc_type: str, filename: str, data: bytes, actor: str
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        doc_type: str,
+        filename: str,
+        data: bytes,
+        actor: str,
+        max_documents: int | None = None,
+        uploads_per_day: int | None = None,
     ) -> IngestResult:
         """Record an upload. The content hash is the identity: the same bytes for the same
         tenant return the existing document and start no new work.
 
+        `max_documents` and `uploads_per_day`, when given, cap a new document: the live
+        documents the tenant holds, and those received today (UTC), deleted ones included.
+
         Raises `UnknownDocumentType`, `UnsupportedFormat`, `DocumentTypeConflict`,
-        `QueueFull` or `StorageUnavailable`. Nothing is recorded when it raises.
+        `QueueFull`, `WorkspaceFull`, `DailyUploadsUsed` or `StorageUnavailable`. Nothing is
+        recorded when it raises.
         """
         if doc_type not in self._pipelines:
             raise UnknownDocumentType(f"unknown document type {doc_type!r}")
@@ -346,6 +366,8 @@ class DocumentService:
             if existing is None:
                 if self._pending(session, tenant_id) >= self._max_pending:
                     raise QueueFull("too many documents are waiting to be processed")
+                if max_documents is not None or uploads_per_day is not None:
+                    self._within_caps(session, tenant_id, max_documents, uploads_per_day)
                 # Store before the row: an object without a row is harmless and is reused
                 # by the next upload of the same bytes; a row without its object is not.
                 if not self._store.exists(key):
@@ -1092,6 +1114,38 @@ class DocumentService:
                 Document.tenant_id == tenant_id, Document.sha256 == sha256, live()
             )
         )
+
+    @staticmethod
+    def _within_caps(
+        session: Session,
+        tenant_id: uuid.UUID,
+        max_documents: int | None,
+        uploads_per_day: int | None,
+    ) -> None:
+        """Refuse a new document over the caps. One upload at a time per tenant counts, so
+        two arriving together cannot both take the last place."""
+        session.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"uploads:{tenant_id}"))))
+        if max_documents is not None:
+            held = session.scalar(
+                select(func.count())
+                .select_from(Document)
+                .where(Document.tenant_id == tenant_id, live())
+            )
+            if (held or 0) >= max_documents:
+                raise WorkspaceFull(max_documents)
+        if uploads_per_day is not None:
+            # From the audit log, which keeps deleted documents' arrivals too.
+            today = session.scalar(
+                select(func.count())
+                .select_from(AuditEntry)
+                .where(
+                    AuditEntry.tenant_id == tenant_id,
+                    AuditEntry.action == "document.received",
+                    AuditEntry.occurred_at >= func.date_trunc("day", func.now(), "UTC"),
+                )
+            )
+            if (today or 0) >= uploads_per_day:
+                raise DailyUploadsUsed(uploads_per_day)
 
     @staticmethod
     def _pending(session: Session, tenant_id: uuid.UUID) -> int:

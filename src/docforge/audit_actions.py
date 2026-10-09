@@ -38,6 +38,8 @@ ACTIONS: dict[str, Action] = {
     "indexing.completed": Action("Ready to search and ask", ("version_no",)),
     "document.deleted": Action("Document deleted"),
     # People
+    "account.created": Action("Account made"),
+    "platform.workspace_viewed": Action("Workspace viewed by the platform administrator"),
     "reviewer.pin_failed": Action("Wrong PIN", ("attempt", "at")),
     "review.corrected": Action("Value corrected", ("path", "version_no", "changed")),
     "review.signed": Action(

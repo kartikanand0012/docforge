@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from docforge.accounts import MAX_PASSWORD
 from docforge.api.auth import client_address, require
 from docforge.auth import FailureLimiter, Principal, TooManyAttempts
 from docforge.documents import DocumentNotFound
@@ -47,7 +48,7 @@ class CorrectionIn(_In):
     text: str | None = Field(max_length=2000)
     reason: str = Field(min_length=1, max_length=2000)
     email: str = Field(max_length=320)
-    pin: str = Field(max_length=64)
+    pin: str = Field(max_length=MAX_PASSWORD)  # an account's password travels here too
     # The `record_sha256` of the record the reviewer was shown, if the caller sends it: a
     # correction made to a record that has changed since is refused.
     expected_record_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -66,7 +67,7 @@ class SignIn(_In):
     # The `record_sha256` of the record the reviewer was shown: a signature binds to it.
     expected_record_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     email: str = Field(max_length=320)
-    pin: str = Field(max_length=64)
+    pin: str = Field(max_length=MAX_PASSWORD)  # an account's password travels here too
 
 
 class PageOut(BaseModel):

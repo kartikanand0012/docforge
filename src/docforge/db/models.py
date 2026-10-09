@@ -52,6 +52,9 @@ class Tenant(Base):
     id: Mapped[uuid.UUID] = _id()
     name: Mapped[str] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = _created_at()
+    kind: Mapped[str] = mapped_column(Text, server_default="organisation")  # or personal
+    # Shown in place of `name` when set: a personal workspace's is "<person>'s workspace".
+    display_name: Mapped[str | None] = mapped_column(Text)
 
 
 class Document(Base):
@@ -212,6 +215,11 @@ class Reviewer(Base):
     shared: Mapped[bool] = mapped_column(Boolean, server_default="false")
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
+    # What `pin_hash` is the hash of: a PIN, or an account's password.
+    credential: Mapped[str] = mapped_column(Text, server_default="pin")
+    # The owner: may see every workspace's figures and look into one, read-only. Set only
+    # as the database owner; the application's role cannot write this column.
+    platform_admin: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
 
 class Correction(Base):

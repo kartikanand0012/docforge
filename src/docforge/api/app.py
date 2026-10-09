@@ -18,9 +18,10 @@ from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 
 from docforge import __version__
+from docforge.accounts import MemberCaps
 from docforge.api.agents import agents_router
 from docforge.api.audit import audit_router
-from docforge.api.auth import require, sessions_router
+from docforge.api.auth import accounts_router, require, sessions_router
 from docforge.api.chat import chat_router
 from docforge.api.collections import collections_router
 from docforge.api.documents import documents_router
@@ -36,7 +37,7 @@ from docforge.api.uploads import (
 )
 from docforge.api.webhooks import webhooks_router
 from docforge.audit_log import AuditLogService
-from docforge.auth import Authenticator, FailureLimiter, Principal
+from docforge.auth import MEMBER, Authenticator, FailureLimiter, Principal
 from docforge.chat.service import ChatService
 from docforge.collections import CollectionService
 from docforge.documents import DocumentService
@@ -53,6 +54,7 @@ from docforge.telemetry import traced
 from docforge.webhooks import WebhookService
 
 logger = logging.getLogger(__name__)
+__all__ = ["MemberCaps", "create_app"]
 
 
 class DocumentInfo(BaseModel):
@@ -118,6 +120,10 @@ def create_app(
     limits: Limits | None = None,
     agents: AgentTools | None = None,
     audit_log: AuditLogService | None = None,
+    signup_enabled: bool = False,
+    signups_per_day: int = 200,
+    signups_per_address_per_hour: int = 5,
+    member_caps: MemberCaps | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     # FastAPI's own telemetry is off: its request spans record the query string (a search
@@ -138,7 +144,7 @@ def create_app(
             CORSMiddleware,
             allow_origins=list(cors_origins),
             allow_methods=["GET", "POST", "DELETE"],
-            allow_headers=["Content-Type", "Authorization"],
+            allow_headers=["Content-Type", "Authorization", "X-DocForge-Workspace"],
         )
 
     @app.middleware("http")
@@ -191,12 +197,24 @@ def create_app(
     if service is not None:
         app.include_router(
             documents_router(
-                service, max_upload_bytes=max_upload_bytes, max_pages=max_pages, limits=caps
+                service,
+                max_upload_bytes=max_upload_bytes,
+                max_pages=max_pages,
+                limits=caps,
+                member_caps=member_caps,
             )
         )
     limiter = authenticator.limiter if authenticator else FailureLimiter(20, 300)
     if authenticator is not None:
         app.include_router(sessions_router(authenticator))
+    if authenticator is not None and signup_enabled:
+        # Off unless switched on: without it there is no such route (404).
+        app.include_router(
+            accounts_router(
+                authenticator, caps, per_address_per_hour=signups_per_address_per_hour,
+                per_day=signups_per_day,
+            )
+        )  # fmt: skip
     if review is not None:
         app.include_router(review_router(review, evals_dir, prices, limiter))
     if webhooks is not None:
@@ -206,7 +224,7 @@ def create_app(
     if search is not None:
         app.include_router(search_router(search, searches_per_minute, caps))
     if chat is not None:
-        app.include_router(chat_router(chat, questions_per_minute, caps))
+        app.include_router(chat_router(chat, questions_per_minute, caps, member_caps))
     if collections is not None:
         app.include_router(collections_router(collections))
     if audit_log is not None:
@@ -228,6 +246,9 @@ def _add_preview_endpoint(app: FastAPI, pipeline: InvoicePipeline, max_upload_by
         include_blocks: bool = False,
     ) -> ExtractionResponse:
         """Extract one born-digital invoice PDF in the request. Nothing is stored."""
+        if principal.role == MEMBER:
+            # A model call outside every cap a free workspace has: for integrations only.
+            raise HTTPException(403, "This credential is not allowed to do that.")
         data = await read_pdf_upload(file, max_upload_bytes)
 
         # Error details stay in the log: provider messages are not for API clients.

@@ -298,10 +298,13 @@ class ChatService:
         collection_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
         progress: Progress | None = None,
+        daily_limit: int | None = None,
     ) -> Answer:
         """Raises `QuestionLimitReached`, `ConversationNotFound`, `DocumentNotFound`,
         `CollectionNotFound`, `ScopeConflict`, `ScopeGone`, or `LLMError` when the model
         cannot answer. `progress` is told each stage: searching, reading, checking.
+        `daily_limit`, when given, is a lower cap on the organisation's questions today (a
+        free workspace's).
 
         The question takes its place for the day before the model is asked, so the limit
         holds when questions arrive together and counts those that fail. It is completed
@@ -312,7 +315,12 @@ class ChatService:
             raise ScopeConflict("a question is about one document or one knowledge base")
         tell = _safe(progress)
         conversation_id, message_id, scope, history, anchors = self._reserve(
-            tenant_id, owner, question, Scope(document_id, collection_id), conversation_id
+            tenant_id,
+            owner,
+            question,
+            Scope(document_id, collection_id),
+            conversation_id,
+            daily_limit,
         )
         responses: tuple[LLMResponse, ...] = ()
         try:
@@ -506,6 +514,7 @@ class ChatService:
         question: str,
         asked: "Scope",
         conversation_id: uuid.UUID | None,
+        daily_limit: int | None = None,
     ) -> tuple[uuid.UUID, uuid.UUID, "Scope", list[tuple[str, str]], list[uuid.UUID]]:
         """Check the limits and take the question's place, in one transaction under a lock
         per organisation, so two questions cannot both take the last place."""
@@ -518,8 +527,9 @@ class ChatService:
                 .select_from(Message)
                 .where(Message.tenant_id == tenant_id, today)
             )
-            if (count or 0) >= self._daily_limit:
-                raise QuestionLimitReached(f"{self._daily_limit} questions a day")
+            limit = min(self._daily_limit, daily_limit or self._daily_limit)
+            if (count or 0) >= limit:
+                raise QuestionLimitReached(f"{limit} questions a day")
             mine = session.scalar(
                 select(func.count())
                 .select_from(Message)

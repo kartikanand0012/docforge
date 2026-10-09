@@ -7,7 +7,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile
@@ -16,10 +16,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.background import BackgroundTask
 
+from docforge.accounts import MemberCaps
 from docforge.api.auth import require
 from docforge.api.uploads import read_upload, safe_filename
-from docforge.auth import Principal
+from docforge.auth import MEMBER, Principal
 from docforge.documents import (
+    DailyUploadsUsed,
     DocumentNotFound,
     DocumentService,
     DocumentTypeConflict,
@@ -27,6 +29,7 @@ from docforge.documents import (
     ReprocessInProgress,
     UnknownDocumentType,
     UnsupportedFormat,
+    WorkspaceFull,
 )
 from docforge.formats import ACCEPTED, extension
 from docforge.limits import LimitReached, Limits
@@ -181,10 +184,23 @@ _NOT_FOUND = HTTPException(404, "No such document.")
 AUDIT_CHECKS_PER_MINUTE = 6
 
 
+def seconds_to_midnight_utc() -> int:
+    """How long until a daily count (UTC) starts again."""
+    now = datetime.now(UTC)
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(1, int((tomorrow - now).total_seconds()))
+
+
 def documents_router(
-    service: DocumentService, *, max_upload_bytes: int, max_pages: int, limits: Limits
+    service: DocumentService,
+    *,
+    max_upload_bytes: int,
+    max_pages: int,
+    limits: Limits,
+    member_caps: MemberCaps | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
+    member = member_caps or MemberCaps()
 
     @router.post("/documents", status_code=202, response_model=UploadOut)
     async def upload_document(
@@ -214,6 +230,8 @@ def documents_router(
                     413, f"The document has {pages} pages; the limit is {max_pages}."
                 )
 
+        # A free workspace's caps; an organisation is held only to the queue's.
+        free = principal.role == MEMBER
         try:
             result = await run_in_threadpool(
                 service.ingest,
@@ -222,6 +240,8 @@ def documents_router(
                 filename=safe_filename(file.filename) or f"upload.{extension(fmt)}",
                 data=data,
                 actor=principal.actor,
+                max_documents=member.max_documents if free else None,
+                uploads_per_day=member.uploads_per_day if free else None,
             )
         except UnknownDocumentType as error:
             raise HTTPException(422, "Unknown document type.") from error
@@ -231,6 +251,19 @@ def documents_router(
             ) from error
         except DocumentTypeConflict as error:
             raise HTTPException(409, f"{str(error).capitalize()}.") from error
+        except WorkspaceFull as error:
+            raise HTTPException(
+                429,
+                f"This free workspace holds up to {member.max_documents} documents. "
+                "Delete one to upload another.",
+            ) from error
+        except DailyUploadsUsed as error:
+            raise HTTPException(
+                429,
+                f"This free workspace takes up to {member.uploads_per_day} uploads a day. "
+                "Try again tomorrow.",
+                headers={"Retry-After": str(seconds_to_midnight_utc())},
+            ) from error
         except QueueFull as error:
             logger.warning("upload refused: %s", error)
             raise HTTPException(

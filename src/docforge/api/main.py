@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from docforge.accounts import MemberCaps
 from docforge.api.app import create_app
 from docforge.audit_log import AuditLogService
 from docforge.collections import CollectionService
@@ -59,4 +60,12 @@ def create_default_app() -> FastAPI:
         limits=limits,
         agents=agents,
         audit_log=AuditLogService(sessions),
+        signup_enabled=settings.signup_enabled,
+        signups_per_day=settings.signups_per_day,
+        signups_per_address_per_hour=settings.signups_per_address_per_hour,
+        member_caps=MemberCaps(
+            max_documents=settings.member_max_documents,
+            uploads_per_day=settings.member_uploads_per_day,
+            questions_per_day=settings.member_questions_per_day,
+        ),
     )

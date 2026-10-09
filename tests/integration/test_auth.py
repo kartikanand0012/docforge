@@ -324,10 +324,11 @@ def test_a_caller_can_ask_who_they_are(stack: Stack) -> None:
     assert me.headers["cache-control"] == "no-store"
     assert me.json() == {
         "kind": "session", "name": "Asha Rao", "email": "asha@example.com",
-        "role": "reviewer", "organisation": "default",
+        "role": "reviewer", "organisation": "default", "credential": "pin",
+        "platform_admin": False, "workspace": "organisation",
     }  # fmt: skip
     key = stack.client.get("/v1/sessions/current", headers=stack.key("integrator")).json()
-    assert (key["kind"], key["name"], key["email"], key["role"]) == (
-        "api_key", "integrator key", None, "integrator",
+    assert (key["kind"], key["name"], key["email"], key["role"], key["credential"]) == (
+        "api_key", "integrator key", None, "integrator", None,
     )  # fmt: skip
     assert stack.client.get("/v1/sessions/current").status_code == 401
