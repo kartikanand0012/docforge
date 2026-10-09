@@ -11,6 +11,9 @@ answer is then checked as extracted values are:
 
 A conversation belongs to the person who started it. Questions and answers are stored in
 `messages`, never in the audit log or a trace: a question may name a patient or a price.
+That a question was asked, and by whom, is audited (`chat.question_asked`, with neither the
+question nor the answer): the daily limits count those entries, which deleting a
+conversation does not remove.
 """
 
 import logging
@@ -25,12 +28,13 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
+from docforge import audit
 from docforge.chat.injection import reads_as_instructions
 from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passage, build_prompt
 from docforge.chat.statements import CODE, RawStatement, check_statements
 from docforge.chat.verify import cited_blocks
 from docforge.collections import CollectionNotFound, CollectionService
-from docforge.db.models import Conversation, Document, Message, live
+from docforge.db.models import AuditEntry, Conversation, Document, Message, live
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
@@ -52,6 +56,7 @@ WITHHELD = (
 )
 DEFAULT_PASSAGES = 8
 DEFAULT_DAILY_LIMIT = 500
+QUESTION_ASKED = "chat.question_asked"  # the audit action the daily limits count
 _HISTORY = 3  # earlier turns given with a follow-up
 _ANSWERED = ("supported", "partly_supported")
 _ANCHORS = 3  # documents an earlier answer cited, searched first for a follow-up
@@ -521,21 +526,22 @@ class ChatService:
         with self._sessions.begin() as session:
             lock = func.hashtext(f"chat:{tenant_id}")
             session.execute(select(func.pg_advisory_xact_lock(lock)))
-            today = Message.created_at >= func.date_trunc("day", func.now(), "UTC")
-            count = session.scalar(
+            # Counted from the audit log, not the messages: a person may delete their
+            # conversations, and with them the messages, but not the day's questions.
+            asked_today = (
                 select(func.count())
-                .select_from(Message)
-                .where(Message.tenant_id == tenant_id, today)
+                .select_from(AuditEntry)
+                .where(
+                    AuditEntry.tenant_id == tenant_id,
+                    AuditEntry.action == QUESTION_ASKED,
+                    AuditEntry.occurred_at >= func.date_trunc("day", func.now(), "UTC"),
+                )
             )
+            count = session.scalar(asked_today)
             limit = min(self._daily_limit, daily_limit or self._daily_limit)
             if (count or 0) >= limit:
                 raise QuestionLimitReached(f"{limit} questions a day")
-            mine = session.scalar(
-                select(func.count())
-                .select_from(Message)
-                .join(Conversation, Conversation.id == Message.conversation_id)
-                .where(Message.tenant_id == tenant_id, Conversation.owner == owner, today)
-            )
+            mine = session.scalar(asked_today.where(AuditEntry.actor == owner))
             if (mine or 0) >= self._per_person:
                 raise QuestionLimitReached(f"{self._per_person} questions a day per person")
 
@@ -623,6 +629,16 @@ class ChatService:
             )
             session.add(message)
             session.flush()
+            # Neither the question nor the answer: only that one was asked, and by whom.
+            audit.append(
+                session,
+                tenant_id=tenant_id,
+                actor=owner,
+                action=QUESTION_ASKED,
+                target_type="conversation",
+                target_id=str(conversation.id),
+                details={},
+            )
             return conversation.id, message.id, scope, history, anchors
 
     def _complete(

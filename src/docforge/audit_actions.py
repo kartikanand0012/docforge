@@ -47,6 +47,8 @@ ACTIONS: dict[str, Action] = {
     ),
     "review.claimed": Action("Review started", ("version_no",)),
     "review.taken_over": Action("Review taken over", ("from_reviewer",)),
+    # Questions (never the question or its answer)
+    "chat.question_asked": Action("Question asked"),
     # Knowledge bases
     "collection.created": Action("Knowledge base made", ("name",)),
     "collection.renamed": Action("Knowledge base renamed", ("name",)),
