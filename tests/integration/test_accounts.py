@@ -327,9 +327,90 @@ def test_a_free_workspace_takes_a_few_uploads_a_day_even_after_deleting(
 
     assert again.status_code == 429
     assert again.json()["detail"] == (
-        "This free workspace takes up to 1 uploads a day. Try again tomorrow."
+        "This free workspace takes up to 1 readings a day (uploads and readings again). "
+        "Try again tomorrow."
     )
     assert int(again.headers["Retry-After"]) > 0
+
+
+def read_now(stack: FullStack, owner_engine: Engine, document_id: str) -> str:
+    """The document's queued version read, as the worker would: the document's id."""
+    with owner_engine.connect() as conn:
+        version = conn.execute(
+            text("SELECT id FROM document_versions WHERE document_id = :d AND status = 'queued'"),
+            {"d": document_id},
+        ).scalar_one()
+    assert stack.documents.process(version) == "succeeded"
+    return document_id
+
+
+def uploaded(response: Any) -> str:
+    assert response.status_code == 202, response.text
+    document_id: str = response.json()["document"]["id"]
+    return document_id
+
+
+def test_reading_a_document_again_counts_toward_a_free_workspaces_readings(
+    sessions: SessionFactory, world: World, owner_engine: Engine
+) -> None:
+    stack = member_stack(sessions, world, max_documents=10, uploads_per_day=2)
+    me = stack.sign_up("Asha", "asha@example.com")
+    first = uploaded(upload(stack, me, stack.world.invoice_pdf, "invoice.pdf"))
+    read_now(stack, owner_engine, first)
+    again = stack.client.post(f"/v1/documents/{first}/reprocess", headers=me)
+    assert again.status_code == 202, again.text
+    read_now(stack, owner_engine, first)
+
+    third = stack.client.post(f"/v1/documents/{first}/reprocess", headers=me)
+    another = upload(stack, me, stack.world.order_pdf, "order.pdf")
+
+    message = (
+        "This free workspace takes up to 2 readings a day (uploads and readings again). "
+        "Try again tomorrow."
+    )
+    for refused in (third, another):
+        assert refused.status_code == 429
+        assert refused.json()["detail"] == message
+        assert int(refused.headers["Retry-After"]) > 0
+
+
+def test_an_organisation_reads_again_whatever_a_free_workspaces_caps(
+    sessions: SessionFactory, world: World, owner_engine: Engine
+) -> None:
+    stack = member_stack(sessions, world, uploads_per_day=1, readings_per_day_total=1)
+    admin = {"Authorization": f"Bearer {stack.key(DEFAULT_TENANT_ID, 'admin')}"}
+    first = uploaded(upload(stack, admin, stack.world.invoice_pdf, "invoice.pdf"))
+    read_now(stack, owner_engine, first)
+
+    again = stack.client.post(f"/v1/documents/{first}/reprocess", headers=admin)
+
+    assert again.status_code == 202
+
+
+def test_free_workspaces_together_have_a_days_readings(
+    sessions: SessionFactory, world: World, owner_engine: Engine
+) -> None:
+    stack = member_stack(sessions, world, uploads_per_day=10, readings_per_day_total=2)
+    asha = stack.sign_up("Asha", "asha@example.com")
+    ben = stack.sign_up("Ben", "ben@example.com")
+    mine = uploaded(upload(stack, asha, stack.world.invoice_pdf, "invoice.pdf"))
+    read_now(stack, owner_engine, mine)
+    assert upload(stack, ben, stack.world.invoice_pdf, "invoice.pdf").status_code == 202
+
+    refused = [
+        upload(stack, ben, stack.world.order_pdf, "order.pdf"),
+        stack.client.post(f"/v1/documents/{mine}/reprocess", headers=asha),
+    ]
+
+    for response in refused:
+        assert response.status_code == 429
+        assert response.json()["detail"] == (
+            "Free workspaces have reached today's limit. Try again tomorrow."
+        )
+        assert int(response.headers["Retry-After"]) > 0
+    # An organisation is not held to it.
+    admin = {"Authorization": f"Bearer {stack.key(DEFAULT_TENANT_ID, 'admin')}"}
+    assert upload(stack, admin, stack.world.order_pdf, "order.pdf").status_code == 202
 
 
 def test_a_free_workspace_asks_a_few_questions_a_day(
