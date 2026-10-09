@@ -32,6 +32,7 @@ from docforge.formats import ACCEPTED, extension
 from docforge.limits import LimitReached, Limits
 from docforge.parsing.base import ParseError, PasswordProtected
 from docforge.parsing.pdf import pdf_page_count
+from docforge.review.claims import ClaimedByOther
 from docforge.storage import StorageUnavailable
 
 logger = logging.getLogger(__name__)
@@ -312,12 +313,17 @@ def documents_router(
         """Queue a new version. Earlier versions and their extractions are kept."""
         try:
             version = service.reprocess(
-                tenant_id=principal.tenant_id, document_id=document_id, actor=principal.actor
+                tenant_id=principal.tenant_id,
+                document_id=document_id,
+                actor=principal.actor,
+                reviewer_id=principal.subject_id if principal.kind == "session" else None,
             )
         except DocumentNotFound:
             raise _NOT_FOUND from None
         except ReprocessInProgress:
             raise HTTPException(409, "This document is still being processed.") from None
+        except ClaimedByOther as error:
+            raise HTTPException(409, str(error)) from None
         return VersionOut.model_validate(version)
 
     @router.get("/documents", response_model=DocumentPage)

@@ -10,12 +10,13 @@ import io
 import threading
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import exists, func, select
+from sqlalchemy import delete, exists, func, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
 from docforge import audit
@@ -26,6 +27,7 @@ from docforge.db.models import (
     Extraction,
     ParseOutput,
     Review,
+    ReviewClaim,
     Reviewer,
 )
 from docforge.db.models import (
@@ -40,6 +42,13 @@ from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.parsing.base import ParsedDocument
 from docforge.parsing.raster import render_pages
+from docforge.review.claims import (
+    CLAIM_FOR,
+    ClaimedByOther,
+    TakeOverRefused,
+    live_claim,
+    refuse_if_claimed,
+)
 from docforge.review.revise import (
     Correction,
     Reassessed,
@@ -96,7 +105,8 @@ class NotPermitted(Exception):
 
 
 class RecordChanged(Exception):
-    """The record changed after the reviewer saw it; they must look again before signing."""
+    """The record changed after the reviewer saw it; they must look again before signing or
+    correcting. The argument, if any, is what they were doing ("correcting")."""
 
 
 class PageNotFound(LookupError):
@@ -112,6 +122,17 @@ class QueueItem:
     created_at: datetime
     reasons: tuple[str, ...]
     match_status: str
+    claimed_by: str | None = None  # who else has it open now, if anyone
+
+
+@dataclass(frozen=True)
+class ClaimView:
+    """A live claim on a document, as one caller sees it."""
+
+    reviewer_name: str
+    claimed_at: datetime
+    expires_at: datetime
+    mine: bool
 
 
 @dataclass(frozen=True)
@@ -160,6 +181,7 @@ class ReviewDetail:
     superseded: bool  # a newer version of the document is being processed
     # For an invoice: the certificate found for each billed batch, and whether it is in limits.
     certificates: tuple[dict[str, str], ...] = ()
+    claim: ClaimView | None = None  # a live claim, relative to whoever asked
 
     @property
     def decision(self) -> str:
@@ -331,12 +353,13 @@ class ReviewService:
     # Reading
 
     @scoped
-    def queue(self, tenant_id: uuid.UUID) -> list[QueueItem]:
+    def queue(self, tenant_id: uuid.UUID, *, viewer: uuid.UUID | None = None) -> list[QueueItem]:
         """Documents whose newest extraction needs a person and has no signed review.
 
         Signed documents are left out in the query; whether the rest need a person depends
         on corrections and the order match, so it is decided per document, scanning at most
-        `_QUEUE_SCAN` documents for each entry the queue can hold.
+        `_QUEUE_SCAN` documents for each entry the queue can hold. Each names who has it open
+        now, when that is someone other than `viewer`.
         """
         newest = aliased(DocumentVersion)
         signed = (
@@ -385,12 +408,119 @@ class ReviewService:
                     )
                     if len(items) >= self._queue_limit:
                         break
-        return items
+            held: dict[uuid.UUID, str] = {}
+            if items:
+                live = (
+                    select(ReviewClaim.document_id, Reviewer.name)
+                    .join(Reviewer, Reviewer.id == ReviewClaim.reviewer_id)
+                    .where(
+                        ReviewClaim.document_id.in_([item.document_id for item in items]),
+                        ReviewClaim.expires_at > _now(),
+                    )
+                )
+                if viewer is not None:
+                    live = live.where(ReviewClaim.reviewer_id != viewer)
+                held = {document_id: name for document_id, name in session.execute(live)}
+        return [replace(item, claimed_by=held.get(item.document_id)) for item in items]
 
     @scoped
-    def detail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> ReviewDetail:
+    def detail(
+        self, tenant_id: uuid.UUID, document_id: uuid.UUID, *, viewer: uuid.UUID | None = None
+    ) -> ReviewDetail:
+        """`viewer`, the signed-in reviewer asking, if any: a claim is `mine` only to them."""
         with self._sessions() as session:
-            return self._detail(self._state(session, self._find(session, tenant_id, document_id)))
+            detail = self._detail(self._state(session, self._find(session, tenant_id, document_id)))
+            return replace(detail, claim=_claim_view(session, document_id, viewer))
+
+    # Claims
+
+    @scoped
+    def claim(
+        self,
+        tenant_id: uuid.UUID,
+        document_id: uuid.UUID,
+        *,
+        reviewer_id: uuid.UUID,
+        take_over: bool = False,
+    ) -> ClaimView:
+        """Claim the document for `reviewer_id`, or renew their claim, for `CLAIM_FOR`.
+
+        Someone else's live claim is returned unchanged, unless `take_over`, which only an
+        administrator may do. A signed version has nothing left to claim.
+        """
+        with self._sessions.begin() as session:
+            document = self._find(session, tenant_id, document_id, lock=True)
+            reviewer = session.scalar(
+                select(Reviewer).where(Reviewer.tenant_id == tenant_id, Reviewer.id == reviewer_id)
+            )
+            if reviewer is None or reviewer.deactivated_at is not None:
+                raise NotPermitted
+            newest = session.scalar(
+                select(DocumentVersion)
+                .where(DocumentVersion.document_id == document.id)
+                .order_by(DocumentVersion.version_no.desc())
+                .limit(1)
+            )
+            if newest is not None and session.scalar(
+                select(exists().where(Review.document_version_id == newest.id))
+            ):
+                raise AlreadySigned
+            now = _now()
+            found = live_claim(session, document.id, now)
+            renewal = found is not None and found[0].reviewer_id == reviewer.id
+            if found is not None and not renewal:
+                held, holder = found
+                if not take_over:
+                    return ClaimView(holder, held.claimed_at, held.expires_at, mine=False)
+                if reviewer.role != "admin":
+                    raise TakeOverRefused
+                audit.append(
+                    session,
+                    tenant_id=tenant_id,
+                    actor=f"reviewer:{reviewer.id}",
+                    action="review.taken_over",
+                    target_type="document",
+                    target_id=str(document.id),
+                    details={"from_reviewer": holder},
+                )
+            elif found is None:
+                audit.append(
+                    session,
+                    tenant_id=tenant_id,
+                    actor=f"reviewer:{reviewer.id}",
+                    action="review.claimed",
+                    target_type="document",
+                    target_id=str(document.id),
+                    details={"version_no": newest.version_no} if newest is not None else {},
+                )
+            claimed_at = found[0].claimed_at if renewal and found is not None else now
+            lease = {
+                "reviewer_id": reviewer.id,
+                "claimed_at": claimed_at,
+                "expires_at": now + CLAIM_FOR,
+            }
+            # One row per document: a renewal, a take-over or a claim after one ran out
+            # overwrites it, so expired claims never pile up.
+            session.execute(
+                insert(ReviewClaim)
+                .values(document_id=document.id, tenant_id=tenant_id, **lease)
+                .on_conflict_do_update(index_elements=[ReviewClaim.document_id], set_=lease)
+            )
+            return ClaimView(reviewer.name, claimed_at, now + CLAIM_FOR, mine=True)
+
+    @scoped
+    def release(
+        self, tenant_id: uuid.UUID, document_id: uuid.UUID, *, reviewer_id: uuid.UUID
+    ) -> None:
+        """End `reviewer_id`'s claim on the document. Anyone else's is left alone."""
+        with self._sessions.begin() as session:
+            document = self._find(session, tenant_id, document_id)
+            session.execute(
+                delete(ReviewClaim).where(
+                    ReviewClaim.document_id == document.id,
+                    ReviewClaim.reviewer_id == reviewer_id,
+                )
+            )
 
     @scoped
     def page_image(self, tenant_id: uuid.UUID, document_id: uuid.UUID, page: int) -> bytes:
@@ -481,10 +611,13 @@ class ReviewService:
         email: str,
         pin: str,
         acting_reviewer_id: uuid.UUID | None = None,
+        expected_record_sha256: str | None = None,
     ) -> ReviewDetail:
         """Change (or confirm, by giving the same text) one field's printed value.
 
         `acting_reviewer_id`, when given, is the signed-in reviewer: the PIN must be theirs.
+        `expected_record_sha256`, when given, is the `record_sha256` of the record the
+        reviewer was shown; if the record has changed since, nothing is corrected.
         """
         if not reason.strip():
             raise ValueError("a correction needs a reason")
@@ -497,6 +630,12 @@ class ReviewService:
         with self._sessions.begin() as session:
             document = self._find(session, tenant_id, document_id, lock=True)
             state = self._changeable(self._state(session, document))
+            refuse_if_claimed(session, document.id, reviewer.id, _now())
+            if expected_record_sha256 is not None and (
+                record_digest(state.reassessed.extraction.model_dump(mode="json"))
+                != expected_record_sha256
+            ):
+                raise RecordChanged("correcting")
             current = state.reassessed.raw.model_dump()
             apply_corrections(state.raw, [Correction(path=path, text=text)])  # validates path
             old = _text_at(current, path)
@@ -524,7 +663,7 @@ class ReviewService:
                     "changed": old != text,
                 },
             )
-        return self.detail(tenant_id, document_id)
+        return self.detail(tenant_id, document_id, viewer=reviewer.id)
 
     @scoped
     def sign(
@@ -560,6 +699,7 @@ class ReviewService:
         with self._sessions.begin() as session:
             document = self._find(session, tenant_id, document_id, lock=True)
             state = self._changeable(self._state(session, document))
+            refuse_if_claimed(session, document.id, reviewer.id, _now())
             required = MEANINGS[document.doc_type][outcome]
             if meaning.strip() != required:
                 raise ValueError(f"the meaning of this signature must be: {required}")
@@ -613,6 +753,8 @@ class ReviewService:
                     signed_at=signed_at,
                 )
             )
+            # Nothing is left to change, so nobody needs to hold it any more.
+            session.execute(delete(ReviewClaim).where(ReviewClaim.document_id == document.id))
             if self._events is not None:
                 session.flush()
                 self._events.emit(
@@ -951,6 +1093,16 @@ class ReviewService:
         )
 
 
+def _claim_view(
+    session: Session, document_id: uuid.UUID, viewer: uuid.UUID | None
+) -> ClaimView | None:
+    found = live_claim(session, document_id, _now())
+    if found is None:
+        return None
+    held, holder = found
+    return ClaimView(holder, held.claimed_at, held.expires_at, mine=held.reviewer_id == viewer)
+
+
 def _batch_key(batch: str | None) -> str:
     return (batch or "").strip().upper()
 
@@ -991,8 +1143,11 @@ def _text_at(data: dict[str, Any], path: str) -> str | None:
 
 
 __all__: Sequence[str] = (
+    "CLAIM_FOR",
     "AlreadySigned",
     "ApprovalBlocked",
+    "ClaimView",
+    "ClaimedByOther",
     "NotAuthenticated",
     "NotPermitted",
     "NotReviewable",
@@ -1001,4 +1156,5 @@ __all__: Sequence[str] = (
     "ReviewDetail",
     "ReviewService",
     "ReviewerLocked",
+    "TakeOverRefused",
 )

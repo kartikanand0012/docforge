@@ -152,8 +152,12 @@ The heart of the product. Needs:
   `corrections`, `match_status`, `discrepancies`, `counterpart_document_id`, `review` (the
   signature if signed), `signature_valid`, `record_sha256`, `meanings` (what a signature may
   mean), `superseded`, `certificates` (CoAs linked by batch).
-- `POST /v1/documents/{id}/corrections` `{path, text, reason, email, pin}` -> `ReviewOut`.
-  `path` is one of `editable_paths` (e.g. `invoice_no`, `lines[0].qty`).
+- `POST /v1/documents/{id}/corrections` `{path, text, reason, email, pin,
+  expected_record_sha256?}` -> `ReviewOut`. `path` is one of `editable_paths` (e.g.
+  `invoice_no`, `lines[0].qty`). Send the `record_sha256` you showed as
+  `expected_record_sha256`: if the record changed meanwhile you get 409 ("The record changed
+  after you opened it. Look at it again before correcting.") and must reload. It is optional;
+  without it the correction is made as before.
 - `POST /v1/documents/{id}/review` `{outcome: approved|rejected, meaning, reason,
   override_reason, expected_record_sha256, email, pin}` -> the signed record. Send the
   `record_sha256` you showed: if the record changed meanwhile you get 409 and must reload.
@@ -161,6 +165,25 @@ The heart of the product. Needs:
 - `GET /v1/documents/{id}/extraction` and `/assessment` (the raw extraction and checks; 404
   until there is one), `GET /v1/documents/{id}/audit` (this document's audit trail).
 - `POST /v1/documents/{id}/reprocess` (read it again; 409 while a reading is under way).
+- **Review claims** (so two people never change one document at once). A claim is a lease
+  of 5 minutes on a document by one reviewer:
+  - `POST /v1/documents/{id}/claim` `{take_over: false}` -> `ClaimOut` `{reviewer_name,
+    claimed_at, expires_at, mine}`. Call it when an unsigned version is on screen and every
+    60 s while it stays open: it claims the document, or renews your claim (`claimed_at`
+    kept). If someone else holds a live claim it is returned unchanged with `mine: false`;
+    keep polling and the claim becomes yours once theirs runs out. `take_over: true` moves
+    it to you: administrators only (403 "Only an administrator can take over a review.").
+    409 on a signed version. Signed-in reviewers only (an API key gets 403).
+  - `DELETE /v1/documents/{id}/claim` -> 204: ends your own claim (on leaving the page);
+    someone else's is left alone, still 204.
+  - `ReviewOut.claim` is the live claim (`mine` relative to you) or null;
+    `GET /v1/review/queue` items carry `claimed_by`: the name of another reviewer who has it
+    open now, else null.
+  - While another reviewer's claim lasts, corrections, signing and reprocess answer 409
+    "{name} is reviewing this document. Wait until they finish, or ask an administrator to
+    take over." An expired claim, or none, blocks nothing; signing ends the signer's claim.
+    The audit log shows "Review started" (`review.claimed`) and "Review taken over"
+    (`review.taken_over`, with `from_reviewer`).
 - A **chat panel** asking about this one document (section 5.7 with `document_id`).
 - A **general** document (no fields) shows its pages, timeline and chat only.
 

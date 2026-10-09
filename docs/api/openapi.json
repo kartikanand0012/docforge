@@ -643,6 +643,89 @@
                 }
             }
         },
+        "/v1/documents/{document_id}/claim": {
+            "post": {
+                "summary": "Claim",
+                "description": "Claim the review for a few minutes, or renew the claim; call again to keep it.\n\nWhile another reviewer's claim lasts it is returned unchanged (`mine` false), and\ntheir changes alone are accepted; an administrator may `take_over`.",
+                "operationId": "claim_v1_documents__document_id__claim_post",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ClaimIn"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClaimOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "summary": "Release",
+                "description": "End the caller's claim. Someone else's is left alone (still 204).",
+                "operationId": "release_v1_documents__document_id__claim_delete",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/documents/{document_id}/corrections": {
             "post": {
                 "summary": "Correct",
@@ -2808,6 +2891,48 @@
                 ],
                 "title": "CitationOut"
             },
+            "ClaimIn": {
+                "properties": {
+                    "take_over": {
+                        "type": "boolean",
+                        "title": "Take Over",
+                        "default": false
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "ClaimIn"
+            },
+            "ClaimOut": {
+                "properties": {
+                    "reviewer_name": {
+                        "type": "string",
+                        "title": "Reviewer Name"
+                    },
+                    "claimed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Claimed At"
+                    },
+                    "expires_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Expires At"
+                    },
+                    "mine": {
+                        "type": "boolean",
+                        "title": "Mine"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "reviewer_name",
+                    "claimed_at",
+                    "expires_at",
+                    "mine"
+                ],
+                "title": "ClaimOut"
+            },
             "CollectionChange": {
                 "properties": {
                     "name": {
@@ -2990,6 +3115,18 @@
                         "type": "string",
                         "maxLength": 64,
                         "title": "Pin"
+                    },
+                    "expected_record_sha256": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{64}$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Expected Record Sha256"
                     }
                 },
                 "additionalProperties": false,
@@ -4445,6 +4582,17 @@
                     "match_status": {
                         "type": "string",
                         "title": "Match Status"
+                    },
+                    "claimed_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Claimed By"
                     }
                 },
                 "type": "object",
@@ -4455,7 +4603,8 @@
                     "version_no",
                     "created_at",
                     "reasons",
-                    "match_status"
+                    "match_status",
+                    "claimed_by"
                 ],
                 "title": "QueueItemOut"
             },
@@ -4593,6 +4742,16 @@
                         },
                         "type": "array",
                         "title": "Certificates"
+                    },
+                    "claim": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/ClaimOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "type": "object",
@@ -4617,7 +4776,8 @@
                     "record_sha256",
                     "meanings",
                     "superseded",
-                    "certificates"
+                    "certificates",
+                    "claim"
                 ],
                 "title": "ReviewOut"
             },

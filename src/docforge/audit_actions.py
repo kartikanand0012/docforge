@@ -42,6 +42,8 @@ ACTIONS: dict[str, Action] = {
     "review.signed": Action(
         "Review signed", ("outcome", "version_no", "record_sha256", "overridden")
     ),
+    "review.claimed": Action("Review started", ("version_no",)),
+    "review.taken_over": Action("Review taken over", ("from_reviewer",)),
     # Knowledge bases
     "collection.created": Action("Knowledge base made", ("name",)),
     "collection.renamed": Action("Knowledge base renamed", ("name",)),

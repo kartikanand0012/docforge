@@ -240,6 +240,19 @@ class Review(Base):
     signed_at: Mapped[datetime] = _created_at()
 
 
+class ReviewClaim(Base):
+    """Who has a document open for review now: a lease, renewed while their screen is open.
+    One per document; ignored once `expires_at` has passed."""
+
+    __tablename__ = "review_claims"
+
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("reviewers.id"))
+    claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class ApiKey(Base):
     """A credential for a system. Only a hash of its secret is kept."""
 

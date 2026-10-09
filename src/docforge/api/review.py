@@ -21,6 +21,8 @@ from docforge.parsing.base import ParseError
 from docforge.review.service import (
     AlreadySigned,
     ApprovalBlocked,
+    ClaimedByOther,
+    ClaimView,
     NotAuthenticated,
     NotPermitted,
     NotReviewable,
@@ -29,6 +31,7 @@ from docforge.review.service import (
     ReviewDetail,
     ReviewerLocked,
     ReviewService,
+    TakeOverRefused,
 )
 
 # 403, not 401: the caller's session is fine, only the PIN re-entered for this action failed.
@@ -45,6 +48,14 @@ class CorrectionIn(_In):
     reason: str = Field(min_length=1, max_length=2000)
     email: str = Field(max_length=320)
     pin: str = Field(max_length=64)
+    # The `record_sha256` of the record the reviewer was shown, if the caller sends it: a
+    # correction made to a record that has changed since is refused.
+    expected_record_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+
+class ClaimIn(_In):
+    # Take the review from whoever has it open now: administrators only.
+    take_over: bool = False
 
 
 class SignIn(_In):
@@ -72,6 +83,14 @@ class QueueItemOut(BaseModel):
     created_at: datetime
     reasons: list[str]
     match_status: str
+    claimed_by: str | None  # another reviewer who has it open now
+
+
+class ClaimOut(BaseModel):
+    reviewer_name: str
+    claimed_at: datetime
+    expires_at: datetime
+    mine: bool  # held by the caller
 
 
 class CorrectionOut(BaseModel):
@@ -116,6 +135,7 @@ class ReviewOut(BaseModel):
     meanings: dict[str, str]
     superseded: bool
     certificates: list[dict[str, str]]
+    claim: ClaimOut | None  # who has it open now, while their claim lasts
 
 
 def _review_out(detail: ReviewDetail) -> ReviewOut:
@@ -141,7 +161,12 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
         meanings=detail.meanings,
         superseded=detail.superseded,
         certificates=list(detail.certificates),
+        claim=_claim_out(detail.claim) if detail.claim else None,
     )
+
+
+def _claim_out(claim: ClaimView) -> ClaimOut:
+    return ClaimOut(**vars(claim))
 
 
 def _errors(error: Exception) -> HTTPException:
@@ -160,9 +185,14 @@ def _errors(error: Exception) -> HTTPException:
     if isinstance(error, AlreadySigned):
         return HTTPException(409, "This version is already signed and can no longer change.")
     if isinstance(error, RecordChanged):
+        doing = error.args[0] if error.args else "signing"
         return HTTPException(
-            409, "The record changed after you opened it. Look at it again before signing."
+            409, f"The record changed after you opened it. Look at it again before {doing}."
         )
+    if isinstance(error, ClaimedByOther):
+        return HTTPException(409, str(error))
+    if isinstance(error, TakeOverRefused):
+        return HTTPException(403, "Only an administrator can take over a review.")
     if isinstance(error, ApprovalBlocked):
         return HTTPException(409, f"{str(error)[0].upper()}{str(error)[1:]}.")
     if isinstance(error, NotReviewable):
@@ -182,11 +212,16 @@ Reader = Annotated[Principal, Depends(require("documents:read"))]
 Reviewing = Annotated[Principal, Depends(require("review"))]
 
 
-def _person(principal: Principal) -> uuid.UUID:
-    """Corrections and signatures are made by a signed-in person, as themselves."""
+def _person(principal: Principal, doing: str = "correct or sign") -> uuid.UUID:
+    """Corrections, signatures and claims are made by a signed-in person, as themselves."""
     if principal.kind != "session":
-        raise HTTPException(403, "Only a signed-in reviewer can correct or sign.")
+        raise HTTPException(403, f"Only a signed-in reviewer can {doing}.")
     return principal.subject_id
+
+
+def _viewer(principal: Principal) -> uuid.UUID | None:
+    """The signed-in reviewer asking, if it is one: whose claims are `mine`."""
+    return principal.subject_id if principal.kind == "session" else None
 
 
 def review_router(
@@ -202,15 +237,43 @@ def review_router(
         """Documents waiting for a person, oldest first."""
         return [
             QueueItemOut(**{**vars(i), "reasons": list(i.reasons)})
-            for i in review.queue(principal.tenant_id)
+            for i in review.queue(principal.tenant_id, viewer=_viewer(principal))
         ]
 
     @router.get("/documents/{document_id}/review", response_model=ReviewOut)
     def review_detail(document_id: uuid.UUID, principal: Reviewing) -> ReviewOut:
         try:
-            return _review_out(review.detail(principal.tenant_id, document_id))
+            return _review_out(
+                review.detail(principal.tenant_id, document_id, viewer=_viewer(principal))
+            )
         except Exception as error:
             raise _errors(error) from error
+
+    @router.post("/documents/{document_id}/claim", response_model=ClaimOut)
+    def claim(document_id: uuid.UUID, body: ClaimIn, principal: Reviewing) -> ClaimOut:
+        """Claim the review for a few minutes, or renew the claim; call again to keep it.
+
+        While another reviewer's claim lasts it is returned unchanged (`mine` false), and
+        their changes alone are accepted; an administrator may `take_over`.
+        """
+        person = _person(principal, "claim a review")
+        try:
+            claimed = review.claim(
+                principal.tenant_id, document_id, reviewer_id=person, take_over=body.take_over
+            )
+        except Exception as error:
+            raise _errors(error) from error
+        return _claim_out(claimed)
+
+    @router.delete("/documents/{document_id}/claim", status_code=204)
+    def release(document_id: uuid.UUID, principal: Reviewing) -> Response:
+        """End the caller's claim. Someone else's is left alone (still 204)."""
+        person = _person(principal, "claim a review")
+        try:
+            review.release(principal.tenant_id, document_id, reviewer_id=person)
+        except Exception as error:
+            raise _errors(error) from error
+        return Response(status_code=204)
 
     @router.post("/documents/{document_id}/corrections", response_model=ReviewOut)
     def correct(
@@ -229,6 +292,7 @@ def review_router(
                 email=body.email,
                 pin=body.pin,
                 acting_reviewer_id=person,
+                expected_record_sha256=body.expected_record_sha256,
             )
         except Exception as error:
             if isinstance(error, NotAuthenticated | ReviewerLocked):

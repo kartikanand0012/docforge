@@ -58,6 +58,7 @@ from docforge.parsing.base import (
 )
 from docforge.parsing.cache import NotCached
 from docforge.parsing.pdf import pdf_page_count
+from docforge.review.claims import refuse_if_claimed
 from docforge.stages import stage_listener
 from docforge.storage import (
     ObjectNotFound,
@@ -402,15 +403,22 @@ class DocumentService:
 
     @scoped
     def reprocess(
-        self, *, tenant_id: uuid.UUID, document_id: uuid.UUID, actor: str
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        document_id: uuid.UUID,
+        actor: str,
+        reviewer_id: uuid.UUID | None = None,
     ) -> DocumentVersion:
         """Queue a new version of an existing document. Earlier versions are kept.
 
         Raises `ReprocessInProgress` while the newest version is queued or running, so a
-        document has at most one version in flight.
+        document has at most one version in flight, and `ClaimedByOther` while a reviewer
+        other than `reviewer_id` (the signed-in person asking, if any) has it open.
         """
         with self._sessions.begin() as session:
             document = self._document(session, tenant_id, document_id, lock=True)
+            refuse_if_claimed(session, document.id, reviewer_id, _now())
             newest = session.scalar(
                 select(DocumentVersion)
                 .where(DocumentVersion.document_id == document.id)
