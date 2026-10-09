@@ -407,7 +407,7 @@ def _knowledge_bases(corpus: Any) -> dict[tuple[str, str], _Base]:
             ("certificates", [d for d, key in mine.items() if key.startswith("coa_")]),
         ):
             created = collections.create(tenant_id, name, actor="eval")
-            collections.add(tenant_id, created.id, wanted)
+            collections.add(tenant_id, created.id, wanted, actor="eval")
             bases[(tenant, name)] = _Base(created.id, frozenset(wanted))
     return bases
 

@@ -424,6 +424,7 @@ class AgentTools:
                     "page": hit.page,
                     "text": sent,
                     "score": round(hit.score, 4),
+                    "matched_words": hit.matched_words,
                     "withheld": withheld,
                     "truncated": cut,
                 }

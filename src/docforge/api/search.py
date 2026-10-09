@@ -24,6 +24,9 @@ class HitOut(BaseModel):
     page: int
     text: str
     score: float
+    # True: the passage holds at least one of the question's words. False: it is only close
+    # in meaning. When no result holds them, nothing printed the words asked for.
+    matched_words: bool
     boxes: list[dict[str, Any]]
 
 

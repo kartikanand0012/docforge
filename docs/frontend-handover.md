@@ -167,8 +167,13 @@ The heart of the product. Needs:
 ### 5.6 Search - `/search`
 `GET /v1/search?q=&mode=hybrid|keyword&k=&doc_type=&document_id=&collection_id=` ->
 `{query, mode, words_only, results: [{document_id, filename, doc_type, page, text, score,
-boxes}]}`. `words_only: true` means meaning-based search was unavailable and only words were
-matched: say so. Link each result to its page with the boxes drawn.
+matched_words, boxes}]}`. `words_only: true` means meaning-based search was unavailable and
+only words were matched: say so. `matched_words` is true when the passage holds at least one
+of the query's words ("Contains your words") and false when it is only close in meaning
+("Similar in meaning"); when no result has it, nothing printed the words: say "No passage
+contains these words; closest in meaning:" rather than showing them as finds. Passages
+printing a code the query names always come first. Link each result to its page with the
+boxes drawn.
 
 ### 5.7 Chat - `/chat` (and inside documents and knowledge bases)
 - `POST /v1/chat` `{question, document_id?, collection_id?, conversation_id?}` -> `AnswerOut`:

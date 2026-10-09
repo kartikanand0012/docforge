@@ -3709,6 +3709,10 @@
                         "type": "number",
                         "title": "Score"
                     },
+                    "matched_words": {
+                        "type": "boolean",
+                        "title": "Matched Words"
+                    },
                     "boxes": {
                         "items": {
                             "additionalProperties": true,
@@ -3727,6 +3731,7 @@
                     "page",
                     "text",
                     "score",
+                    "matched_words",
                     "boxes"
                 ],
                 "title": "HitOut"

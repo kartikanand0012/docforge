@@ -15,6 +15,7 @@ Row locks are always taken in the order document, version, then the audit lock.
 
 import hashlib
 import logging
+import re
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -247,11 +248,46 @@ def current_match(
 _MATCH_CANDIDATES = 20
 
 
-def _parties(data: Mapping[str, Any], *, invoice: bool) -> tuple[object, object]:
-    """(supplier GSTIN, buyer GSTIN) from a stored invoice or purchase-order extraction."""
-    supplier = (data.get("seller") or {}).get("gstin") if invoice else data.get("supplier_gstin")
-    buyer = (data.get("buyer") or {}).get("gstin")
-    return (supplier or {}).get("value") or None, (buyer or {}).get("value") or None
+@dataclass(frozen=True)
+class _Parties:
+    supplier_gstin: str | None
+    supplier_name: str | None  # as compared: see `_company`
+    buyer_gstin: str | None
+
+    def pair_with(self, other: "_Parties") -> bool:
+        """The same buyer by GSTIN, and the same supplier: by GSTIN when both print one, by
+        name when either does not (many orders leave out the supplier's GSTIN)."""
+        if self.buyer_gstin is None or self.buyer_gstin != other.buyer_gstin:
+            return False
+        if self.supplier_gstin is not None and other.supplier_gstin is not None:
+            return self.supplier_gstin == other.supplier_gstin
+        return self.supplier_name is not None and self.supplier_name == other.supplier_name
+
+
+# A company's suffix written another way: "Private Limited", "Pvt. Ltd." and "pvt ltd" agree.
+_COMPANY_WORDS = {"private": "pvt", "limited": "ltd"}
+
+
+def _company(name: object) -> str | None:
+    """A company name as compared: case, full stops, commas and spacing aside."""
+    if not isinstance(name, str):
+        return None
+    words = re.sub(r"[.,]", " ", name).casefold().split()
+    return " ".join(_COMPANY_WORDS.get(word, word) for word in words) or None
+
+
+def _parties(data: Mapping[str, Any], *, invoice: bool) -> _Parties:
+    """Supplier and buyer from a stored invoice or purchase-order extraction."""
+
+    def value(field: Any) -> Any:
+        return (field or {}).get("value") or None
+
+    seller = data.get("seller") or {}
+    return _Parties(
+        supplier_gstin=value(seller.get("gstin") if invoice else data.get("supplier_gstin")),
+        supplier_name=_company(value(seller.get("name") if invoice else data.get("supplier_name"))),
+        buyer_gstin=value((data.get("buyer") or {}).get("gstin")),
+    )
 
 
 def _now() -> datetime:
@@ -747,8 +783,7 @@ class DocumentService:
                 (
                     row
                     for row in candidates
-                    if None not in parties
-                    and _parties(row[1].data, invoice=not is_invoice) == parties
+                    if parties.pair_with(_parties(row[1].data, invoice=not is_invoice))
                 ),
                 None,
             )

@@ -42,6 +42,12 @@ ACTIONS: dict[str, Action] = {
     "review.signed": Action(
         "Review signed", ("outcome", "version_no", "record_sha256", "overridden")
     ),
+    # Knowledge bases
+    "collection.created": Action("Knowledge base made", ("name",)),
+    "collection.renamed": Action("Knowledge base renamed", ("name",)),
+    "collection.deleted": Action("Knowledge base deleted", ("name",)),
+    "collection.documents_added": Action("Documents added to a knowledge base", ("count",)),
+    "collection.documents_removed": Action("Documents removed from a knowledge base", ("count",)),
     # Keys and webhooks
     "api_key.created": Action("API key made", ("name", "role")),
     "api_key.revoked": Action("API key revoked", ("name",)),

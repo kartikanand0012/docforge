@@ -17,6 +17,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from docforge import audit
 from docforge.db.models import Collection, CollectionDocument, Document
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
@@ -86,6 +87,7 @@ class CollectionService:
                 )
                 session.add(collection)
                 session.flush()
+                self._audit(session, collection, actor, "collection.created", name=collection.name)
                 return self._summary(collection, 0)
         except IntegrityError as error:
             if _is_name_clash(error):
@@ -116,6 +118,8 @@ class CollectionService:
         collection_id: uuid.UUID,
         name: str,
         description: str | None = None,
+        *,
+        actor: str,
     ) -> CollectionSummary:
         try:
             with self._sessions.begin() as session:
@@ -124,6 +128,7 @@ class CollectionService:
                 if description is not None:
                     collection.description = description.strip()
                 session.flush()
+                self._audit(session, collection, actor, "collection.renamed", name=collection.name)
                 n = session.scalar(
                     select(func.count()).where(CollectionDocument.collection_id == collection.id)
                 )
@@ -134,15 +139,22 @@ class CollectionService:
             raise
 
     @scoped
-    def delete(self, tenant_id: uuid.UUID, collection_id: uuid.UUID) -> None:
+    def delete(self, tenant_id: uuid.UUID, collection_id: uuid.UUID, *, actor: str) -> None:
         """The knowledge base goes; its documents stay. Conversations about it remain to be
         read, but can no longer be continued."""
         with self._sessions.begin() as session:
-            session.delete(self._find(session, tenant_id, collection_id))
+            collection = self._find(session, tenant_id, collection_id)
+            self._audit(session, collection, actor, "collection.deleted", name=collection.name)
+            session.delete(collection)
 
     @scoped
     def add(
-        self, tenant_id: uuid.UUID, collection_id: uuid.UUID, document_ids: Sequence[uuid.UUID]
+        self,
+        tenant_id: uuid.UUID,
+        collection_id: uuid.UUID,
+        document_ids: Sequence[uuid.UUID],
+        *,
+        actor: str,
     ) -> int:
         """All of them or none: raises `DocumentsNotFound` if any is not the organisation's.
         Returns how many were not already in it."""
@@ -150,7 +162,7 @@ class CollectionService:
         if len(wanted) > MAX_DOCUMENTS_PER_CALL:
             raise ValueError(f"at most {MAX_DOCUMENTS_PER_CALL} documents at a time")
         with self._sessions.begin() as session:
-            self._find(session, tenant_id, collection_id)
+            collection = self._find(session, tenant_id, collection_id)
             found = set(
                 session.scalars(
                     select(Document.id).where(
@@ -161,6 +173,7 @@ class CollectionService:
             if missing := [d for d in wanted if d not in found]:
                 raise DocumentsNotFound(missing)
             if not wanted:
+                self._audit(session, collection, actor, "collection.documents_added", count=0)
                 return 0
             try:
                 added = session.execute(
@@ -180,21 +193,32 @@ class CollectionService:
                 ).all()
             except IntegrityError as error:  # a document deleted since it was found
                 raise DocumentsNotFound(wanted) from error
+            self._audit(session, collection, actor, "collection.documents_added", count=len(added))
             return len(added)
 
     @scoped
     def remove(
-        self, tenant_id: uuid.UUID, collection_id: uuid.UUID, document_ids: Sequence[uuid.UUID]
+        self,
+        tenant_id: uuid.UUID,
+        collection_id: uuid.UUID,
+        document_ids: Sequence[uuid.UUID],
+        *,
+        actor: str,
     ) -> None:
         if len(document_ids) > MAX_DOCUMENTS_PER_CALL:
             raise ValueError(f"at most {MAX_DOCUMENTS_PER_CALL} documents at a time")
         with self._sessions.begin() as session:
-            self._find(session, tenant_id, collection_id)
-            session.execute(
-                delete(CollectionDocument).where(
+            collection = self._find(session, tenant_id, collection_id)
+            removed = session.execute(
+                delete(CollectionDocument)
+                .where(
                     CollectionDocument.collection_id == collection_id,
                     CollectionDocument.document_id.in_(list(document_ids)),
                 )
+                .returning(CollectionDocument.document_id)
+            ).all()
+            self._audit(
+                session, collection, actor, "collection.documents_removed", count=len(removed)
             )
 
     @scoped
@@ -237,6 +261,22 @@ class CollectionService:
         if collection is None:
             raise CollectionNotFound(collection_id)
         return collection
+
+    @staticmethod
+    def _audit(
+        session: Session, collection: Collection, actor: str, action: str, **details: str | int
+    ) -> None:
+        """In the change's own transaction: the entry exists if and only if the change does.
+        Only a count of documents, not which: one call may name hundreds."""
+        audit.append(
+            session,
+            tenant_id=collection.tenant_id,
+            actor=actor,
+            action=action,
+            target_type="collection",
+            target_id=str(collection.id),
+            details=dict(details),
+        )
 
     @staticmethod
     def _summary(collection: Collection, documents: int) -> CollectionSummary:

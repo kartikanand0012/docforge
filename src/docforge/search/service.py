@@ -99,6 +99,8 @@ class SearchHit:
     boxes: tuple[dict[str, Any], ...]
     # Each block of the chunk with its text, page and box: where a quote from it is shown.
     blocks: tuple[dict[str, Any], ...] = ()
+    # Found by its words (it holds at least one of the question's), not only by its meaning.
+    matched_words: bool = False
 
 
 class SearchHits(list[SearchHit]):
@@ -264,6 +266,7 @@ class SearchService:
         collection_id: uuid.UUID | None = None,
     ) -> SearchHits:
         ranked: list[list[uuid.UUID]] = []
+        by_words: set[uuid.UUID] = set()
         # Embedded before a connection is taken, so a slow embedding holds no database session.
         vector = None
         words_only = False
@@ -289,13 +292,16 @@ class SearchService:
                 ranked.append(
                     self._keyword(session, tenant_id, query, doc_type, document_id, collection_id)
                 )
+                by_words = set(ranked[0])
             if vector is not None:
                 ranked.append(
                     self._vector(session, tenant_id, vector, doc_type, document_id, collection_id)
                 )
             # A question naming a code is answered by the documents that print it: their
-            # words count double against documents that are only similar in meaning.
-            weights = [2.0 if mode == "hybrid" and _codes(_words(query)) else 1.0, 1.0]
+            # words count double against documents that are only similar in meaning, and
+            # each of them ranks above every one found by meaning alone.
+            named_code = mode == "hybrid" and bool(_codes(_words(query)))
+            weights = [2.0 if named_code else 1.0, 1.0]
             scores: dict[uuid.UUID, float] = {}
             for weight, ranking in zip(weights, ranked, strict=False):
                 for rank, chunk_id in enumerate(ranking, start=1):
@@ -305,8 +311,15 @@ class SearchService:
                 chunk_id: n
                 for n, chunk_id in enumerate(dict.fromkeys(i for r in ranked for i in r))
             }
-            top = sorted(scores, key=lambda chunk_id: (-scores[chunk_id], order[chunk_id]))[:k]
-            return SearchHits(self._hits(session, top, scores), words_only=words_only)
+            top = sorted(
+                scores,
+                key=lambda chunk_id: (
+                    named_code and chunk_id not in by_words,
+                    -scores[chunk_id],
+                    order[chunk_id],
+                ),
+            )[:k]
+            return SearchHits(self._hits(session, top, scores, by_words), words_only=words_only)
 
     def _query_vector(self, query: str) -> list[float]:
         """A question's vector; the most recent ones are kept, so a repeat costs no call."""
@@ -438,7 +451,10 @@ class SearchService:
 
     @staticmethod
     def _hits(
-        session: Session, chunk_ids: list[uuid.UUID], scores: dict[uuid.UUID, float]
+        session: Session,
+        chunk_ids: list[uuid.UUID],
+        scores: dict[uuid.UUID, float],
+        by_words: set[uuid.UUID],
     ) -> list[SearchHit]:
         if not chunk_ids:
             return []
@@ -498,6 +514,7 @@ class SearchService:
                         for b in chunk.block_ids
                         if b in found
                     ),
+                    matched_words=chunk_id in by_words,
                 )
             )
         return hits

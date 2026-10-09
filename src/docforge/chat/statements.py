@@ -10,6 +10,9 @@ The model answers in statements, each with its citations. A statement is kept on
 So one real quote can no longer carry a statement whose figure it does not hold. Its wording
 must be the passages' too (most of its own words found there), and each figure must stand
 beside what the statement calls it (`_labelled`).
+
+A statement kept shows only the quotes that hold one of its figures (all of them if it states
+none): a real quote about something else is not its evidence.
 """
 
 import re
@@ -85,15 +88,35 @@ def _squashed(text: str) -> str:
     return re.sub(r"\s+", "", normalise(text))
 
 
+def _figures(statement: str) -> tuple[set[str], set[Decimal]]:
+    """The codes and numbers a statement states; a code's own digits go with the code."""
+    statement = _plain(statement)
+    return _codes(statement), _numbers(CODE.sub(" ", statement))
+
+
+def _relevant(statement: str, quotes: Sequence[tuple[int, str]]) -> tuple[tuple[int, str], ...]:
+    """The quotes holding at least one of the statement's figures: a found quote that holds
+    none shows nothing the statement says. All of them if it states no figure, or if none
+    would be left."""
+    codes, numbers = _figures(statement)
+    if not codes and not numbers:
+        return tuple(quotes)
+    held = tuple(
+        (index, quote)
+        for index, quote in quotes
+        if any(code in _squashed(_plain(quote)) for code in codes)
+        or numbers & _numbers(_plain(quote))
+    )
+    return held or tuple(quotes)
+
+
 def _supported(statement: str, quotes: Sequence[str], given: str) -> bool:
     """Every figure of the statement is in its quotes or in what it repeats, and at least one
     is in its quotes: a figure only repeated from the question ("is the total 5,000?") does
     not stand on its own. Figures are matched against the quotes together, not each against
     the label beside it."""
-    statement = _plain(statement)
     quoted, repeated = _plain(" ".join(quotes)), _plain(given)
-    codes = _codes(statement)
-    numbers = _numbers(CODE.sub(" ", statement))  # a code's own digits go with the code
+    codes, numbers = _figures(statement)
     if not codes and not numbers:
         return True
     in_quotes, in_given = _squashed(quoted), _squashed(repeated)
@@ -298,7 +321,8 @@ def check_statements(
         figures_ok = bool(text and found) and _supported(text, [q for _, q in found], given)
         wording_ok = figures_ok and _wording_supported(text, [p.text for p in read], given)
         if figures_ok and wording_ok and _labelled(text, read, given):
-            checked.kept.append(KeptStatement(text=text, citations=tuple(found)))
+            # A quote found but beside the point is left off, not counted as dropped.
+            checked.kept.append(KeptStatement(text=text, citations=_relevant(text, found)))
         else:
             checked.dropped_statements += 1
             if text and found:
