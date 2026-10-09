@@ -230,3 +230,23 @@ def test_a_different_hsn_on_a_matched_line_is_a_warning(pair: Pair) -> None:
     assert [(d.code, d.severity) for d in found] == [("line.hsn", "warning")]
     assert (found[0].invoice_path, found[0].order_path) == ("lines[1].hsn", "lines[1].hsn")
     assert found[0].order_value == "99999999"
+
+
+def test_an_order_without_the_supplier_gstin_but_with_its_name_is_a_warning(pair: Pair) -> None:
+    # Many orders print only the supplier's name; the pair was made by that name.
+    pair.order["supplier_gstin"] = printed(None)
+    pair.order["supplier_name"] = printed(pair.invoice["seller"]["name"]["text"].upper() + ".")
+
+    (found,) = pair.match()
+
+    assert (found.code, found.severity) == ("supplier.by_name", "warning")
+    assert (found.invoice_path, found.order_path) == ("seller.name", "supplier_name")
+
+
+def test_an_order_without_the_supplier_gstin_and_another_name_needs_review(pair: Pair) -> None:
+    pair.order["supplier_gstin"] = printed(None)
+    pair.order["supplier_name"] = printed("Some Other Traders")
+
+    (found,) = pair.match()
+
+    assert (found.code, found.severity) == ("supplier.unchecked", "error")
