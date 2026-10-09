@@ -276,6 +276,9 @@ def test_the_header_from_anyone_else_is_refused_not_ignored(platform: Platform) 
     # Not even into its own workspace.
     own = platform.looking_at(platform.asha_ws, platform.asha)
     assert platform.api.get(f"/v1/documents/{platform.asha_doc}", headers=own).status_code == 403
+    # Nor to the agents' server, which reads keys on its own.
+    looking = platform.looking_at(platform.asha_ws)
+    assert platform.api.get("/v1/mcp", headers=looking).status_code == 403
     # Without a credential the header changes nothing about the 401.
     bare = {HEADER: str(platform.asha_ws)}
     assert platform.api.get("/v1/documents", headers=bare).status_code in (401, 403)

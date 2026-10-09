@@ -13,6 +13,7 @@ from docforge.db.session import make_engine, make_session_factory
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.limits import DatabaseLimits
 from docforge.mcp_server.tools import AgentTools
+from docforge.platform import PlatformService
 from docforge.telemetry import configure_tracing, settings_prices
 from docforge.wiring import (
     build_authenticator,
@@ -60,6 +61,7 @@ def create_default_app() -> FastAPI:
         limits=limits,
         agents=agents,
         audit_log=AuditLogService(sessions),
+        platform=PlatformService(sessions, settings.prices()),
         signup_enabled=settings.signup_enabled,
         signups_per_day=settings.signups_per_day,
         signups_per_address_per_hour=settings.signups_per_address_per_hour,

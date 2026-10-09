@@ -21,11 +21,19 @@ from docforge import __version__
 from docforge.accounts import MemberCaps
 from docforge.api.agents import agents_router
 from docforge.api.audit import audit_router
-from docforge.api.auth import accounts_router, require, sessions_router
+from docforge.api.auth import (
+    NOT_ALLOWED,
+    READ_METHODS,
+    WORKSPACE_HEADER,
+    accounts_router,
+    require,
+    sessions_router,
+)
 from docforge.api.chat import chat_router
 from docforge.api.collections import collections_router
 from docforge.api.documents import documents_router
 from docforge.api.exports import exports_router
+from docforge.api.platform import platform_router
 from docforge.api.review import review_router
 from docforge.api.search import search_router
 from docforge.api.uploads import (
@@ -48,6 +56,7 @@ from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.mcp_server.server import mount as mount_mcp
 from docforge.mcp_server.tools import AgentTools
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
+from docforge.platform import PlatformService
 from docforge.review.service import ReviewService
 from docforge.search.service import SearchService
 from docforge.telemetry import traced
@@ -124,6 +133,7 @@ def create_app(
     signups_per_day: int = 200,
     signups_per_address_per_hour: int = 5,
     member_caps: MemberCaps | None = None,
+    platform: PlatformService | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     # FastAPI's own telemetry is off: its request spans record the query string (a search
@@ -156,6 +166,23 @@ def create_app(
         declared = request.headers.get("content-length", "")
         if declared.isdigit() and int(declared) > max_upload_bytes + MULTIPART_OVERHEAD:
             return JSONResponse({"detail": too_large_message(max_upload_bytes)}, status_code=413)
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def read_only_when_looking_in(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # Looking into another workspace is for reading the API: any other method, any route
+        # outside it, and the MCP server are refused before they run.
+        # Who may look at all is checked with the credential (`current_principal`).
+        path = request.url.path
+        if WORKSPACE_HEADER in request.headers and (
+            request.method not in READ_METHODS
+            or not path.startswith("/v1/")
+            or path == "/v1/mcp"  # the agents' server authenticates keys on its own
+            or path.startswith("/v1/mcp/")
+        ):
+            return JSONResponse({"detail": NOT_ALLOWED}, status_code=403)
         return await call_next(request)
 
     @app.middleware("http")
@@ -229,6 +256,9 @@ def create_app(
         app.include_router(collections_router(collections))
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
+    if platform is not None and authenticator is not None:
+        # Behind the owner's functions, which serve every workspace: platform admins only.
+        app.include_router(platform_router(platform))
     if agents is not None and authenticator is not None:
         # AI agents, through the MCP server, with keys administrators make.
         app.include_router(agents_router(authenticator, agents))

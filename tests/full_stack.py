@@ -22,6 +22,7 @@ from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.limits import LocalLimits
 from docforge.mcp_server.tools import AgentTools
+from docforge.platform import PlatformService
 from docforge.review.service import ReviewService
 from docforge.search.embeddings import FakeEmbedder
 from docforge.search.service import SearchService
@@ -63,6 +64,7 @@ class FullStack:
             collections=self.collections, limits=self.limits, agents=self.tools,
             audit_log=AuditLogService(sessions), signup_enabled=signup,
             signups_per_day=signups_per_day, member_caps=caps or MemberCaps(),
+            platform=PlatformService(sessions),
         )  # fmt: skip
         self.client = TestClient(self.app)
 

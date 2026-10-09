@@ -34,6 +34,12 @@ case "${DOCFORGE_ROLE:-api}" in
       printf '%s\n' "$OWNER_PIN" | python -m docforge.review add-reviewer --admin \
         --tenant "$OWNER_ORG" --name "${OWNER_NAME:-Owner}" --email "$OWNER_EMAIL" || true
     fi
+    # The platform administrator (this deployment's owner), made from an existing reviewer:
+    # it may see every workspace's figures and look into one, read-only. Safe to repeat.
+    if [ -n "${PLATFORM_ADMIN_TENANT:-}" ] && [ -n "${PLATFORM_ADMIN_EMAIL:-}" ]; then
+      python -m docforge.review make-platform-admin --tenant "$PLATFORM_ADMIN_TENANT" \
+        --email "$PLATFORM_ADMIN_EMAIL" || true
+    fi
     echo "admin: done"
     ;;
   *)
