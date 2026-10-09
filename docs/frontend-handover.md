@@ -8,7 +8,7 @@ main requests and answers, live updates, errors, limits and states.
   with its request and response schemas). Generate a typed client from it, or read it at
   `/docs` on a running API. This document explains what the schema cannot: flows, states and
   rules.
-- **Backend state:** `main` after C16 (2026-10-08). 53 endpoints under `/v1`, plus the MCP
+- **Backend state:** `v1-real-world` after the final sprint (2026-10-10): accounts, members, the platform administrator, deleting and costs (section 14). Endpoints under `/v1`, plus the MCP
   server for AI agents at `/v1/mcp` (not in the OpenAPI file; see section 13).
 
 ---
@@ -68,6 +68,8 @@ Browser  ->  Next.js app (same origin)  ->  /api/v1/... route handler  ->  DocFo
 | Who | How they sign in | Role | May |
 | --- | --- | --- | --- |
 | A person | Organisation name, email and PIN (`POST /v1/sessions` via the web app) | `reviewer` or `admin` | reviewer: read, review and sign; admin: everything |
+| A self-service account's person | Email and password alone (section 14) | `member` | everything in its own private workspace except administration |
+| The platform administrator | As a person of its organisation | its role, plus `platform_admin` | the platform screens; read-only looks into any workspace (`observer`, section 14.6) |
 | A system (ERP, script) | API key `dfk_...` as `Authorization: Bearer` | `integrator` | read and upload, no review |
 | An AI agent | API key, role `reader` | `reader` | read only, and only through `/v1/mcp` |
 
@@ -79,7 +81,7 @@ questions, AI agents).
   (8 hours). Wrong details: 401 with one message whatever was wrong. Repeated failures: 429
   with `Retry-After`; five wrong PINs lock a reviewer for 15 minutes.
 - **Sign out:** `DELETE /v1/sessions/current`.
-- **Who is signed in:** `GET /v1/sessions/current` -> `{kind, name, email, role, organisation}` (`kind` is `session` for a person; `email` is null for a key). Use it for the person's name and to show administration only when `role` is `admin`.
+- **Who is signed in:** `GET /v1/sessions/current` -> `{kind, name, email, role, organisation, credential, platform_admin, workspace}` (`kind` is `session` for a person; `email` and `credential` are null for a key). Use it for the person's name, to say "PIN" or "password" (`credential`), to show administration only when `role` is `admin`, and the platform screens only when `platform_admin` (section 14).
 - **Correcting and signing ask for the PIN again** (`email` + `pin` in the body): a signature
   is a deliberate act, not a click.
 - Admin-only screens answer **403** to others; show "Only administrators can see this page."
@@ -391,3 +393,114 @@ themselves); `prefers-color-scheme` respected.
 `list_knowledge_bases`, `list_documents`, `search_documents`, `ask` (the same checked,
 cited answers as chat), `get_document` (fields), `get_page_text`. The agents page (5.10) makes
 the keys; nothing else in the UI is needed.
+
+---
+
+## 14. Accounts, members, the platform administrator, costs and deleting (final sprint)
+
+Everything here is in `docs/api/openapi.json`. **The rule behind all of it: no one can learn
+anything about another person's documents.** Each self-service account is its own private
+workspace (a tenant), separated by the same row-level security as organisations; a deleted
+document is invisible to the application's own database role.
+
+### 14.1 Sign up - `POST /v1/accounts`
+Only when the deployment sets `SIGNUP_ENABLED=true`; otherwise **404** (hide the sign-up link
+when it is 404). Body `{"name": 1..120 chars, "email", "password": 10..128 chars, not all
+spaces}` -> **201** `{token, expires_in_seconds}`: the person is signed in, as after
+`POST /v1/sessions`. It makes a private workspace shown as "<name>'s workspace" with the
+person in it as a `member`.
+
+| Status | `detail` | When |
+| --- | --- | --- |
+| 409 | `An account with this email already exists.` | the email (case and spaces aside) has an account |
+| 422 | a sentence (e.g. `A password is 10 to 128 characters.`, `That is not an email address.`) or the usual validation list | a field is not acceptable; extra fields are refused |
+| 429 + `Retry-After` | `Too many accounts were made from this address. Try again later.` | 5 attempts an hour per client address (every attempt counts) |
+| 429 + `Retry-After` | `New accounts are paused for today. Try again tomorrow.` | `SIGNUPS_PER_DAY` (default 200) accounts in the last 24 hours |
+
+### 14.2 Sign in - `POST /v1/sessions`
+- An account's person: `{"email", "password"}` (no `tenant`). Wrong email or wrong password:
+  **401** `The email or password is not right.` - the same for both, on purpose.
+- An organisation's reviewer, as before: `{"tenant", "email", "pin"}`; 401
+  `The organisation, email or PIN is not right.`
+- Send exactly one of `pin` and `password` (either field carries either secret); both or
+  neither is 422. Five wrong secrets lock the person for 15 minutes; too many failures from one
+  address give 429 with `Retry-After`.
+- Correcting and signing still ask for the secret again: a member sends its **password** in
+  the same `pin` field (up to 128 characters) with its `email`.
+
+### 14.3 Who is signed in - `GET /v1/sessions/current`
+`{kind, name, email, role, organisation, credential, platform_admin, workspace}`:
+- `role`: `member` (an account's person), `reviewer`, `admin`, `integrator`, `reader`, or
+  `observer` (the platform administrator looking into a workspace, 14.6).
+- `credential`: `"password"` (say "password" in the sign-in, correction and signing forms) or
+  `"pin"`; `null` for an API key.
+- `workspace`: `"personal"` or `"organisation"`. `organisation` is the name to show - for a
+  personal workspace "<name>'s workspace".
+- `platform_admin`: show the platform screens (14.6) only when true.
+
+### 14.4 What a member may do
+Role `member` = `documents:read`, `documents:write`, `review`: upload, list and read its
+documents, delete them, reprocess, correct, sign, claim, search, chat, knowledge bases, exports
+and the eval page. **403** on every administrator's route: `/v1/api-keys*`,
+`/v1/agent-calls`, `/v1/audit`, `/v1/audit/filters`, `/v1/audit/export.csv`,
+`/v1/questions/unanswered`, `/v1/webhooks*`, `/v1/platform/*`, and the stateless preview
+`POST /v1/extractions`. Hide those in the navigation for `member`.
+
+A free workspace's caps (organisations are not held to them), each **429** with this `detail`:
+
+| Cap (setting, default) | `detail` |
+| --- | --- |
+| live documents (`MEMBER_MAX_DOCUMENTS`, 30) | `This free workspace holds up to 30 documents. Delete one to upload another.` |
+| new uploads a day, UTC, deleted ones included (`MEMBER_UPLOADS_PER_DAY`, 15) | `This free workspace takes up to 15 uploads a day. Try again tomorrow.` (+ `Retry-After`, seconds to midnight UTC) |
+| questions a day, UTC (`MEMBER_QUESTIONS_PER_DAY`, 40) | `This free workspace has 40 questions a day. Try again tomorrow.` (also as the `error` event of `/v1/chat/stream`) |
+
+Uploading a file the workspace already holds is not a new upload (200, `created: false`).
+
+### 14.5 Deleting a document - `DELETE /v1/documents/{id}`
+`documents:write` (member, admin, integrator) -> **204**. **404** when unknown, already deleted
+or not the caller's; **409** while another reviewer has it claimed. The document disappears
+everywhere: lists, the queue, every `/v1/documents/{id}/...` read (404), page images, search,
+chat (it is no longer read or cited; a conversation about it answers 409, and earlier answers
+read back without its quotes), knowledge bases and their counts, exports, agents' tools,
+matching (its counterpart shows `no_counterpart`), stats and the platform figures. It is kept
+for its audit trail (`document.deleted`, "Document deleted"), and the same file can be uploaded
+again as a new document. Ask "Delete this document? It disappears from search and chat." first.
+
+### 14.6 Platform administrator (the owner)
+Made with `python -m docforge.review make-platform-admin --tenant <org> --email <email>`
+(or by the admin role with `PLATFORM_ADMIN_TENANT` and `PLATFORM_ADMIN_EMAIL`). Only that
+person's **session** reaches these; everyone else (members, organisation admins, any API
+key) gets **403**.
+
+- `GET /v1/platform/overview` -> `{"totals": {workspaces, accounts, documents, pages, signed,
+  questions, model_cost_usd, documents_last_7_days, signups_last_7_days}, "workspaces":
+  [{tenant_id, organisation, kind, owner_name, owner_email, created_at, last_active_at,
+  documents, pages, signed, questions, model_cost_usd, sign_ins}]}` - most recently active
+  first; `last_active_at` is the newest audit entry or sign-in. Counts only; deleted documents
+  are left out; no document names or contents.
+- `GET /v1/platform/activity?limit=50&before=<id>&tenant_id=<uuid>` -> `{"items": [{id,
+  occurred_at, tenant_id, organisation, actor_name, action, action_label, target_label}],
+  "next_before": int | null}`, newest first across every workspace (`limit` 1..200).
+  `target_label` is the kind of thing ("Document", "Knowledge base", "Person", ...), never a
+  name; no details are sent.
+- **Looking into a workspace (read-only):** send `X-DocForge-Workspace: <tenant_id>` with the
+  administrator's session on **GET** requests; the request is served in that workspace as
+  role `observer` (`documents:read`). Any other method with the header, any route outside
+  `/v1` and `/v1/mcp` -> **403**; the header from anyone but a platform administrator -> **403**
+  (it is never ignored); an unknown or malformed workspace -> **404** `No such workspace.`
+  The review queue and review screen (they need `review`) and administration are 403 to an
+  observer; a member's conversations are not visible to it. Each look is audited in that
+  workspace (`platform.workspace_viewed`) at most once an hour. Show a clear "Viewing <name>'s
+  workspace - read only" banner and drop the header to leave.
+
+### 14.7 Costs and the workspace's figures
+- `GET /v1/documents/{id}` adds `cost: {model_cost_usd, input_tokens, output_tokens,
+  model_calls}` over every reading of the document (thinking tokens count as output), and its
+  `document.model_cost_usd`; each item of `GET /v1/documents` has `model_cost_usd`. It is
+  `null` when a model's price is not configured (`MODEL_PRICES`): show "not priced", not $0.
+- `GET /v1/stats` (any credential that can read) -> `{documents, ready, awaiting_review,
+  signed, failed, documents_last_7_days, median_read_seconds, model_cost_usd}` for the caller's
+  workspace only, deleted documents left out. `ready` counts documents read and finished
+  (`ready` or `processed`); `awaiting_review` is the review queue's length; `median_read_seconds`
+  is from upload (or reprocess) to a finished reading, `null` before the first;
+  `model_cost_usd` covers readings and questions.
