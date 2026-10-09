@@ -241,6 +241,7 @@ def test_a_locked_sign_in_still_checks_a_password_so_it_takes_as_long(
     stack: FullStack, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import docforge.auth
+    import docforge.review.signing
 
     stack.sign_up("Asha", "asha@example.com")
     for _ in range(5):
@@ -248,7 +249,7 @@ def test_a_locked_sign_in_still_checks_a_password_so_it_takes_as_long(
             "/v1/sessions", json={"email": "asha@example.com", "password": "wrong password!"}
         )
     checked: list[str] = []
-    real = docforge.auth.verify_pin
+    real = docforge.review.signing.verify_pin
 
     def counted(secret: str, stored: str) -> bool:
         checked.append(stored)
