@@ -423,6 +423,8 @@ ADMIN_ROUTES = {
     ("GET", "/v1/webhooks/{webhook_id}/deliveries"),
     ("POST", "/v1/webhooks/{webhook_id}/test"),
     ("POST", "/v1/webhooks/{webhook_id}/deliveries/{delivery_id}/resend"),
+    ("GET", "/v1/platform/overview"),
+    ("GET", "/v1/platform/activity"),
 }
 
 
