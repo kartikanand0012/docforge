@@ -211,7 +211,7 @@ def test_the_administrator_reads_a_workspace_it_looks_into(platform: Platform) -
     listed = platform.api.get("/v1/documents", headers=looking)
     assert listed.status_code == 200
     assert [d["id"] for d in listed.json()["items"]] == [str(platform.asha_doc)]
-    for path in ("", "/extraction", "/assessment", "/timeline", "/audit", "/pages/1"):
+    for path in ("", "/extraction", "/assessment", "/review", "/timeline", "/audit", "/pages/1"):
         got = platform.api.get(f"/v1/documents/{platform.asha_doc}{path}", headers=looking)
         assert got.status_code == 200, path
     # Ben's document is not in Asha's workspace.
