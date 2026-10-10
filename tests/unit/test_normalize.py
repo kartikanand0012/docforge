@@ -130,6 +130,22 @@ def test_parse_int_accepts_western_and_indian_grouping(raw: str, expected: int) 
     assert parse_int(raw) == expected
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [("7.00", 7), ("7.0", 7), ("1,200.00", 1200), ("12,34,567.00", 1234567), ("0.00", 0)],
+)
+def test_parse_int_reads_a_count_printed_with_a_zero_fraction(raw: str, expected: int) -> None:
+    # Many invoices print quantities to two places ("7.00"); that is still a whole count.
+    assert parse_int(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw", ["7.5", "7.50", "7.05", "7.", ".00", "7.00.00", "-7.00", "12,50.00"]
+)
+def test_parse_int_does_not_round_a_fractional_count(raw: str) -> None:
+    assert parse_int(raw) is None
+
+
 @pytest.mark.parametrize("raw", ["06/0028", "06/028", "\uff10\uff16/28"])
 def test_parse_month_rejects_odd_years_and_foreign_digits(raw: str) -> None:
     assert parse_month(raw) is None

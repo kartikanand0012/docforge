@@ -51,6 +51,21 @@ def test_a_purchase_order_becomes_a_typed_record(raw_order_from_label: RawFromLa
     assert order.issues == ()
 
 
+def test_an_order_quantity_printed_with_a_zero_fraction_is_read_as_the_count(
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    raw = raw_order_from_label(LABEL)
+    for line in raw["lines"]:
+        line["qty"]["text"] = f"{line['qty']['text']}.00"
+
+    order = extract(raw)
+
+    assert [line.qty.value for line in order.lines] == [
+        line["qty"] for line in LABEL["purchase_order"]["lines"]
+    ]
+    assert order.issues == ()
+
+
 def test_the_run_records_which_prompt_and_schema_were_used(
     raw_order_from_label: RawFromLabel,
 ) -> None:

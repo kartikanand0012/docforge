@@ -200,6 +200,40 @@ def test_every_line_must_carry_its_batch_number(raw_invoice_from_label: RawFromL
     assert ("required.present", ("lines[1].batch_no",)) in failures(run(raw))
 
 
+def test_a_quantity_printed_with_a_zero_fraction_is_read_as_the_count(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    count = raw["lines"][0]["qty"]["text"]
+    raw["lines"][0]["qty"]["text"] = f"{count}.00"
+
+    invoice = extraction(raw)
+
+    assert invoice.lines[0].qty.value == int(count)
+    assert invoice.issues == ()
+    assert failures(run_rules(INVOICE_RULES, invoice)) == []
+
+
+def test_a_fractional_quantity_is_reported_as_unreadable_not_as_missing(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][0]["qty"]["text"] = "7.5"
+
+    invoice = extraction(raw)
+    results = run_rules(INVOICE_RULES, invoice)
+
+    assert invoice.lines[0].qty.value is None
+    assert [(issue.path, issue.code) for issue in invoice.issues] == [
+        ("lines[0].qty", "unparseable")
+    ]
+    [required] = [
+        r for r in results if r.rule_id == "required.present" and r.paths == ("lines[0].qty",)
+    ]
+    assert required.outcome == "failed"
+    assert required.message == "lines[0].qty is printed as '7.5' but could not be read."
+
+
 def test_a_blank_discount_is_read_as_no_discount(raw_invoice_from_label: RawFromLabel) -> None:
     raw = copy.deepcopy(raw_invoice_from_label(label("pair_002")))  # line 0 has no discount
     raw["lines"][0]["discount_pct"] = {"text": None, "block_ids": []}
