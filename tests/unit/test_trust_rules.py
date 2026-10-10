@@ -542,3 +542,33 @@ def test_a_general_goods_invoice_that_adds_up_has_no_failed_or_unevaluated_error
         for r in results
         if r.severity == "error" and r.outcome != "passed"
     ] == []
+
+
+def test_an_invoice_that_prints_no_unit_rate_has_no_taxable_value_check(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # Many invoices print quantity and line value but no unit rate column: there is nothing
+    # to multiply, so the check does not run rather than reporting a value as missing.
+    raw = camera_invoice(raw_invoice_from_label)
+    for line in raw["lines"]:
+        line["ptr"] = {"text": None, "block_ids": []}
+
+    results = run(raw)
+
+    assert "line.taxable_value" not in rule_ids(results)
+    assert [
+        (r.rule_id, r.paths, r.outcome)
+        for r in results
+        if r.severity == "error" and r.outcome != "passed"
+    ] == []
+
+
+def test_a_pharma_invoice_missing_one_lines_rate_still_reports_it(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][0]["ptr"] = {"text": None, "block_ids": []}
+
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+    assert outcomes[("line.taxable_value", "lines[0].taxable_value")] == "not_evaluated"
