@@ -283,8 +283,15 @@ def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         )
     }
     required["lines"] = (invoice.lines or None, None)
+    # Batch and expiry are required of a medicine invoice, which prints them; a general goods
+    # invoice (a camera) prints neither. Once any line prints either, even unreadably, every
+    # line must carry both, so a batch missing from one line of a medicine invoice is caught.
+    batched = any(
+        field.raw is not None for line in invoice.lines for field in (line.batch_no, line.expiry)
+    )
+    names = ("product_name", "batch_no", "expiry", "qty") if batched else ("product_name", "qty")
     for path, line in _lines(invoice):
-        for name in ("product_name", "batch_no", "expiry", "qty"):
+        for name in names:
             field = getattr(line, name)
             required[f"{path}.{name}"] = (field.value, field.raw)
     for path, (value, raw) in required.items():
@@ -294,7 +301,7 @@ def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
             if raw is None
             else f"{path} is printed as {raw!r} but could not be read."
         )
-        yield _result("required.present", "error", (path,), value is not None, message)
+        yield _result("required.present", "error", (path,), value is not None, message, 2)
 
 
 INVOICE_RULES: tuple[Callable[[InvoiceExtraction], Iterable[RuleResult]], ...] = (
