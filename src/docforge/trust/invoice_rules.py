@@ -227,6 +227,27 @@ def totals_tax(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
     )
 
 
+def _lines_total(invoice: InvoiceExtraction) -> Decimal | None:
+    """The lines' amounts added up: each as printed, or else its taxable value plus tax at its
+    rate. None when a line has neither."""
+    if not invoice.lines:
+        return None
+    intra = _intra_state(invoice)
+    total = Decimal(0)
+    for line in invoice.lines:
+        amount, taxable, rate = line.amount.value, line.taxable_value.value, line.gst_rate.value
+        if amount is None:
+            if taxable is None or rate is None:
+                return None
+            # As in line_amount: two halves within a state, one whole tax otherwise.
+            tax = (
+                2 * _money(taxable * rate / Decimal(200)) if intra else _money(taxable * rate / 100)
+            )
+            amount = taxable + tax
+        total += amount
+    return total
+
+
 def totals_grand_total(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
     totals = invoice.totals
     taxable, round_off, grand = (
@@ -234,22 +255,33 @@ def totals_grand_total(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         totals.round_off.value,
         totals.grand_total.value,
     )
+    heads = (totals.cgst.value, totals.sgst.value, totals.igst.value)
     ok, expected = None, None
+    message = ""
     if taxable is not None and grand is not None:
-        tax = sum(
-            (v for v in (totals.cgst.value, totals.sgst.value, totals.igst.value) if v is not None),
-            Decimal(0),
+        tax = sum((v for v in heads if v is not None), Decimal(0))
+        rounding = round_off or Decimal(0)
+        expected = taxable + tax + rounding
+        small_round_off = abs(rounding) <= Decimal("0.50")
+        ok = abs(expected - grand) <= _TOLERANCE and small_round_off
+        message = (
+            f"Grand total {grand} is not taxable value plus tax plus round-off ({expected}), "
+            "or the round-off is more than half a rupee."
         )
-        expected = taxable + tax + (round_off or Decimal(0))
-        ok = abs(expected - grand) <= _TOLERANCE and abs(round_off or Decimal(0)) <= Decimal("0.50")
-    yield _result(
-        "totals.grand_total",
-        "error",
-        ("totals.grand_total",),
-        ok,
-        f"Grand total {grand} is not taxable value plus tax plus round-off ({expected}), "
-        "or the round-off is more than half a rupee.",
-    )
+        # An invoice that prints its tax as one line ("GST 10%") has no tax head read, so the
+        # sum above has no tax in it. Its lines' amounts carry the tax instead; when every
+        # line has one, they are what the grand total is compared with.
+        lines_total = _lines_total(invoice) if all(v is None for v in heads) else None
+        if not ok and lines_total is not None:
+            by_lines = lines_total + rounding
+            ok = abs(by_lines - grand) <= _TOLERANCE and small_round_off
+            message = (
+                f"Grand total {grand} is not taxable value plus tax plus round-off ({expected}), "
+                "and no tax head (CGST, SGST, IGST) was read; nor is it the sum of the line "
+                f"amounts plus round-off ({by_lines})"
+                + ("." if small_round_off else ", or the round-off is more than half a rupee.")
+            )
+    yield _result("totals.grand_total", "error", ("totals.grand_total",), ok, message, version=2)
 
 
 def tax_matches_supply_type(invoice: InvoiceExtraction) -> Iterable[RuleResult]:

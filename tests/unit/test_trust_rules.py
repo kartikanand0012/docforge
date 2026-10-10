@@ -405,3 +405,15 @@ def test_with_a_tax_head_read_the_line_amounts_do_not_excuse_a_grand_total(
     set_total("cgst", "1.00")(raw)
 
     assert grand_total_result(raw).outcome == "failed"
+
+
+def test_without_tax_heads_a_line_without_an_amount_counts_its_taxable_value_and_rate(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,790.90"
+    )
+    raw["lines"][1]["amount"]["text"] = None
+    raw["lines"][1]["gst_rate"]["text"] = "10"
+
+    assert grand_total_result(raw).outcome == "passed"
