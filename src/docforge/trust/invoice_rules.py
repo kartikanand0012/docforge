@@ -230,12 +230,30 @@ def totals_tax(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         expected = sum(differences, Decimal(0))
         tax = sum((value for value in printed if value is not None), Decimal(0))
         ok = abs(expected - tax) <= _TOLERANCE
+    elif not any(value is not None for value in printed):
+        # One "GST 10%" line, read by no head: the tax is what the totals leave over the
+        # taxable value. It passes when that is the tax on the lines; when it is not, the
+        # grand total fails and says so, and this check stays not evaluated, since there is
+        # no printed head to fault.
+        lines_total = _lines_total(invoice)
+        taxables = [line.taxable_value.value for line in invoice.lines]
+        taxable, grand = totals.taxable_value.value, totals.grand_total.value
+        if (
+            lines_total is not None
+            and all(value is not None for value in taxables)
+            and taxable is not None
+            and grand is not None
+        ):
+            implied = grand - (totals.round_off.value or Decimal(0)) - taxable
+            on_lines = lines_total - sum((v for v in taxables if v is not None), Decimal(0))
+            ok = True if abs(on_lines - implied) <= _TOLERANCE else None
     yield _result(
         "totals.tax",
         "error",
         ("totals.cgst", "totals.sgst", "totals.igst"),
         ok,
         f"Total tax {tax} is not the sum of the tax on the lines ({expected}).",
+        version=2,
     )
 
 
