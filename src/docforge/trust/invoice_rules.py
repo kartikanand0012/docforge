@@ -162,6 +162,10 @@ def line_ptr_not_above_mrp(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_taxable_value(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    # Quantity x rate needs a rate column; an invoice that prints only quantity and line value
+    # has nothing to multiply, and the line values are still checked against the totals.
+    if not _printed(invoice, "ptr"):
+        return
     for path, line in _lines(invoice):
         qty, ptr, discount = line.qty.value, line.ptr.value, line.discount_pct.value
         taxable = line.taxable_value.value
