@@ -313,7 +313,7 @@ def general_goods_invoice(raw: dict[str, Any], grand_total: str) -> dict[str, An
     template = raw["lines"][0]
 
     def line(product: str, qty: str, rate: str, taxable: str, amount: str) -> dict[str, Any]:
-        printed = {name: None for name in template}
+        printed: dict[str, str | None] = dict.fromkeys(template)
         printed |= {
             "product_name": product,
             "hsn": "85258900",
