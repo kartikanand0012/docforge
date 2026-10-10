@@ -304,3 +304,104 @@ def test_a_batch_printed_but_unreadable_still_counts_as_printed(
 
     assert ("required.present", ("lines[0].expiry",)) in failed
     assert ("required.present", ("lines[1].batch_no",)) in failed
+
+
+def general_goods_invoice(raw: dict[str, Any], grand_total: str) -> dict[str, Any]:
+    """Two camera lines under one "GST 10%" tax line, which no tax head (CGST, SGST, IGST)
+    reads: taxable 471,772.00 + 1,588,947.00 = 2,060,719.00; with 10% tax the lines come to
+    518,949.20 + 1,747,841.70 = 2,266,790.90."""
+    template = raw["lines"][0]
+
+    def line(product: str, qty: str, rate: str, taxable: str, amount: str) -> dict[str, Any]:
+        printed = {name: None for name in template}
+        printed |= {
+            "product_name": product,
+            "hsn": "85258900",
+            "qty": qty,
+            "ptr": rate,
+            "taxable_value": taxable,
+            "amount": amount,
+        }
+        return {name: {"text": text, "block_ids": []} for name, text in printed.items()}
+
+    raw["lines"] = [
+        line(
+            "Canon EOS R50 Mirrorless Camera Body", "7.00", "67,396.00", "471,772.00", "518,949.20"
+        ),
+        line("Canon EOS R6 Mark II Body", "3.00", "529,649.00", "1,588,947.00", "1,747,841.70"),
+    ]
+    raw["totals"] = {name: {"text": None, "block_ids": []} for name in raw["totals"]}
+    raw["totals"]["taxable_value"]["text"] = "2,060,719.00"
+    raw["totals"]["grand_total"]["text"] = grand_total
+    return raw
+
+
+def grand_total_result(raw: dict[str, Any]) -> RuleResult:
+    [result] = [r for r in run(raw) if r.rule_id == "totals.grand_total"]
+    return result
+
+
+def test_without_tax_heads_a_grand_total_equal_to_the_line_amounts_passes(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "INR 2,266,790.90"
+    )
+
+    result = grand_total_result(raw)
+
+    assert result.outcome == "passed"
+    assert [rule for rule, _ in failures(run(raw))] == []
+
+
+def test_without_tax_heads_the_line_amounts_take_the_round_off(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,791.00"
+    )
+    raw["totals"]["round_off"]["text"] = "0.10"
+
+    assert grand_total_result(raw).outcome == "passed"
+
+
+def test_without_tax_heads_a_grand_total_the_line_amounts_do_not_explain_fails(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,890.90"
+    )
+
+    result = grand_total_result(raw)
+
+    assert result.outcome == "failed"
+    assert result.message == (
+        "Grand total 2266890.90 is not taxable value plus tax plus round-off (2060719.00), "
+        "and no tax head (CGST, SGST, IGST) was read; nor is it the sum of the line amounts "
+        "plus round-off (2266790.90)."
+    )
+
+
+def test_without_tax_heads_or_every_line_amount_the_grand_total_fails_as_before(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,790.90"
+    )
+    raw["lines"][1]["amount"]["text"] = None
+
+    result = grand_total_result(raw)
+
+    assert result.outcome == "failed"
+    assert "(2060719.00)" in result.message
+
+
+def test_with_a_tax_head_read_the_line_amounts_do_not_excuse_a_grand_total(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # The heads are read, so they decide: a wrong CGST fails the grand total even though
+    # the (correct) line amounts still add up to it.
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    set_total("cgst", "1.00")(raw)
+
+    assert grand_total_result(raw).outcome == "failed"
