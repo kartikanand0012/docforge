@@ -255,3 +255,52 @@ def test_line_tax_must_be_split_within_a_state_and_whole_between_states(
     assert ("line.amount", ("lines[0].amount",)) in failures(run(raw))
     line["amount"]["text"] = "105.22"
     assert ("line.amount", ("lines[0].amount",)) not in failures(run(raw))
+
+
+def without_batches_or_expiry(raw: dict[str, Any]) -> None:
+    for line in raw["lines"]:
+        for name in ("batch_no", "mfg", "expiry"):
+            line[name] = {"text": None, "block_ids": []}
+
+
+def test_an_invoice_that_prints_no_batch_or_expiry_is_not_asked_for_them(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # A general goods invoice (a camera, not a medicine) has no batch or expiry column.
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    without_batches_or_expiry(raw)
+
+    results = run(raw)
+
+    required = {r.paths[0] for r in results if r.rule_id == "required.present"}
+    assert not any(path.endswith((".batch_no", ".expiry")) for path in required)
+    assert "lines[0].qty" in required and "lines[0].product_name" in required
+    assert [path for rule, (path, *_) in failures(results) if rule == "required.present"] == []
+
+
+def test_once_one_line_prints_an_expiry_every_line_needs_its_batch_and_expiry(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    without_batches_or_expiry(raw)
+    raw["lines"][0]["expiry"] = {"text": "06/28", "block_ids": []}
+
+    failed = failures(run(raw))
+
+    assert ("required.present", ("lines[0].batch_no",)) in failed
+    assert ("required.present", ("lines[1].batch_no",)) in failed
+    assert ("required.present", ("lines[1].expiry",)) in failed
+    assert ("required.present", ("lines[0].expiry",)) not in failed
+
+
+def test_a_batch_printed_but_unreadable_still_counts_as_printed(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    without_batches_or_expiry(raw)
+    raw["lines"][0]["expiry"] = {"text": "13/99", "block_ids": []}  # not a month
+
+    failed = failures(run(raw))
+
+    assert ("required.present", ("lines[0].expiry",)) in failed
+    assert ("required.present", ("lines[1].batch_no",)) in failed
