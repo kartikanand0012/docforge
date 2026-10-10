@@ -148,6 +148,8 @@ def line_not_expired(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_ptr_not_above_mrp(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    if not _printed(invoice, "ptr") or not _printed(invoice, "mrp"):
+        return
     for path, line in _lines(invoice):
         ptr, mrp = line.ptr.value, line.mrp.value
         yield _result(
