@@ -181,7 +181,15 @@ def line_taxable_value(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 def line_amount(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
     intra = _intra_state(invoice)
+    totals = invoice.totals
+    no_heads = all(v is None for v in (totals.cgst.value, totals.sgst.value, totals.igst.value))
     for path, line in _lines(invoice):
+        # An invoice that prints its tax once ("GST 10%") gives no rate on the line, so there
+        # is nothing to check the line against: a rate inferred from the totals would assume
+        # every line bears it. The line amounts are still checked together, by
+        # totals.grand_total and totals.tax, so a wrong one fails the grand total.
+        if no_heads and line.gst_rate.raw is None:
+            continue
         taxable, rate, amount = line.taxable_value.value, line.gst_rate.value, line.amount.value
         ok, expected = None, None
         if taxable is not None and rate is not None and amount is not None:
