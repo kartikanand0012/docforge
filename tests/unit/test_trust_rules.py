@@ -502,3 +502,43 @@ def test_without_tax_heads_a_tax_the_lines_do_not_explain_is_left_to_the_grand_t
 
     assert tax_result(raw).outcome == "not_evaluated"
     assert grand_total_result(raw).outcome == "failed"
+
+
+def test_without_tax_heads_a_line_that_prints_no_rate_has_no_line_amount_check(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    results = run(camera_invoice(raw_invoice_from_label))
+
+    assert "line.amount" not in rule_ids(results)
+
+
+def test_without_tax_heads_a_wrong_line_amount_still_fails_the_grand_total(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = camera_invoice(raw_invoice_from_label)
+    raw["lines"][0]["amount"]["text"] = "518,994.20"
+
+    assert grand_total_result(raw).outcome == "failed"
+
+
+def test_with_a_tax_head_read_a_line_without_a_rate_is_not_evaluated(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][1]["gst_rate"] = {"text": None, "block_ids": []}
+
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+    assert outcomes[("line.amount", "lines[1].amount")] == "not_evaluated"
+
+
+def test_a_general_goods_invoice_that_adds_up_has_no_failed_or_unevaluated_error_check(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    results = run(camera_invoice(raw_invoice_from_label))
+
+    assert [
+        (r.rule_id, r.paths, r.outcome)
+        for r in results
+        if r.severity == "error" and r.outcome != "passed"
+    ] == []
