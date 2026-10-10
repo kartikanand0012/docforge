@@ -479,3 +479,26 @@ def test_a_line_whose_mrp_is_blank_on_an_invoice_that_prints_mrp_is_not_evaluate
     outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
 
     assert outcomes[("line.ptr_not_above_mrp", "lines[1].ptr")] == "not_evaluated"
+
+
+def tax_result(raw: dict[str, Any]) -> RuleResult:
+    [result] = [r for r in run(raw) if r.rule_id == "totals.tax"]
+    return result
+
+
+def test_without_tax_heads_the_tax_the_totals_imply_is_checked_against_the_lines(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # 2,266,790.90 - 2,060,719.00 = 206,071.90, the lines' 47,177.20 + 158,894.70.
+    assert tax_result(camera_invoice(raw_invoice_from_label)).outcome == "passed"
+
+
+def test_without_tax_heads_a_tax_the_lines_do_not_explain_is_left_to_the_grand_total(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,890.90"
+    )
+
+    assert tax_result(raw).outcome == "not_evaluated"
+    assert grand_total_result(raw).outcome == "failed"
