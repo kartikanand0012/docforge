@@ -54,6 +54,12 @@ def _lines(invoice: InvoiceExtraction) -> Iterator[tuple[str, LineExtraction]]:
         yield f"lines[{index}]", line
 
 
+def _printed(invoice: InvoiceExtraction, name: str) -> bool:
+    """Whether any line prints this field, read or not. A column the invoice does not have
+    (a camera has no expiry) is not checked at all, rather than reported as missing."""
+    return any(getattr(line, name).raw is not None for line in invoice.lines)
+
+
 def _intra_state(invoice: InvoiceExtraction) -> bool | None:
     seller, buyer = invoice.seller.gstin.value, invoice.buyer.gstin.value
     if not seller or not buyer:
@@ -97,6 +103,8 @@ def hsn_format(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_dates(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    if not _printed(invoice, "mfg") or not _printed(invoice, "expiry"):
+        return
     issued = invoice.invoice_date.value
     for path, line in _lines(invoice):
         mfg, expiry = line.mfg.value, line.expiry.value
@@ -113,6 +121,8 @@ def line_dates(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_not_expired(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    if not _printed(invoice, "expiry"):
+        return
     issued = invoice.invoice_date.value
     for path, line in _lines(invoice):
         expiry = line.expiry.value
@@ -318,9 +328,7 @@ def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
     # Batch and expiry are required of a medicine invoice, which prints them; a general goods
     # invoice (a camera) prints neither. Once any line prints either, even unreadably, every
     # line must carry both, so a batch missing from one line of a medicine invoice is caught.
-    batched = any(
-        field.raw is not None for line in invoice.lines for field in (line.batch_no, line.expiry)
-    )
+    batched = _printed(invoice, "batch_no") or _printed(invoice, "expiry")
     names = ("product_name", "batch_no", "expiry", "qty") if batched else ("product_name", "qty")
     for path, line in _lines(invoice):
         for name in names:
