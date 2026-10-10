@@ -417,3 +417,46 @@ def test_without_tax_heads_a_line_without_an_amount_counts_its_taxable_value_and
     raw["lines"][1]["gst_rate"]["text"] = "10"
 
     assert grand_total_result(raw).outcome == "passed"
+
+
+def camera_invoice(raw_invoice_from_label: RawFromLabel) -> dict[str, Any]:
+    return general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "INR 2,266,790.90"
+    )
+
+
+def rule_ids(results: tuple[RuleResult, ...]) -> set[str]:
+    return {result.rule_id for result in results}
+
+
+def test_an_invoice_that_prints_no_expiry_or_manufacture_has_no_date_checks(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    results = run(camera_invoice(raw_invoice_from_label))
+
+    assert not rule_ids(results) & {"line.dates", "line.not_expired", "line.shelf_life"}
+
+
+def test_an_invoice_that_prints_expiry_but_no_manufacture_checks_only_expiry(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    for line in raw["lines"]:
+        line["mfg"] = {"text": None, "block_ids": []}
+
+    results = run(raw)
+
+    assert "line.dates" not in rule_ids(results)
+    assert {r.outcome for r in results if r.rule_id == "line.not_expired"} == {"passed"}
+
+
+def test_a_line_whose_expiry_is_blank_on_an_invoice_that_prints_expiry_is_not_evaluated(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][1]["expiry"] = {"text": None, "block_ids": []}
+
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+    assert outcomes[("line.not_expired", "lines[1].expiry")] == "not_evaluated"
+    assert outcomes[("line.dates", "lines[1].mfg")] == "not_evaluated"
