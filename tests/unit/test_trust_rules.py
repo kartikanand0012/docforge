@@ -460,3 +460,22 @@ def test_a_line_whose_expiry_is_blank_on_an_invoice_that_prints_expiry_is_not_ev
 
     assert outcomes[("line.not_expired", "lines[1].expiry")] == "not_evaluated"
     assert outcomes[("line.dates", "lines[1].mfg")] == "not_evaluated"
+
+
+def test_an_invoice_that_prints_no_mrp_has_no_ptr_above_mrp_check(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    results = run(camera_invoice(raw_invoice_from_label))  # a rate column, but no MRP
+
+    assert "line.ptr_not_above_mrp" not in rule_ids(results)
+
+
+def test_a_line_whose_mrp_is_blank_on_an_invoice_that_prints_mrp_is_not_evaluated(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][1]["mrp"] = {"text": None, "block_ids": []}
+
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+    assert outcomes[("line.ptr_not_above_mrp", "lines[1].ptr")] == "not_evaluated"
