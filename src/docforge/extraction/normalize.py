@@ -34,7 +34,9 @@ _MONTH_YEAR = re.compile(r"(\d{1,2})[-/](\d{2}|\d{4})", re.ASCII)
 # Plain digits, or commas in Western (1,234,567) or Indian (12,34,567) groups. "12,50" is
 # neither, so it is rejected rather than read as 1250.
 _DIGITS = r"(?:\d+|\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3})"
-_INTEGER = re.compile(_DIGITS, re.ASCII)
+# A count may be printed to two places ("7.00"): a fraction of zeros is still a whole count.
+# Any other fraction ("7.5") is not a count, and is not rounded into one.
+_INTEGER = re.compile(rf"({_DIGITS})(?:\.0+)?", re.ASCII)
 _NUMBER = re.compile(rf"-?{_DIGITS}(?:\.\d+)?", re.ASCII)
 # A currency mark may lead and a percent sign may trail; neither may sit inside the digits.
 _AFFIXES = re.compile(r"^(?:rs\.?|inr|₹)\s*|\s*%$", re.IGNORECASE)
@@ -91,8 +93,9 @@ def parse_decimal(raw: str) -> Decimal | None:
 
 
 def parse_int(raw: str) -> int | None:
-    text = raw.strip()
-    return int(text.replace(",", "")) if _INTEGER.fullmatch(text) else None
+    """A printed count: `7`, `1,200` or `7.00`. `7.5` cannot be read as one."""
+    match = _INTEGER.fullmatch(raw.strip())
+    return int(match[1].replace(",", "")) if match else None
 
 
 def parse_place_of_supply(raw: str) -> tuple[str | None, str | None]:

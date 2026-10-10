@@ -271,21 +271,30 @@ def tax_matches_supply_type(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
-    required: dict[str, object] = {
-        "invoice_no": invoice.invoice_no.value,
-        "invoice_date": invoice.invoice_date.value,
-        "seller.gstin": invoice.seller.gstin.value,
-        "buyer.gstin": invoice.buyer.gstin.value,
-        "totals.grand_total": invoice.totals.grand_total.value,
-        "lines": invoice.lines or None,
+    # Each path with its value and the text printed for it.
+    required: dict[str, tuple[object, str | None]] = {
+        path: (field.value, field.raw)
+        for path, field in (
+            ("invoice_no", invoice.invoice_no),
+            ("invoice_date", invoice.invoice_date),
+            ("seller.gstin", invoice.seller.gstin),
+            ("buyer.gstin", invoice.buyer.gstin),
+            ("totals.grand_total", invoice.totals.grand_total),
+        )
     }
+    required["lines"] = (invoice.lines or None, None)
     for path, line in _lines(invoice):
         for name in ("product_name", "batch_no", "expiry", "qty"):
-            required[f"{path}.{name}"] = getattr(line, name).value
-    for path, value in required.items():
-        yield _result(
-            "required.present", "error", (path,), value is not None, f"{path} is missing."
+            field = getattr(line, name)
+            required[f"{path}.{name}"] = (field.value, field.raw)
+    for path, (value, raw) in required.items():
+        # A value printed but not readable (a quantity of 7.5) is not the same as no value.
+        message = (
+            f"{path} is missing."
+            if raw is None
+            else f"{path} is printed as {raw!r} but could not be read."
         )
+        yield _result("required.present", "error", (path,), value is not None, message)
 
 
 INVOICE_RULES: tuple[Callable[[InvoiceExtraction], Iterable[RuleResult]], ...] = (
