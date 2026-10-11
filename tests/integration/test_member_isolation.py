@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from test_accounts import filled, routes
 from test_chat import quoting
@@ -200,3 +201,57 @@ def test_ben_is_refused_every_administrators_and_platform_route(two: Two) -> Non
         response = two.api.request(method, filled(path), headers=looking, json={})
         assert response.status_code in (403, 401), (method, path, response.status_code)
         assert two.clean(response), (method, path)
+
+
+# The workspaces table
+
+
+def workspaces_seen(engine: Engine, tenant: uuid.UUID | None) -> list[tuple[Any, ...]]:
+    with engine.begin() as conn:
+        if tenant is not None:
+            conn.execute(
+                text("SELECT set_config('docforge.tenant_id', :t, true)"), {"t": str(tenant)}
+            )
+        return [tuple(row) for row in conn.execute(text("SELECT id, display_name FROM tenants"))]
+
+
+def test_a_workspace_reads_its_own_row_and_no_one_elses(two: Two, engine: Engine) -> None:
+    # As the application's login: Asha's name is in her workspace's display name.
+    assert workspaces_seen(engine, two.ben_ws) == [(two.ben_ws, "Ben's workspace")]
+    assert workspaces_seen(engine, two.asha_ws) == [(two.asha_ws, "Asha's workspace")]
+    assert workspaces_seen(engine, None) == []
+
+
+def test_the_workspaces_table_is_under_row_level_security(owner_engine: Engine) -> None:
+    with owner_engine.connect() as conn:
+        protected = conn.execute(
+            text("SELECT relrowsecurity FROM pg_class WHERE oid = 'tenants'::regclass")
+        ).scalar_one()
+    assert protected is True
+
+
+def test_only_an_organisation_is_found_by_its_name_before_signing_in(
+    two: Two, engine: Engine, owner_engine: Engine
+) -> None:
+    with owner_engine.connect() as conn:
+        asha_name = conn.execute(
+            text("SELECT name FROM tenants WHERE id = :t"), {"t": two.asha_ws}
+        ).scalar_one()
+    with engine.connect() as conn:
+        found = conn.execute(text("SELECT docforge_organisation_tenant('default')")).scalar_one()
+        personal = conn.execute(
+            text("SELECT docforge_organisation_tenant(:n)"), {"n": asha_name}
+        ).scalar_one()
+    assert found is not None and personal is None
+    # And a personal workspace is not signed in to by its name.
+    refused = two.api.post(
+        "/v1/sessions",
+        json={"tenant": asha_name, "email": "asha@example.com", "password": PASSWORD},
+    )
+    assert refused.status_code == 401
+
+
+def test_who_am_i_still_names_each_persons_own_workspace(two: Two) -> None:
+    for who, name in ((two.asha, "Asha's workspace"), (two.ben, "Ben's workspace")):
+        me = two.api.get("/v1/sessions/current", headers=who).json()
+        assert (me["organisation"], me["workspace"]) == (name, "personal")
