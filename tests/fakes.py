@@ -2,6 +2,7 @@
 
 import hashlib
 import re
+import secrets
 import uuid
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
@@ -151,3 +152,10 @@ def signed_in(
     )
     app.dependency_overrides[current_principal] = lambda: principal
     return app
+
+
+def scrypt_hash(secret: str) -> str:
+    """A PIN's or password's hash as releases before argon2id made it (scrypt, N=2^14)."""
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(secret.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32)
+    return f"scrypt${2**14}$8$1${salt.hex()}${digest.hex()}"

@@ -104,6 +104,22 @@ def test_a_reviewer_is_stored_with_a_hashed_pin(
         review.add_reviewer(DEFAULT_TENANT_ID, name="Other", email=EMAIL.upper(), pin="111111")
 
 
+def test_an_older_scrypt_pin_is_rehashed_as_argon2id_when_it_is_right(
+    world: World, review: ReviewService, owner_engine: Engine
+) -> None:
+    from fakes import scrypt_hash
+
+    document_id = world.process("invoice")
+    with owner_engine.begin() as conn:
+        conn.execute(text("UPDATE reviewers SET pin_hash = :h"), {"h": scrypt_hash(PIN)})
+
+    correct(review, document_id, "invoice_no", "INV-1", pin=PIN)
+
+    with owner_engine.connect() as conn:
+        stored = conn.execute(text("SELECT pin_hash FROM reviewers")).scalar_one()
+    assert stored.startswith("$argon2id$v=19$m=19456,t=2,p=1$") and verify_pin(PIN, stored)
+
+
 def test_a_pin_must_be_six_digits_or_more(review: ReviewService) -> None:
     with pytest.raises(ValueError, match="PIN"):
         review.add_reviewer(DEFAULT_TENANT_ID, name="B", email="b@example.com", pin="1234")

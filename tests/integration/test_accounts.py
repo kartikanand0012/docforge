@@ -80,7 +80,7 @@ def test_signing_up_makes_a_private_workspace_and_signs_in(
     assert (reviewer.role, reviewer.credential, reviewer.platform_admin) == (
         "member", "password", False,
     )  # fmt: skip
-    assert PASSWORD not in reviewer.pin_hash and reviewer.pin_hash.startswith("scrypt$")
+    assert PASSWORD not in reviewer.pin_hash and reviewer.pin_hash.startswith("$argon2id$")
     assert audited == 1
 
 
@@ -654,3 +654,74 @@ def test_a_member_cannot_make_an_api_key_for_an_agent(stack: FullStack) -> None:
     made = stack.client.post("/v1/api-keys", headers=me, json={"name": "mine"})
 
     assert made.status_code == 403
+
+
+def test_an_older_scrypt_password_signs_in_and_is_rehashed_as_argon2id(
+    stack: FullStack, owner_engine: Engine
+) -> None:
+    from fakes import scrypt_hash
+
+    stack.sign_up("Asha", "asha@example.com")
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE reviewers SET pin_hash = :h WHERE email = 'asha@example.com'"),
+            {"h": scrypt_hash(PASSWORD)},
+        )
+
+    def stored() -> str:
+        with owner_engine.connect() as conn:
+            found: str = conn.execute(
+                text("SELECT pin_hash FROM reviewers WHERE email = 'asha@example.com'")
+            ).scalar_one()
+        return found
+
+    wrong = stack.client.post(
+        "/v1/sessions", json={"email": "asha@example.com", "password": "not the password"}
+    )
+    assert wrong.status_code == 401 and stored().startswith("scrypt$")
+
+    stack.sign_in("asha@example.com", PASSWORD)
+
+    assert stored().startswith("$argon2id$v=19$m=19456,t=2,p=1$")
+    stack.sign_in("asha@example.com", PASSWORD)  # and the new hash is checked as well
+
+
+def test_an_unknown_email_is_checked_against_an_argon2id_hash(
+    stack: FullStack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import docforge.auth
+    import docforge.review.signing
+
+    checked: list[str] = []
+    real = docforge.review.signing.verify_pin
+
+    def counted(secret: str, stored: str) -> bool:
+        checked.append(stored)
+        return real(secret, stored)
+
+    monkeypatch.setattr(docforge.auth, "verify_pin", counted)
+
+    unknown = stack.client.post(
+        "/v1/sessions", json={"email": "nobody@example.com", "password": PASSWORD}
+    )
+
+    assert unknown.status_code == 401
+    assert len(checked) == 1 and checked[0].startswith("$argon2id$v=19$m=19456,t=2,p=1$")
+
+
+def test_the_database_takes_an_argon2id_hash_for_an_account_and_never_a_bare_secret(
+    engine: Engine,
+) -> None:
+    from docforge.review.signing import hash_pin
+
+    with engine.begin() as conn:
+        made = conn.execute(
+            text("SELECT docforge_create_account('u-test0000001', 'T', 'T', 't@example.com', :h)"),
+            {"h": hash_pin(PASSWORD)},
+        ).scalar_one()
+    assert made is not None
+    with pytest.raises(Exception, match="stored hashed"), engine.begin() as conn:
+        conn.execute(
+            text("SELECT docforge_create_account('u-test0000002', 'U', 'U', 'u@example.com', :h)"),
+            {"h": PASSWORD},
+        )
