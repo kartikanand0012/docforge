@@ -241,9 +241,11 @@ def account_router(
         request: Request,
         principal: Annotated[Principal, Depends(current_principal)],
     ) -> Response:
-        """Delete your account and everything in its workspace - documents, their files,
-        questions, knowledge bases, signatures and its audit log - after your password
-        again. It cannot be undone. Only an account's person, in their own workspace."""
+        """Delete your account and erase everything in its workspace - every document and
+        its files, questions, knowledge bases, signatures, its audit log and the account
+        itself, nothing kept - after your password again. It cannot be undone. Only an
+        account's person, in their own workspace. (Deleting one document erases its files
+        and hides its record.)"""
         try:
             erasure = authenticator.delete_account(
                 principal, body.password, client_address(request)

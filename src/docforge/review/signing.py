@@ -8,7 +8,10 @@ replace, an organisation's own electronic-signature controls.
 import hashlib
 import hmac
 import json
+import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 
@@ -30,25 +33,49 @@ def _scrypt(pin: str, salt: bytes, n: int, r: int, p: int) -> bytes:
     return hashlib.scrypt(pin.encode(), salt=salt, n=n, r=r, p=p, dklen=32)
 
 
+# Each hash takes 19 MiB: at most this many are worked out at once in a process, so many
+# sign-ins together cannot take memory without bound. The rest wait their turn, briefly.
+_HASHING = threading.BoundedSemaphore(4)
+HASHING_WAIT_SECONDS = 5.0
+
+
+class HashingBusy(Exception):
+    """Every place for working out a hash stayed taken for too long: try again shortly."""
+
+
+@contextmanager
+def _hashing_place() -> Iterator[None]:
+    places = _HASHING
+    if not places.acquire(timeout=HASHING_WAIT_SECONDS):
+        raise HashingBusy
+    try:
+        yield
+    finally:
+        places.release()
+
+
 def hash_pin(pin: str) -> str:
-    """A PIN's or a password's hash, as argon2id."""
-    return _ARGON2.hash(pin)
+    """A PIN's or a password's hash, as argon2id. Raises `HashingBusy`."""
+    with _hashing_place():
+        return _ARGON2.hash(pin)
 
 
 def verify_pin(pin: str, stored: str) -> bool:
-    """Whether `pin` is the secret `stored` is the hash of: argon2id, or scrypt (older)."""
-    if stored.startswith(ARGON2_PREFIX):
+    """Whether `pin` is the secret `stored` is the hash of: argon2id, or scrypt (older).
+    Raises `HashingBusy`."""
+    with _hashing_place():
+        if stored.startswith(ARGON2_PREFIX):
+            try:
+                return _ARGON2.verify(stored, pin)
+            except (VerificationError, InvalidHashError):
+                return False
         try:
-            return _ARGON2.verify(stored, pin)
-        except (VerificationError, InvalidHashError):
+            scheme, n, r, p, salt, digest = stored.split("$")
+            expected = bytes.fromhex(digest)
+            actual = _scrypt(pin, bytes.fromhex(salt), int(n), int(r), int(p))
+        except ValueError:
             return False
-    try:
-        scheme, n, r, p, salt, digest = stored.split("$")
-        expected = bytes.fromhex(digest)
-        actual = _scrypt(pin, bytes.fromhex(salt), int(n), int(r), int(p))
-    except ValueError:
-        return False
-    return scheme == "scrypt" and hmac.compare_digest(actual, expected)
+        return scheme == "scrypt" and hmac.compare_digest(actual, expected)
 
 
 def needs_rehash(stored: str) -> bool:

@@ -394,9 +394,10 @@ def documents_router(
 
     @router.delete("/documents/{document_id}", status_code=204)
     def delete_document(document_id: uuid.UUID, principal: Writer) -> Response:
-        """Delete a document. It is kept for its audit trail but disappears from every list,
-        read, search, answer, knowledge base and export; the same file can be uploaded again
-        as a new document."""
+        """Delete a document: its stored file, and any PDF made from it, are erased; its record
+        is kept, hidden, for its audit trail, and disappears from every list, read, search,
+        answer, knowledge base and export. The same file can be uploaded again as a new
+        document. (Deleting an account, DELETE /v1/accounts/current, erases everything.)"""
         try:
             service.delete(
                 principal.tenant_id,

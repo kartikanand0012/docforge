@@ -492,15 +492,24 @@ class Authenticator:
             ok = self._secret_is_right(
                 session, tenant_id, reviewer, password, client, "account deletion"
             )
-        if not ok:
+            # Right: a single-use grant, good for a minute, that the deletion needs.
+            grant = (
+                session.scalar(select(func.docforge_grant_deletion(principal.subject_id)))
+                if ok
+                else None
+            )
+        if grant is None:
             self.limiter.failed(client)
             raise LoginFailed
         with tenant_scope(tenant_id), self._sessions.begin() as session:
-            # As the owner, for this workspace only and only if it is personal.
-            erasure_id = session.scalar(select(func.docforge_delete_account()))
-        assert erasure_id is not None  # noqa: S101 - the function returns it or raises
+            # As the owner, for this workspace only, only if it is personal, using the grant.
+            erasure_id, token = session.execute(
+                select(func.docforge_delete_account(grant).table_valued(
+                    "erasure_id", "erasure_token"
+                ))
+            ).one()  # fmt: skip
         logger.info("account.deleted tenant=%s", tenant_id)
-        return Erasure(int(erasure_id), "workspace", tenant_id)
+        return Erasure(int(erasure_id), "workspace", tenant_id, token=token)
 
     def signups_since(self, since: datetime) -> int:
         with self._sessions() as session:

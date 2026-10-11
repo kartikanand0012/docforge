@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from docforge import audit
-from docforge.db.models import AuditEntry
+from docforge.db.models import AuditEntry, Tenant
 from docforge.db.tenancy import tenant_scope
 from docforge.storage import ObjectNotFound, ObjectStore
 
@@ -111,12 +111,21 @@ def anchor_all(sessions: Any, anchors: AnchorStore) -> int:
     done = 0
     for tenant_id in tenants:
         try:
-            with tenant_scope(tenant_id), sessions() as session:
-                anchors.anchor(session, tenant_id)
-            done += 1
+            done += anchor_one(sessions, anchors, tenant_id)
         except Exception:
             logger.exception("could not anchor the audit chain of tenant %s", tenant_id)
     return done
+
+
+def anchor_one(sessions: Any, anchors: AnchorStore, tenant_id: uuid.UUID) -> bool:
+    """Anchor one tenant's chain, unless it no longer exists (deleted since it was listed):
+    nothing is written to storage for a workspace that is gone. Whether it was anchored."""
+    with tenant_scope(tenant_id), sessions() as session:
+        # In its scope, the one workspace row the application may read is that one, if any.
+        if session.scalar(select(Tenant.id).where(Tenant.id == tenant_id)) is None:
+            return False
+        anchors.anchor(session, tenant_id)
+    return True
 
 
 def main() -> int:

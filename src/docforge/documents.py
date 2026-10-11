@@ -575,13 +575,18 @@ class DocumentService:
                 version.status, version.error, version.finished_at = "failed", "Deleted", _now()
             # The application cannot mark it itself: once marked it cannot see the row. The
             # function also records that its stored files are to be erased.
-            erasure_id = session.scalar(select(func.docforge_delete_document(document.id)))
-            if erasure_id is None:
+            marked = session.execute(
+                select(func.docforge_delete_document(document.id).table_valued(
+                    "erasure_id", "erasure_token"
+                ))
+            ).first()  # fmt: skip
+            if marked is None:
                 raise DocumentNotFound(f"no document {document_id}")
+            erasure_id, token = marked
             # No filename: this log can never be edited, and a filename may be personal data.
             self._audit(session, document, actor, "document.deleted")
             erasure = Erasure(
-                erasure_id, "document", tenant_id, document.sha256, document.storage_key
+                erasure_id, "document", tenant_id, document.sha256, document.storage_key, token
             )
         # Its file and the PDFs made from it, once the deletion stands (best effort).
         self.eraser.erase_quietly(erasure)

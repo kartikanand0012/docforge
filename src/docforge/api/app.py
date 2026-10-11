@@ -60,6 +60,7 @@ from docforge.mcp_server.tools import AgentTools
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
 from docforge.platform import PlatformService
 from docforge.review.service import ReviewService
+from docforge.review.signing import HashingBusy
 from docforge.search.service import SearchService
 from docforge.telemetry import traced
 from docforge.webhooks import WebhookService
@@ -213,6 +214,15 @@ def create_app(
         logger.error("database unavailable on %s: %s", request.url.path, type(error.orig).__name__)
         return JSONResponse(
             {"detail": "The database is unavailable. Try again later."}, status_code=503
+        )
+
+    @app.exception_handler(HashingBusy)
+    async def hashing_busy(request: Request, error: HashingBusy) -> JSONResponse:
+        # Every place for working out a PIN's or password's hash stayed taken: many sign-ins
+        # at once. Nothing was checked or counted; the caller tries again in a moment.
+        logger.warning("no place to hash a secret on %s", request.url.path)
+        return JSONResponse(
+            {"detail": "Busy, try again."}, status_code=503, headers={"Retry-After": "1"}
         )
 
     @app.exception_handler(Exception)

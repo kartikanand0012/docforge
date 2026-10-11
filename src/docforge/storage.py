@@ -39,6 +39,10 @@ class ObjectStore(Protocol):
         """Every object whose key starts with `prefix` gone; how many there were."""
         ...
 
+    def children(self, prefix: str) -> set[str]:
+        """The names one level below `prefix` (which ends in /) that hold objects."""
+        ...
+
 
 def original_key(tenant_id: uuid.UUID, sha256: str, fmt: Format = "pdf") -> str:
     """Where an uploaded file lives. Content-addressed, so the same bytes map to one object."""
@@ -136,6 +140,19 @@ class S3ObjectStore:
             raise StorageUnavailable("could not delete the objects") from error
         return deleted
 
+    def children(self, prefix: str) -> set[str]:
+        found: set[str] = set()
+        try:
+            pages = self._client.get_paginator("list_objects_v2").paginate(
+                Bucket=self._bucket, Prefix=prefix, Delimiter="/"
+            )
+            for page in pages:
+                for common in page.get("CommonPrefixes", []):
+                    found.add(common["Prefix"][len(prefix) :].rstrip("/"))
+        except (BotoCoreError, ClientError) as error:
+            raise StorageUnavailable("could not list the objects") from error
+        return found
+
 
 class MemoryObjectStore:
     """For tests."""
@@ -165,6 +182,13 @@ class MemoryObjectStore:
         for key in gone:
             del self._objects[key]
         return len(gone)
+
+    def children(self, prefix: str) -> set[str]:
+        return {
+            key[len(prefix) :].split("/", 1)[0]
+            for key in self._objects
+            if key.startswith(prefix) and "/" in key[len(prefix) :]
+        }
 
     def keys(self) -> list[str]:
         return sorted(self._objects)
