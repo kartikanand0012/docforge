@@ -402,3 +402,36 @@ def test_another_organisation_neither_sees_nor_touches_a_claim(
 
 def test_the_lease_is_five_minutes() -> None:
     assert timedelta(minutes=5) == CLAIM_FOR
+
+
+# The database's clock, not the application's
+
+
+@pytest.mark.parametrize("skew", [timedelta(hours=-1), timedelta(hours=1)])
+def test_a_claim_is_timed_by_the_database_clock_whatever_the_api_hosts_says(
+    world: World,
+    review: ReviewService,
+    people: dict[str, uuid.UUID],
+    sessions: SessionFactory,
+    monkeypatch: pytest.MonkeyPatch,
+    skew: timedelta,
+) -> None:
+    import docforge.documents
+    import docforge.review.service
+
+    invoice_id = world.process("invoice")
+    real = docforge.review.service._now
+    for module in (docforge.review.service, docforge.documents):
+        monkeypatch.setattr(module, "_now", lambda: real() + skew)
+
+    claim = review.claim(DEFAULT_TENANT_ID, invoice_id, reviewer_id=people["asha"])
+
+    with sessions() as session:
+        database_now = session.scalar(text("SELECT now()"))
+    assert abs(claim.expires_at - (database_now + CLAIM_FOR)) < timedelta(seconds=30)
+    # Live for everyone else, whichever way this host's clock is off.
+    with pytest.raises(ClaimedByOther):
+        review.correct(
+            DEFAULT_TENANT_ID, invoice_id, path="invoice_no", text="X", reason="r",
+            email=RAVI, pin=RAVI_PIN, acting_reviewer_id=people["ravi"],
+        )  # fmt: skip
