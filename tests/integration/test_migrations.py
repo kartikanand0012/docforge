@@ -120,3 +120,54 @@ def test_version_numbers_are_unique_per_document(migrated: Engine) -> None:
 
     with pytest.raises(IntegrityError), migrated.begin() as conn:
         conn.execute(insert_version, {"id": document_id})
+
+
+# Downgrades that would lose or contradict data refuse unless told
+
+
+ALLOW = "DOCFORGE_ALLOW_DESTRUCTIVE_DOWNGRADE"
+
+
+def make_account(engine: Engine) -> None:
+    from docforge.review.signing import hash_pin
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("SELECT docforge_create_account('u-0123456789ab', 'A', 'A', 'a@example.com', :h)"),
+            {"h": hash_pin("correct horse battery staple")},
+        )
+
+
+def test_removing_accounts_refuses_while_accounts_exist_unless_told(
+    empty_database_url: URL, migrated: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    make_account(migrated)
+    config = alembic_config(empty_database_url)
+    monkeypatch.delenv(ALLOW, raising=False)
+
+    with pytest.raises(RuntimeError, match=ALLOW):
+        command.downgrade(config, "0026")
+    with migrated.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM accounts")).scalar_one() == 1
+
+    monkeypatch.setenv(ALLOW, "1")
+    command.downgrade(config, "0026")
+    with migrated.connect() as conn:
+        role = conn.execute(
+            text("SELECT role FROM reviewers WHERE email = 'a@example.com'")
+        ).scalar_one()
+    assert role == "reviewer"  # its account is gone; the person stays, as a plain reviewer
+
+
+def test_the_one_document_per_content_rule_is_not_restored_over_duplicates(
+    empty_database_url: URL, migrated: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenant_id = insert_tenant(migrated, "acme")
+    first = insert_document(migrated, tenant_id)
+    with migrated.begin() as conn:
+        conn.execute(text("UPDATE documents SET deleted_at = now() WHERE id = :d"), {"d": first})
+    insert_document(migrated, tenant_id)  # the same bytes uploaded again
+    monkeypatch.setenv(ALLOW, "1")
+
+    with pytest.raises(RuntimeError, match="same content"):
+        command.downgrade(alembic_config(empty_database_url), "0025")
