@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import delete, exists, func, select
+from sqlalchemy import Select, delete, exists, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
@@ -77,6 +77,7 @@ _MIN_PIN_DIGITS = 6
 _PAGE_DPI = 110
 _QUEUE_LIMIT = 200
 _QUEUE_SCAN = 20  # documents examined per queue entry returned, at most
+STATS_SCAN = 50  # documents the home screen's count of those awaiting review looks at, at most
 _CONCURRENT_RENDERS = 3  # page images rendered at once in the API process
 _DUMMY_HASH = hash_pin("not-a-real-pin")  # checked for unknown emails, so timing says nothing
 
@@ -364,41 +365,15 @@ class ReviewService:
         `_QUEUE_SCAN` documents for each entry the queue can hold. Each names who has it open
         now, when that is someone other than `viewer`.
         """
-        newest = aliased(DocumentVersion)
-        signed = (
-            select(Review.id)
-            .join(DocumentVersion, DocumentVersion.id == Review.document_version_id)
-            .where(
-                DocumentVersion.document_id == Document.id,
-                DocumentVersion.version_no
-                == select(func.max(newest.version_no))
-                .where(newest.document_id == Document.id)
-                .scalar_subquery(),
-            )
-            .correlate(Document)
-        )
         items: list[QueueItem] = []
         memo: dict[uuid.UUID, BaseModel | None] = {}
         with self._sessions() as session:
             documents = session.scalars(
-                select(Document)
-                .where(
-                    Document.tenant_id == tenant_id,
-                    not_deleted(),
-                    Document.status == "extracted",
-                    # Only types with something to review; a general document has nothing.
-                    Document.doc_type.in_(list(self._specs)),
-                    ~exists(signed),
-                )
-                .order_by(Document.created_at, Document.id)
-                .limit(self._queue_limit * _QUEUE_SCAN)
+                self._candidates(tenant_id).limit(self._queue_limit * _QUEUE_SCAN)
             ).all()
             for document in documents:
-                try:
-                    state = self._state(session, document, memo)
-                except NotReviewable:
-                    continue
-                if state.review is None and state.blockers:
+                state = self._awaiting(session, document, memo)
+                if state is not None:
                     items.append(
                         QueueItem(
                             document_id=document.id,
@@ -426,6 +401,62 @@ class ReviewService:
                     live = live.where(ReviewClaim.reviewer_id != viewer)
                 held = {document_id: name for document_id, name in session.execute(live)}
         return [replace(item, claimed_by=held.get(item.document_id)) for item in items]
+
+    @scoped
+    def awaiting_review(self, tenant_id: uuid.UUID) -> tuple[int, bool]:
+        """How many documents await a person, for the home screen, looking at no more than
+        `STATS_SCAN` that might: (the count, whether it stopped there). Whether one awaits
+        depends on its corrections and its match, decided per document, so an exact count
+        of a large workspace would cost the whole queue's scan; past the bound the count is
+        a lower bound and says so."""
+        bound = STATS_SCAN
+        count = 0
+        memo: dict[uuid.UUID, BaseModel | None] = {}
+        with self._sessions() as session:
+            documents = session.scalars(self._candidates(tenant_id).limit(bound + 1)).all()
+            for document in documents[:bound]:
+                if self._awaiting(session, document, memo) is not None:
+                    count += 1
+        return count, len(documents) > bound
+
+    def _awaiting(
+        self, session: Session, document: Document, memo: dict[uuid.UUID, BaseModel | None]
+    ) -> "_State | None":
+        """The document's state if it waits for a person, else None."""
+        try:
+            state = self._state(session, document, memo)
+        except NotReviewable:
+            return None
+        return state if state.review is None and state.blockers else None
+
+    def _candidates(self, tenant_id: uuid.UUID) -> Select[Document]:
+        """Documents that might wait for a person, oldest first: read, of a type with
+        something to review, not deleted and not signed."""
+        newest = aliased(DocumentVersion)
+        signed = (
+            select(Review.id)
+            .join(DocumentVersion, DocumentVersion.id == Review.document_version_id)
+            .where(
+                DocumentVersion.document_id == Document.id,
+                DocumentVersion.version_no
+                == select(func.max(newest.version_no))
+                .where(newest.document_id == Document.id)
+                .scalar_subquery(),
+            )
+            .correlate(Document)
+        )
+        return (
+            select(Document)
+            .where(
+                Document.tenant_id == tenant_id,
+                not_deleted(),
+                Document.status == "extracted",
+                # Only types with something to review; a general document has nothing.
+                Document.doc_type.in_(list(self._specs)),
+                ~exists(signed),
+            )
+            .order_by(Document.created_at, Document.id)
+        )
 
     @scoped
     def detail(

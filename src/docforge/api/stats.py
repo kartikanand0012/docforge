@@ -18,7 +18,10 @@ Reader = Annotated[Principal, Depends(require("documents:read"))]
 class StatsOut(BaseModel):
     documents: int
     ready: int  # read and finished
-    awaiting_review: int  # in the review queue
+    awaiting_review: int  # in the review queue (a lower bound when awaiting_review_capped)
+    # True when there were more documents that might await review than the count looks at:
+    # awaiting_review is then at least this many. The review queue lists them.
+    awaiting_review_capped: bool
     signed: int  # with a signed review
     failed: int
     documents_last_7_days: int
@@ -35,12 +38,12 @@ def stats_router(
     async def stats(principal: Reader, response: Response) -> StatsOut:
         """The caller's workspace: how many documents, where they are, and what they cost."""
         found = await run_in_threadpool(service.stats, principal.tenant_id, prices or {})
-        waiting = (
-            len(await run_in_threadpool(review.queue, principal.tenant_id))
+        waiting, capped = (
+            await run_in_threadpool(review.awaiting_review, principal.tenant_id)
             if review is not None
-            else 0
+            else (0, False)
         )
         response.headers["Cache-Control"] = "no-store"
-        return StatsOut(awaiting_review=waiting, **vars(found))
+        return StatsOut(awaiting_review=waiting, awaiting_review_capped=capped, **vars(found))
 
     return router
