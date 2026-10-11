@@ -290,3 +290,17 @@ def test_a_change_that_is_refused_leaves_no_audit_entry(
             change()
 
     assert _entries(setup) == before
+
+
+def test_renaming_counts_only_documents_not_deleted_as_the_list_does(setup: Setup) -> None:
+    kb = setup.create()
+    setup.collections.add(
+        DEFAULT_TENANT_ID, kb.id, [setup.invoice_id, setup.order_id], actor="admin:a"
+    )
+    assert setup.world.service is not None
+    setup.world.service.delete(DEFAULT_TENANT_ID, setup.order_id, actor="admin:a")
+
+    renamed = setup.collections.rename(DEFAULT_TENANT_ID, kb.id, "Renamed", actor="admin:a")
+
+    (listed,) = setup.collections.list(DEFAULT_TENANT_ID)
+    assert renamed.documents == listed.documents == 1
