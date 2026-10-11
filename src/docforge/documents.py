@@ -482,7 +482,7 @@ class DocumentService:
         """
         with self._sessions.begin() as session:
             document = self._document(session, tenant_id, document_id, lock=True)
-            refuse_if_claimed(session, document.id, reviewer_id, _now())
+            refuse_if_claimed(session, document.id, reviewer_id)
             newest = session.scalar(
                 select(DocumentVersion)
                 .where(DocumentVersion.document_id == document.id)
@@ -520,7 +520,7 @@ class DocumentService:
         """
         with self._sessions.begin() as session:
             document = self._document(session, tenant_id, document_id, lock=True)
-            refuse_if_claimed(session, document.id, reviewer_id, _now())
+            refuse_if_claimed(session, document.id, reviewer_id)
             # A reading still waiting or under way ends here: the worker drops a deleted
             # document's job, and a version left in flight would hold a place in the queue.
             for version in session.scalars(

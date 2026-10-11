@@ -419,7 +419,7 @@ class ReviewService:
                     .join(Reviewer, Reviewer.id == ReviewClaim.reviewer_id)
                     .where(
                         ReviewClaim.document_id.in_([item.document_id for item in items]),
-                        ReviewClaim.expires_at > _now(),
+                        ReviewClaim.expires_at > func.now(),
                     )
                 )
                 if viewer is not None:
@@ -469,8 +469,10 @@ class ReviewService:
                 select(exists().where(Review.document_version_id == newest.id))
             ):
                 raise AlreadySigned
-            now = _now()
-            found = live_claim(session, document.id, now)
+            # The database's clock: every API host compares a lease with it, never its own.
+            now = session.scalar(select(func.now()))
+            assert now is not None  # noqa: S101 - now() is never null
+            found = live_claim(session, document.id)
             renewal = found is not None and found[0].reviewer_id == reviewer.id
             if found is not None and not renewal:
                 held, holder = found
@@ -634,7 +636,7 @@ class ReviewService:
         with self._sessions.begin() as session:
             document = self._find(session, tenant_id, document_id, lock=True)
             state = self._changeable(self._state(session, document))
-            refuse_if_claimed(session, document.id, reviewer.id, _now())
+            refuse_if_claimed(session, document.id, reviewer.id)
             if expected_record_sha256 is not None and (
                 record_digest(state.reassessed.extraction.model_dump(mode="json"))
                 != expected_record_sha256
@@ -703,7 +705,7 @@ class ReviewService:
         with self._sessions.begin() as session:
             document = self._find(session, tenant_id, document_id, lock=True)
             state = self._changeable(self._state(session, document))
-            refuse_if_claimed(session, document.id, reviewer.id, _now())
+            refuse_if_claimed(session, document.id, reviewer.id)
             required = MEANINGS[document.doc_type][outcome]
             if meaning.strip() != required:
                 raise ValueError(f"the meaning of this signature must be: {required}")
@@ -1103,7 +1105,7 @@ class ReviewService:
 def _claim_view(
     session: Session, document_id: uuid.UUID, viewer: uuid.UUID | None
 ) -> ClaimView | None:
-    found = live_claim(session, document_id, _now())
+    found = live_claim(session, document_id)
     if found is None:
         return None
     held, holder = found
