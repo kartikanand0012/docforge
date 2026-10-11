@@ -212,3 +212,29 @@ def test_the_audit_and_sign_in_figures_have_their_indexes(migrated: Engine) -> N
         ).scalar_one()
     assert found == {"ix_audit_log_action_time": True, "ix_sessions_tenant_created": True}
     assert "(tenant_id, action, occurred_at) INCLUDE (actor)" in action_time
+
+
+# What the database holds of accounts
+
+
+def test_a_personal_workspace_has_one_member_at_most(migrated: Engine) -> None:
+    make_account(migrated)
+    with pytest.raises(IntegrityError, match="uq_reviewers_one_member"), migrated.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO reviewers (tenant_id, name, email, pin_hash, role, credential) "
+                "SELECT tenant_id, 'B', 'b@example.com', 'x', 'member', 'password' "
+                "FROM accounts LIMIT 1"
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "email", ["no-at-sign", "two@@example.com", "a b@example.com", "a@nodot", f"{'a' * 250}@x.io"]
+)
+def test_an_accounts_email_is_an_address_of_at_most_254_characters(
+    migrated: Engine, email: str
+) -> None:
+    make_account(migrated)
+    with pytest.raises(IntegrityError, match="ck_accounts_email_format"), migrated.begin() as conn:
+        conn.execute(text("UPDATE accounts SET email = :e"), {"e": email})
