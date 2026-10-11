@@ -76,9 +76,15 @@ The budget alarm warns at 80% and 100% of `monthly_budget_usd` (default $50).
 | `.env` | Compose | Images, domain, the public demo PIN |
 | `app.env` | API, worker | The restricted database login, the app's S3 key, the webhook key |
 | `owner.env` | Postgres, the one-shot `admin` service | The database owner's password |
+| `platform.env` (optional, SSM `/docforge/demo/platform`) | API, the one-shot `admin` service | `PLATFORM_DATABASE_URL`: the platform administrator's own database login; without it the platform screens answer 503 |
 
 The API and worker never hold the owner's password, and they cannot reach the host role:
 the instance metadata hop limit is 1. All three files are root-only.
+
+The `admin` service also makes the platform login from `PLATFORM_DATABASE_URL` (user and
+password; it must differ from `DATABASE_URL`'s), and finishes any erasure of deleted documents'
+and accounts' stored files that storage refused when they were deleted
+(`python -m docforge.erasure`, as the owner).
 
 ## Rotating secrets
 
