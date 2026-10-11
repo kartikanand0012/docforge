@@ -60,6 +60,20 @@ def _printed(invoice: InvoiceExtraction, name: str) -> bool:
     return any(getattr(line, name).raw is not None for line in invoice.lines)
 
 
+def _medicine(invoice: InvoiceExtraction) -> bool:
+    """Whether this is a medicine invoice, from evidence on the whole document rather than one
+    column the model may miss on every line: a batch or expiry on any line, a drug licence
+    number on either party, or a line in HSN chapter 30 (pharmaceutical products). A medicine
+    invoice is checked for batch, expiry, rate and MRP even where no line's was read."""
+    if _printed(invoice, "batch_no") or _printed(invoice, "expiry"):
+        return True
+    if any(n.raw is not None for p in (invoice.seller, invoice.buyer) for n in p.drug_licence_nos):
+        return True
+    return any(
+        (line.hsn.value or line.hsn.raw or "").strip().startswith("30") for line in invoice.lines
+    )
+
+
 def _intra_state(invoice: InvoiceExtraction) -> bool | None:
     seller, buyer = invoice.seller.gstin.value, invoice.buyer.gstin.value
     if not seller or not buyer:
@@ -103,7 +117,8 @@ def hsn_format(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_dates(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
-    if not _printed(invoice, "mfg") or not _printed(invoice, "expiry"):
+    # A manufacture month is not printed on every medicine invoice; expiry is.
+    if not _printed(invoice, "mfg") or not (_medicine(invoice) or _printed(invoice, "expiry")):
         return
     issued = invoice.invoice_date.value
     for path, line in _lines(invoice):
@@ -121,7 +136,7 @@ def line_dates(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_not_expired(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
-    if not _printed(invoice, "expiry"):
+    if not (_medicine(invoice) or _printed(invoice, "expiry")):
         return
     issued = invoice.invoice_date.value
     for path, line in _lines(invoice):
@@ -148,7 +163,7 @@ def line_not_expired(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_ptr_not_above_mrp(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
-    if not _printed(invoice, "ptr") or not _printed(invoice, "mrp"):
+    if not (_medicine(invoice) or (_printed(invoice, "ptr") and _printed(invoice, "mrp"))):
         return
     for path, line in _lines(invoice):
         ptr, mrp = line.ptr.value, line.mrp.value
@@ -164,7 +179,7 @@ def line_ptr_not_above_mrp(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 def line_taxable_value(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
     # Quantity x rate needs a rate column; an invoice that prints only quantity and line value
     # has nothing to multiply, and the line values are still checked against the totals.
-    if not _printed(invoice, "ptr"):
+    if not (_medicine(invoice) or _printed(invoice, "ptr")):
         return
     for path, line in _lines(invoice):
         qty, ptr, discount = line.qty.value, line.ptr.value, line.discount_pct.value
@@ -358,9 +373,9 @@ def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
     }
     required["lines"] = (invoice.lines or None, None)
     # Batch and expiry are required of a medicine invoice, which prints them; a general goods
-    # invoice (a camera) prints neither. Once any line prints either, even unreadably, every
-    # line must carry both, so a batch missing from one line of a medicine invoice is caught.
-    batched = _printed(invoice, "batch_no") or _printed(invoice, "expiry")
+    # invoice (a camera) prints neither. A medicine invoice is known from the whole document
+    # (`_medicine`), so a batch column missed on every line is still caught as missing.
+    batched = _medicine(invoice)
     names = ("product_name", "batch_no", "expiry", "qty") if batched else ("product_name", "qty")
     for path, line in _lines(invoice):
         for name in names:
