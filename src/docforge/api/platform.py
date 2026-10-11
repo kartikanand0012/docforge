@@ -35,8 +35,9 @@ class WorkspaceOut(BaseModel):
 
 
 class OverviewOut(BaseModel):
-    totals: dict[str, Any]
-    workspaces: list[WorkspaceOut]
+    totals: dict[str, Any]  # over every workspace, on every page
+    workspaces: list[WorkspaceOut]  # this page's
+    next_offset: int | None  # the next page's offset; null on the last page
 
 
 class ActivityOut(BaseModel):
@@ -66,14 +67,21 @@ def platform_router(platform: PlatformService | None) -> APIRouter:
         return platform
 
     @router.get("/overview", response_model=OverviewOut)
-    def overview(principal: PlatformAdmin, response: Response) -> OverviewOut:
-        """Every workspace's figures, most recently active first, and the totals. Counts and
-        names only: never a document's name or contents."""
-        found = configured().overview()
+    def overview(
+        principal: PlatformAdmin,
+        response: Response,
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> OverviewOut:
+        """A page of every workspace's figures, most recently active first, and the totals
+        over all of them. Counts and names only: never a document's name or contents.
+        Figures may be up to half a minute old."""
+        found = configured().overview(limit=limit, offset=offset)
         response.headers["Cache-Control"] = "no-store"
         return OverviewOut(
             totals=found.totals,
             workspaces=[WorkspaceOut(**vars(w)) for w in found.workspaces],
+            next_offset=found.next_offset,
         )
 
     @router.get("/activity", response_model=ActivityPageOut)

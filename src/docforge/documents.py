@@ -38,9 +38,9 @@ from docforge.db.models import (
     DocumentVersion,
     Extraction,
     MatchRecord,
-    Message,
     ModelRun,
     ParseOutput,
+    QuestionUsage,
     Review,
     live,
 )
@@ -1314,18 +1314,15 @@ class DocumentService:
                 .where(ModelRun.tenant_id == tenant_id, live())
                 .group_by(ModelRun.provider, ModelRun.model)
             ).all()  # fmt: skip
+            # Every answer's tokens, its conversation since deleted or not.
             questions = session.execute(
                 select(
-                    Message.provider, Message.model,
-                    func.coalesce(func.sum(Message.input_tokens), 0),
-                    func.coalesce(func.sum(Message.output_tokens), 0),
+                    QuestionUsage.provider, QuestionUsage.model,
+                    func.coalesce(func.sum(QuestionUsage.input_tokens), 0),
+                    func.coalesce(func.sum(QuestionUsage.output_tokens), 0),
                 )
-                .where(
-                    Message.tenant_id == tenant_id,
-                    Message.provider.is_not(None),
-                    Message.model.is_not(None),
-                )
-                .group_by(Message.provider, Message.model)
+                .where(QuestionUsage.tenant_id == tenant_id)
+                .group_by(QuestionUsage.provider, QuestionUsage.model)
             ).all()  # fmt: skip
         usages = [(p, m, int(i or 0), int(o or 0), int(t or 0)) for p, m, i, o, t in readings]
         usages += [(str(p), str(m), int(i or 0), int(o or 0), 0) for p, m, i, o in questions]

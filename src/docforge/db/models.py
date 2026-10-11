@@ -441,6 +441,22 @@ class Message(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class QuestionUsage(Base):
+    """What answering one question spent, kept when its conversation is deleted: tokens spent
+    stay spent. It holds no question or answer. The application may add rows, not change or
+    delete them; only an account's deletion removes a workspace's."""
+
+    __tablename__ = "question_usage"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    input_tokens: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    output_tokens: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    created_at: Mapped[datetime] = _created_at()
+
+
 class Collection(Base):
     """A knowledge base: a named set of an organisation's documents to search and ask within."""
 

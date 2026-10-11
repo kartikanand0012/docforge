@@ -202,7 +202,7 @@ def test_the_platform_functions_are_for_the_platform_login_alone(owner_engine: E
                 "FROM pg_proc p WHERE p.proname LIKE 'docforge\\_platform\\_%'"
             )
         ).all()
-    assert len(rows) == 4
+    assert len(rows) == 5
     for name, definer, config, public, app, platform in rows:
         assert definer and not public and not app and platform, name
         assert config == ["search_path=pg_catalog, public, pg_temp"], name
@@ -211,8 +211,9 @@ def test_the_platform_functions_are_for_the_platform_login_alone(owner_engine: E
 def test_the_application_login_cannot_call_the_platform_functions(engine: Engine) -> None:
     # Even after making the setting the functions check: an injected query gets nothing.
     for call in (
-        "docforge_platform_workspaces()", "docforge_platform_usage()",
-        "docforge_platform_accounts()", "docforge_platform_activity(NULL, 10, NULL)",
+        "docforge_platform_workspaces(100, 0)", "docforge_platform_totals()",
+        "docforge_platform_usage()", "docforge_platform_accounts()",
+        "docforge_platform_activity(NULL, 10, NULL)",
     ):  # fmt: skip
         with engine.connect() as conn:
             conn.execute(text("SELECT set_config('docforge.platform_admin', 'checked', true)"))
@@ -227,7 +228,7 @@ def test_the_platform_login_calls_them_and_reads_nothing_else(
         session.execute(text("SELECT set_config('docforge.platform_admin', 'checked', true)"))
         assert (
             session.execute(
-                text("SELECT count(*) FROM docforge_platform_workspaces()")
+                text("SELECT count(*) FROM docforge_platform_workspaces(100, 0)")
             ).scalar_one()
             == 3
         )
@@ -258,7 +259,7 @@ def test_the_platform_functions_give_nothing_unless_the_service_checked(
     platform_sessions: SessionFactory,
 ) -> None:
     with platform_sessions() as session:
-        rows = session.execute(text("SELECT count(*) FROM docforge_platform_workspaces()"))
+        rows = session.execute(text("SELECT count(*) FROM docforge_platform_workspaces(100, 0)"))
         assert rows.scalar_one() == 0
 
 

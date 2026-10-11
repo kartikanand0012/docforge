@@ -34,7 +34,7 @@ from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passag
 from docforge.chat.statements import CODE, RawStatement, check_statements
 from docforge.chat.verify import cited_blocks
 from docforge.collections import CollectionNotFound, CollectionService
-from docforge.db.models import AuditEntry, Conversation, Document, Message, live
+from docforge.db.models import AuditEntry, Conversation, Document, Message, QuestionUsage, live
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
@@ -669,6 +669,17 @@ class ChatService:
                 message.model = responses[-1].model if responses else None
                 message.input_tokens = input_tokens
                 message.output_tokens = output_tokens
+                if message.provider and message.model:
+                    # Kept when the conversation is deleted: what was spent stays spent.
+                    session.add(
+                        QuestionUsage(
+                            tenant_id=message.tenant_id,
+                            provider=message.provider,
+                            model=message.model,
+                            input_tokens=input_tokens or 0,
+                            output_tokens=output_tokens or 0,
+                        )
+                    )
         except Exception:
             # The answer was paid for: say what it cost even if it could not be stored.
             logger.exception(

@@ -6,6 +6,8 @@ the application's login cannot call them. Callers must have checked that the per
 is a platform administrator.
 """
 
+import threading
+import time
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
@@ -30,6 +32,8 @@ TARGETS = {
     "audit_log": "Audit log",
 }
 MAX_ACTIVITY = 200
+MAX_WORKSPACES = 500  # a page of the overview, at most
+CACHE_SECONDS = 30.0
 
 
 def _checked(session: Session) -> None:
@@ -59,6 +63,7 @@ class Workspace:
 class Overview:
     totals: dict[str, Any]
     workspaces: list[Workspace]
+    next_offset: int | None = None  # where the next page starts; None on the last
 
 
 @dataclass(frozen=True)
@@ -80,19 +85,53 @@ def _cost(usages: list[tuple[str, str, int, int, int]], prices: Prices) -> float
 
 
 class PlatformService:
-    def __init__(self, sessions: SessionFactory, prices: Prices | None = None) -> None:
+    def __init__(
+        self,
+        sessions: SessionFactory,
+        prices: Prices | None = None,
+        *,
+        cache_seconds: float = CACHE_SECONDS,
+    ) -> None:
         self._sessions = sessions
         self._prices = prices or {}
+        # The overview reads every workspace: kept for a short while, per page, in this
+        # process, so a dashboard left open does not read them all on every refresh.
+        self._cache_seconds = cache_seconds
+        self._cache: dict[tuple[int, int], tuple[float, Overview]] = {}
+        self._cache_lock = threading.Lock()
 
-    def overview(self) -> Overview:
-        """Every workspace's figures, most recently active first, and their totals."""
+    def clear_cache(self) -> None:
+        with self._cache_lock:
+            self._cache.clear()
+
+    def overview(self, *, limit: int = 100, offset: int = 0) -> Overview:
+        """One page of the workspaces' figures, most recently active first, and the totals
+        over every workspace."""
+        limit, offset = max(1, min(limit, MAX_WORKSPACES)), max(0, offset)
+        now = time.monotonic()
+        with self._cache_lock:
+            kept = self._cache.get((limit, offset))
+            if kept is not None and now - kept[0] < self._cache_seconds:
+                return kept[1]
+        found = self._overview(limit, offset)
+        with self._cache_lock:
+            self._cache[(limit, offset)] = (now, found)
+        return found
+
+    def _overview(self, limit: int, offset: int) -> Overview:
         with self._sessions.begin() as session:
             _checked(session)
-            rows = session.execute(select(func.docforge_platform_workspaces().table_valued(
+            rows = session.execute(select(func.docforge_platform_workspaces(
+                limit + 1, offset
+            ).table_valued(
                 "tenant_id", "organisation", "kind", "created_at", "owner_name", "owner_email",
                 "last_active_at", "documents", "documents_last_7_days", "pages", "signed",
                 "questions", "sign_ins",
             ))).all()  # fmt: skip
+            totals = session.execute(select(func.docforge_platform_totals().table_valued(
+                "workspaces", "documents", "documents_last_7_days", "pages", "signed",
+                "questions",
+            ))).one()  # fmt: skip
             usage = session.execute(select(func.docforge_platform_usage().table_valued(
                 "tenant_id", "provider", "model", "input_tokens", "output_tokens",
                 "thinking_tokens",
@@ -123,26 +162,22 @@ class PlatformService:
                 model_cost_usd=_cost(spent.get(row.tenant_id, []), self._prices),
                 sign_ins=int(row.sign_ins),
             )
-            for row in rows
+            for row in rows[:limit]
         ]
-        workspaces.sort(
-            key=lambda w: (w.last_active_at or w.created_at, w.created_at), reverse=True
-        )
-        costs = [w.model_cost_usd for w in workspaces]
-        totals = {
-            "workspaces": len(workspaces),
+        everything = [usage for usages in spent.values() for usage in usages]
+        cost = _cost(everything, self._prices)
+        summed = {
+            "workspaces": int(totals.workspaces),
             "accounts": int(accounts),
-            "documents": sum(w.documents for w in workspaces),
-            "pages": sum(w.pages for w in workspaces),
-            "signed": sum(w.signed for w in workspaces),
-            "questions": sum(w.questions for w in workspaces),
-            "model_cost_usd": None
-            if any(c is None for c in costs)
-            else round(sum(c for c in costs if c is not None), 6),
-            "documents_last_7_days": sum(int(r.documents_last_7_days) for r in rows),
+            "documents": int(totals.documents),
+            "pages": int(totals.pages),
+            "signed": int(totals.signed),
+            "questions": int(totals.questions),
+            "model_cost_usd": None if cost is None else round(cost, 6),
+            "documents_last_7_days": int(totals.documents_last_7_days),
             "signups_last_7_days": int(signups),
         }
-        return Overview(totals, workspaces)
+        return Overview(summed, workspaces, offset + limit if len(rows) > limit else None)
 
     def activity(
         self, *, before: int | None = None, limit: int = 50, tenant_id: uuid.UUID | None = None
