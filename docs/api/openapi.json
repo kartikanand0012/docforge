@@ -583,6 +583,38 @@
                 }
             }
         },
+        "/v1/accounts/current": {
+            "delete": {
+                "summary": "Delete Account",
+                "description": "Delete your account and everything in its workspace - documents, their files,\nquestions, knowledge bases, signatures and its audit log - after your password\nagain. It cannot be undone. Only an account's person, in their own workspace.",
+                "operationId": "delete_account_v1_accounts_current_delete",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AccountDeletionIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/accounts": {
             "post": {
                 "summary": "Sign Up",
@@ -648,6 +680,7 @@
         "/v1/documents/{document_id}/review": {
             "get": {
                 "summary": "Review Detail",
+                "description": "The values, their checks and the signature, as a reviewer sees them. Reading it\nneeds only read access (the same values are in the extraction and the assessment);\nchanging anything needs `review`.",
                 "operationId": "review_detail_v1_documents__document_id__review_get",
                 "parameters": [
                     {
@@ -2240,8 +2273,33 @@
         "/v1/platform/overview": {
             "get": {
                 "summary": "Overview",
-                "description": "Every workspace's figures, most recently active first, and the totals. Counts and\nnames only: never a document's name or contents.",
+                "description": "A page of every workspace's figures, most recently active first, and the totals\nover all of them. Counts and names only: never a document's name or contents.\nFigures may be up to half a minute old.",
                 "operationId": "overview_v1_platform_overview_get",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "default": 100,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 0,
+                            "title": "Offset"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Successful Response",
@@ -2249,6 +2307,16 @@
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/OverviewOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
                                 }
                             }
                         }
@@ -2540,6 +2608,21 @@
     },
     "components": {
         "schemas": {
+            "AccountDeletionIn": {
+                "properties": {
+                    "password": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "title": "Password"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "password"
+                ],
+                "title": "AccountDeletionIn"
+            },
             "AccountIn": {
                 "properties": {
                     "name": {
@@ -4853,12 +4936,24 @@
                         },
                         "type": "array",
                         "title": "Workspaces"
+                    },
+                    "next_offset": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Next Offset"
                     }
                 },
                 "type": "object",
                 "required": [
                     "totals",
-                    "workspaces"
+                    "workspaces",
+                    "next_offset"
                 ],
                 "title": "OverviewOut"
             },
@@ -5395,6 +5490,10 @@
                         "type": "integer",
                         "title": "Awaiting Review"
                     },
+                    "awaiting_review_capped": {
+                        "type": "boolean",
+                        "title": "Awaiting Review Capped"
+                    },
                     "signed": {
                         "type": "integer",
                         "title": "Signed"
@@ -5435,6 +5534,7 @@
                     "documents",
                     "ready",
                     "awaiting_review",
+                    "awaiting_review_capped",
                     "signed",
                     "failed",
                     "documents_last_7_days",

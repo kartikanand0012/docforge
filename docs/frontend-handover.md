@@ -468,7 +468,21 @@ chat (it is no longer read or cited; a conversation about it answers 409, and ea
 read back without its quotes), knowledge bases and their counts, exports, agents' tools,
 matching (its counterpart shows `no_counterpart`), stats and the platform figures. It is kept
 for its audit trail (`document.deleted`, "Document deleted"), and the same file can be uploaded
-again as a new document. Ask "Delete this document? It disappears from search and chat." first.
+again as a new document. Its stored file (and any PDF made from it) is erased from storage
+once the deletion stands; a reading still waiting or under way ends as failed. Ask "Delete
+this document? It disappears from search and chat." first.
+
+### 14.5a Deleting one's account - `DELETE /v1/accounts/current`
+Body `{"password"}` -> **204**: the account's whole workspace is erased - every document and
+its stored files, questions and answers, knowledge bases, corrections, signatures, sessions,
+its audit log and the account - and cannot be brought back. The session is then useless (401
+on everything): sign out locally and show the start page. The email may sign up again.
+Only an account's own person in their personal workspace may (`role` `member`, `workspace`
+`personal`); anyone else, an organisation's reviewer or administrator, an API key, or a
+platform administrator looking in -> **403**. A wrong password -> **401** `The email or
+password is not right.`, counted as at sign-in (five lock it, as in 14.2); too many failures
+from the address -> **429** with `Retry-After`. Ask the person to type their password, and
+say plainly that everything in the workspace goes and cannot be recovered.
 
 ### 14.6 Platform administrator (the owner)
 Made with `python -m docforge.review make-platform-admin --tenant <org> --email <email>`
@@ -476,12 +490,19 @@ Made with `python -m docforge.review make-platform-admin --tenant <org> --email 
 person's **session** reaches these; everyone else (members, organisation admins, any API
 key) gets **403**.
 
-- `GET /v1/platform/overview` -> `{"totals": {workspaces, accounts, documents, pages, signed,
-  questions, model_cost_usd, documents_last_7_days, signups_last_7_days}, "workspaces":
-  [{tenant_id, organisation, kind, owner_name, owner_email, created_at, last_active_at,
-  documents, pages, signed, questions, model_cost_usd, sign_ins}]}` - most recently active
-  first; `last_active_at` is the newest audit entry or sign-in. Counts only; deleted documents
-  are left out; no document names or contents.
+- `GET /v1/platform/overview?limit=100&offset=0` -> `{"totals": {workspaces, accounts,
+  documents, pages, signed, questions, model_cost_usd, documents_last_7_days,
+  signups_last_7_days}, "workspaces": [{tenant_id, organisation, kind, owner_name,
+  owner_email, created_at, last_active_at, documents, pages, signed, questions,
+  model_cost_usd, sign_ins}], "next_offset": int | null}` - a page of workspaces (`limit`
+  1..500, default 100), most recently active first, and `totals` over every workspace on every
+  page; ask for the next page with `offset=next_offset` until it is null. `last_active_at` is
+  the newest audit entry or sign-in. Counts only; deleted documents are left out of the counts,
+  but the tokens spent reading them, and on questions whose conversations were deleted, stay in
+  `model_cost_usd`, and `questions` counts every question asked. No document names or
+  contents. The figures may be up to 30 seconds old.
+- **503** `The platform dashboard is not configured.` (to a platform administrator) when the
+  deployment has no platform database login (`PLATFORM_DATABASE_URL`); show that sentence.
 - `GET /v1/platform/activity?limit=50&before=<id>&tenant_id=<uuid>` -> `{"items": [{id,
   occurred_at, tenant_id, organisation, actor_name, action, action_label, target_label}],
   "next_before": int | null}`, newest first across every workspace (`limit` 1..200).
@@ -503,8 +524,10 @@ key) gets **403**.
   `document.model_cost_usd`; each item of `GET /v1/documents` has `model_cost_usd`. It is
   `null` when a model's price is not configured (`MODEL_PRICES`): show "not priced", not $0.
 - `GET /v1/stats` (any credential that can read) -> `{documents, ready, awaiting_review,
-  signed, failed, documents_last_7_days, median_read_seconds, model_cost_usd}` for the caller's
-  workspace only, deleted documents left out. `ready` counts documents read and finished
-  (`ready` or `processed`); `awaiting_review` is the review queue's length; `median_read_seconds`
-  is from upload (or reprocess) to a finished reading, `null` before the first;
-  `model_cost_usd` covers readings and questions.
+  awaiting_review_capped, signed, failed, documents_last_7_days, median_read_seconds,
+  model_cost_usd}` for the caller's workspace only, deleted documents left out. `ready` counts
+  documents read and finished (`ready` or `processed`); `awaiting_review` is how many wait for a
+  person, looking at the oldest 50 that might - when `awaiting_review_capped` is true there
+  were more, so show it as "50+"-style ("at least N"); `median_read_seconds` is from upload (or
+  reprocess) to a finished reading, `null` before the first; `model_cost_usd` covers readings
+  and questions (a question's cost stays when its conversation is deleted).
