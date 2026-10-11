@@ -391,3 +391,69 @@ def test_with_storage_down_the_deletion_stands_and_the_erasure_is_finished_later
 def test_the_application_cannot_read_the_erasures_still_to_do(engine: Engine) -> None:
     with engine.connect() as conn, pytest.raises(Exception, match="permission denied"):
         conn.execute(text("SELECT count(*) FROM erasures"))
+
+
+# Deleting a document whose reading is still waiting or under way
+
+
+def versions_of(owner_engine: Engine, document_id: uuid.UUID) -> list[tuple[str, str | None]]:
+    with owner_engine.connect() as conn:
+        return [
+            (row.status, row.error)
+            for row in conn.execute(
+                text("SELECT status, error FROM document_versions WHERE document_id = :d"),
+                {"d": document_id},
+            )
+        ]
+
+
+def pending(stack: Stack) -> int:
+    from docforge.db.tenancy import tenant_scope
+    from docforge.documents import DocumentService
+
+    with tenant_scope(DEFAULT_TENANT_ID), stack.sessions() as session:
+        return DocumentService._pending(session, DEFAULT_TENANT_ID)
+
+
+@pytest.mark.parametrize("status", ["queued", "running"])
+def test_deleting_a_document_ends_its_reading_in_flight_and_frees_its_place(
+    stack: Stack, owner_engine: Engine, status: str
+) -> None:
+    received = stack.documents.ingest(
+        tenant_id=DEFAULT_TENANT_ID, doc_type="invoice", filename="new.pdf",
+        data=stack.world.invoice_pdf + b"\n% another copy", actor="api:upload",
+    )  # fmt: skip
+    document_id = received.document.id
+    if status == "running":
+        with owner_engine.begin() as conn:
+            conn.execute(
+                text("UPDATE document_versions SET status = 'running' WHERE document_id = :d"),
+                {"d": document_id},
+            )
+    assert pending(stack) == 1
+
+    assert stack.delete(document_id) == 204
+
+    assert versions_of(owner_engine, document_id) == [("failed", "Deleted")]
+    assert pending(stack) == 0
+    # The worker's delivery of it, when it comes, finds nothing to do.
+    assert received.version is not None
+    with pytest.raises(Exception, match="no document"):
+        stack.documents.process(received.version.id)
+
+
+def test_a_deleted_documents_reading_never_counts_towards_the_queue_limit(
+    stack: Stack, owner_engine: Engine
+) -> None:
+    received = stack.documents.ingest(
+        tenant_id=DEFAULT_TENANT_ID, doc_type="invoice", filename="new.pdf",
+        data=stack.world.invoice_pdf + b"\n% a third copy", actor="api:upload",
+    )  # fmt: skip
+    # As a deletion before versions in flight were ended left it: hidden, still queued.
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("UPDATE documents SET deleted_at = now() WHERE id = :d"),
+            {"d": received.document.id},
+        )
+
+    assert pending(stack) == 0
