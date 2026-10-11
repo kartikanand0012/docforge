@@ -17,11 +17,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from docforge import audit
-from docforge.db.models import AuditEntry, Tenant
+from docforge.db.models import AuditEntry
 from docforge.db.tenancy import tenant_scope
 from docforge.storage import ObjectNotFound, ObjectStore
 
@@ -101,7 +101,8 @@ def anchor_all(sessions: Any, anchors: AnchorStore) -> int:
     """Anchor every tenant's chain. Returns how many were anchored; one tenant's failure
     is logged and does not stop the others."""
     with sessions() as session:
-        tenants = list(session.scalars(select(Tenant.id)))
+        # Each workspace's id only, through the owner's function: no workspace row is read.
+        tenants = list(session.scalars(select(func.docforge_tenant_ids())))
     done = 0
     for tenant_id in tenants:
         try:

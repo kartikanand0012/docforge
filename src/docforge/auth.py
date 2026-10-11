@@ -292,7 +292,8 @@ class Authenticator:
                     select(func.docforge_account_tenant(normalise_email(email)))
                 )
             else:
-                tenant_id = session.scalar(select(Tenant.id).where(Tenant.name == tenant_name))
+                # Nor the workspaces, before one is known: an organisation's id, by its name.
+                tenant_id = session.scalar(select(func.docforge_organisation_tenant(tenant_name)))
         if tenant_id is None:
             verify_pin(pin, _DUMMY_PIN_HASH)
             self.limiter.failed(client)
@@ -371,7 +372,7 @@ class Authenticator:
     def describe(self, principal: Principal) -> Caller:
         """The caller's email and credential (a person's; None for a key), and the name and
         kind of the workspace the request is served in."""
-        with self._sessions() as session:
+        with tenant_scope(principal.tenant_id), self._sessions() as session:
             tenant = session.scalar(select(Tenant).where(Tenant.id == principal.tenant_id))
         person = None
         if principal.kind == "session":
@@ -454,7 +455,8 @@ class Authenticator:
         """
         if principal.kind != "session" or not principal.platform_admin:
             raise PermissionError("not a platform administrator")
-        with self._sessions() as session:
+        # In its scope, the one workspace row the application may read is that one, if any.
+        with tenant_scope(workspace), self._sessions() as session:
             if session.scalar(select(Tenant.id).where(Tenant.id == workspace)) is None:
                 raise NotAWorkspace(workspace)
         actor = principal.actor
