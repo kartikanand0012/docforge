@@ -98,9 +98,10 @@ def test_a_workspaces_figures_are_its_own(
     assert stats.status_code == 200
     body = stats.json()
     assert set(body) == {
-        "documents", "ready", "awaiting_review", "signed", "failed", "documents_last_7_days",
-        "median_read_seconds", "model_cost_usd",
+        "documents", "ready", "awaiting_review", "awaiting_review_capped", "signed", "failed",
+        "documents_last_7_days", "median_read_seconds", "model_cost_usd",
     }  # fmt: skip
+    assert body["awaiting_review_capped"] is False
     assert (body["documents"], body["ready"], body["failed"], body["signed"]) == (2, 2, 0, 0)
     assert body["documents_last_7_days"] == 2
     assert body["awaiting_review"] == len(stack.client.get("/v1/review/queue", headers=asha).json())
@@ -136,7 +137,8 @@ def test_an_empty_workspace_has_nothing_yet(sessions: SessionFactory, world: Wor
     body = stack.client.get("/v1/stats", headers=me).json()
 
     assert body == {
-        "documents": 0, "ready": 0, "awaiting_review": 0, "signed": 0, "failed": 0,
+        "documents": 0, "ready": 0, "awaiting_review": 0, "awaiting_review_capped": False,
+        "signed": 0, "failed": 0,
         "documents_last_7_days": 0, "median_read_seconds": None, "model_cost_usd": 0.0,
     }  # fmt: skip
     assert stack.client.get("/v1/stats").status_code == 401
@@ -157,3 +159,26 @@ def test_a_questions_cost_stays_when_its_conversation_is_deleted(
     assert deleted.status_code == 204
     after = stack.client.get("/v1/stats", headers=me).json()["model_cost_usd"]
     assert after == pytest.approx(before) and after > ONE_READING
+
+
+def test_awaiting_review_looks_at_a_bounded_number_of_documents_and_says_when_it_stopped(
+    sessions: SessionFactory,
+    world: World,
+    owner_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import docforge.review.service
+
+    stack = FullStack(sessions, world, prices=PRICES)
+    me = stack.sign_up("Asha", "asha@example.com")
+    workspace = FullStack.workspace_of(owner_engine, "asha@example.com")
+    stack.read(workspace, "invoice")  # no order to match: it waits for a person
+    waiting = len(stack.client.get("/v1/review/queue", headers=me).json())
+    assert waiting >= 1
+
+    exact = stack.client.get("/v1/stats", headers=me).json()
+    monkeypatch.setattr(docforge.review.service, "STATS_SCAN", 0)
+    bounded = stack.client.get("/v1/stats", headers=me).json()
+
+    assert (exact["awaiting_review"], exact["awaiting_review_capped"]) == (waiting, False)
+    assert (bounded["awaiting_review"], bounded["awaiting_review_capped"]) == (0, True)
