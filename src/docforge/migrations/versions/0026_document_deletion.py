@@ -77,8 +77,7 @@ def downgrade() -> None:
         )
     duplicated = op.get_bind().execute(
         sa.text(
-            "SELECT EXISTS (SELECT 1 FROM documents GROUP BY tenant_id, sha256 "
-            "HAVING count(*) > 1)"
+            "SELECT EXISTS (SELECT 1 FROM documents GROUP BY tenant_id, sha256 HAVING count(*) > 1)"
         )
     )
     if duplicated.scalar():
