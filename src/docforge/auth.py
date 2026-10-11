@@ -34,7 +34,7 @@ from docforge.accounts import (
 from docforge.db.models import ApiKey, AuditEntry, Reviewer, SessionToken, Tenant
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
-from docforge.review.signing import hash_pin, verify_pin
+from docforge.review.signing import hash_pin, upgrade_hash, verify_pin
 
 Role = Literal["integrator", "reviewer", "admin", "reader", "member", "observer"]
 Kind = Literal["api_key", "session"]
@@ -57,7 +57,9 @@ _VIEWED_AUDIT_EVERY = timedelta(hours=1)
 _TOKEN = re.compile(r"^(dfk|dfs)_([0-9a-f]{12})_([A-Za-z0-9_-]{43})$")
 _KINDS: dict[str, Kind] = {"dfk": "api_key", "dfs": "session"}
 _SESSION_HOURS = 8
-_DUMMY_PIN_HASH = "scrypt$16384$8$1$00$00"
+# Checked when there is no secret to check (an unknown email, a lock), with the same
+# algorithm and cost as a real one: how long a refusal takes says nothing.
+_DUMMY_PIN_HASH = hash_pin(secrets.token_urlsafe(16))
 _MAX_FAILED_PINS = 5  # as for a PIN re-entered to correct or sign
 _LOCK_FOR = timedelta(minutes=15)
 # An address that got a reviewer's secret wrong this recently stays locked out while the
@@ -319,6 +321,7 @@ class Authenticator:
                 verify_pin(pin, _DUMMY_PIN_HASH)
                 ok = False
             elif verify_pin(pin, reviewer.pin_hash):
+                upgrade_hash(session, reviewer.id, reviewer.pin_hash, pin)
                 # Signing in from elsewhere does not lift a lock on the addresses that failed.
                 if not locked:
                     reviewer.failed_attempts, reviewer.locked_until = 0, None

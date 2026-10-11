@@ -8,13 +8,22 @@ replace, an organisation's own electronic-signature controls.
 import hashlib
 import hmac
 import json
-import secrets
+import uuid
 from datetime import datetime
 from typing import Any
 
+from argon2 import PasswordHasher, Type
+from argon2.exceptions import InvalidHashError, VerificationError
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
 from docforge.extraction.schema import InvoiceExtraction
 
-_N, _R, _P = 2**14, 8, 1  # scrypt cost: about 16 MB and tens of milliseconds per check
+# argon2id at OWASP's minimum: 19 MiB, two passes, one lane. New PINs and passwords are
+# hashed so; older scrypt hashes are still checked and replaced on the next right entry.
+_ARGON2 = PasswordHasher(time_cost=2, memory_cost=19 * 1024, parallelism=1, hash_len=32,
+                         salt_len=16, type=Type.ID)  # fmt: skip
+ARGON2_PREFIX = "$argon2id$"
 
 
 def _scrypt(pin: str, salt: bytes, n: int, r: int, p: int) -> bytes:
@@ -22,12 +31,17 @@ def _scrypt(pin: str, salt: bytes, n: int, r: int, p: int) -> bytes:
 
 
 def hash_pin(pin: str) -> str:
-    salt = secrets.token_bytes(16)
-    digest = _scrypt(pin, salt, _N, _R, _P)
-    return f"scrypt${_N}${_R}${_P}${salt.hex()}${digest.hex()}"
+    """A PIN's or a password's hash, as argon2id."""
+    return _ARGON2.hash(pin)
 
 
 def verify_pin(pin: str, stored: str) -> bool:
+    """Whether `pin` is the secret `stored` is the hash of: argon2id, or scrypt (older)."""
+    if stored.startswith(ARGON2_PREFIX):
+        try:
+            return _ARGON2.verify(stored, pin)
+        except (VerificationError, InvalidHashError):
+            return False
     try:
         scheme, n, r, p, salt, digest = stored.split("$")
         expected = bytes.fromhex(digest)
@@ -35,6 +49,25 @@ def verify_pin(pin: str, stored: str) -> bool:
     except ValueError:
         return False
     return scheme == "scrypt" and hmac.compare_digest(actual, expected)
+
+
+def needs_rehash(stored: str) -> bool:
+    """Whether a hash is older or weaker than what `hash_pin` makes now."""
+    if not stored.startswith(ARGON2_PREFIX):
+        return True
+    try:
+        return _ARGON2.check_needs_rehash(stored)
+    except InvalidHashError:
+        return True
+
+
+def upgrade_hash(session: Session, reviewer_id: uuid.UUID, stored: str, secret: str) -> None:
+    """After `secret` was found right for `stored`: replace an older hash with argon2id, in
+    the caller's transaction. Through the owner's function: the application's role cannot
+    write a reviewer's hash itself, and the function changes only this one, only from the
+    hash it had, in the workspace in scope."""
+    if needs_rehash(stored):
+        session.execute(select(func.docforge_upgrade_secret(reviewer_id, stored, hash_pin(secret))))
 
 
 # What a signature means, per document type and outcome. Fixed here so a client cannot have

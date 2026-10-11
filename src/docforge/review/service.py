@@ -63,6 +63,7 @@ from docforge.review.signing import (
     hash_pin,
     record_digest,
     record_hash,
+    upgrade_hash,
     verify_pin,
 )
 from docforge.storage import ObjectStore, rendition_key
@@ -342,6 +343,7 @@ class ReviewService:
                     reviewer.locked_until = now + LOCK_FOR
                 failed = True
             else:
+                upgrade_hash(session, reviewer.id, reviewer.pin_hash, pin)
                 reviewer.failed_attempts = 0
                 reviewer.locked_until = None
                 failed = False
