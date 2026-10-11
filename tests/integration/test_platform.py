@@ -409,3 +409,46 @@ def test_questions_and_their_cost_stay_in_the_overview_when_a_conversation_is_de
     assert before["questions"] == after["questions"] == 1
     # Tokens spent on a document since deleted, and on questions since deleted, stay spent.
     assert after["model_cost_usd"] == before["model_cost_usd"]
+
+
+# Paging and a short cache
+
+
+def test_the_overview_pages_through_workspaces_in_order_with_totals_for_all(
+    platform: Platform,
+) -> None:
+    whole = platform.api.get("/v1/platform/overview", headers=platform.admin).json()
+    order = [row["tenant_id"] for row in whole["workspaces"]]
+    assert len(order) == 3 and whole["next_offset"] is None
+
+    pages, offset = [], 0
+    while offset is not None:
+        page = platform.api.get(
+            "/v1/platform/overview", headers=platform.admin,
+            params={"limit": 2, "offset": offset},
+        ).json()  # fmt: skip
+        assert page["totals"] == whole["totals"]  # every workspace's, on every page
+        pages += [row["tenant_id"] for row in page["workspaces"]]
+        offset = page["next_offset"]
+
+    assert pages == order
+
+
+@pytest.mark.parametrize("params", [{"limit": 0}, {"limit": 501}, {"offset": -1}])
+def test_a_page_outside_the_bounds_is_refused(platform: Platform, params: dict[str, int]) -> None:
+    response = platform.api.get("/v1/platform/overview", headers=platform.admin, params=params)
+
+    assert response.status_code == 422
+
+
+def test_the_overview_is_kept_for_half_a_minute(platform: Platform) -> None:
+    first = platform.api.get("/v1/platform/overview", headers=platform.admin).json()
+    platform.stack.read(platform.ben_ws, "invoice")
+
+    again = platform.api.get("/v1/platform/overview", headers=platform.admin).json()
+    assert again["totals"]["documents"] == first["totals"]["documents"]
+
+    assert platform.stack.platform is not None
+    platform.stack.platform.clear_cache()
+    fresh = platform.api.get("/v1/platform/overview", headers=platform.admin).json()
+    assert fresh["totals"]["documents"] == first["totals"]["documents"] + 1
