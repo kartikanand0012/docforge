@@ -196,7 +196,7 @@
             },
             "delete": {
                 "summary": "Delete Document",
-                "description": "Delete a document. It is kept for its audit trail but disappears from every list,\nread, search, answer, knowledge base and export; the same file can be uploaded again\nas a new document.",
+                "description": "Delete a document: its stored file, and any PDF made from it, are erased; its record\nis kept, hidden, for its audit trail, and disappears from every list, read, search,\nanswer, knowledge base and export. The same file can be uploaded again as a new\ndocument. (Deleting an account, DELETE /v1/accounts/current, erases everything.)",
                 "operationId": "delete_document_v1_documents__document_id__delete",
                 "parameters": [
                     {
@@ -586,7 +586,7 @@
         "/v1/accounts/current": {
             "delete": {
                 "summary": "Delete Account",
-                "description": "Delete your account and everything in its workspace - documents, their files,\nquestions, knowledge bases, signatures and its audit log - after your password\nagain. It cannot be undone. Only an account's person, in their own workspace.",
+                "description": "Delete your account and erase everything in its workspace - every document and\nits files, questions, knowledge bases, signatures, its audit log and the account\nitself, nothing kept - after your password again. It cannot be undone. Only an\naccount's person, in their own workspace. (Deleting one document erases its files\nand hides its record.)",
                 "operationId": "delete_account_v1_accounts_current_delete",
                 "requestBody": {
                     "content": {

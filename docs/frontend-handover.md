@@ -469,19 +469,22 @@ read back without its quotes), knowledge bases and their counts, exports, agents
 matching (its counterpart shows `no_counterpart`), stats and the platform figures. It is kept
 for its audit trail (`document.deleted`, "Document deleted"), and the same file can be uploaded
 again as a new document. Its stored file (and any PDF made from it) is erased from storage
-once the deletion stands; a reading still waiting or under way ends as failed. Ask "Delete
+once the deletion stands - the file is erased, the record hidden; only deleting the account
+(14.5a) erases everything. A reading still waiting or under way ends as failed. Ask "Delete
 this document? It disappears from search and chat." first.
 
 ### 14.5a Deleting one's account - `DELETE /v1/accounts/current`
-Body `{"password"}` -> **204**: the account's whole workspace is erased - every document and
-its stored files, questions and answers, knowledge bases, corrections, signatures, sessions,
+Body `{"password"}` -> **204**: the account's whole workspace is erased, nothing kept, not
+even hidden records - every document and its stored files, questions and answers, knowledge bases, corrections, signatures, sessions,
 its audit log and the account - and cannot be brought back. The session is then useless (401
 on everything): sign out locally and show the start page. The email may sign up again.
 Only an account's own person in their personal workspace may (`role` `member`, `workspace`
 `personal`); anyone else, an organisation's reviewer or administrator, an API key, or a
 platform administrator looking in -> **403**. A wrong password -> **401** `The email or
 password is not right.`, counted as at sign-in (five lock it, as in 14.2); too many failures
-from the address -> **429** with `Retry-After`. Ask the person to type their password, and
+from the address -> **429** with `Retry-After`. Sign-in, sign-up, this and re-entering a PIN
+or password can also answer **503** `Busy, try again.` with `Retry-After: 1` when very many
+arrive at once: try again after a second. Ask the person to type their password, and
 say plainly that everything in the workspace goes and cannot be recovered.
 
 ### 14.6 Platform administrator (the owner)
