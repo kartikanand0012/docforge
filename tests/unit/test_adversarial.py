@@ -9,8 +9,8 @@ import pypdfium2 as pdfium
 import pytest
 from PIL import Image
 
+from adversarial import MB, Case, cases
 from docforge.formats import is_ole, sniff
-from docforge.synth.adversarial import MB, Case, cases
 
 ALL = {case.name: case for case in cases()}
 

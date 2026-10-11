@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 import pytest
 
-from docforge.synth.adversarial import Case, cases, one_page_pdf
+from adversarial import Case, cases, one_page_pdf
 from system.stack import BASE_URL, Organisation, compose
 
 pytestmark = pytest.mark.robustness
