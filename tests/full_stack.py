@@ -60,13 +60,14 @@ class FullStack:
             sessions, search=self.search, chat=self.chat, collections=self.collections,
             documents=self.documents, limits=self.limits,
         )  # fmt: skip
+        self.platform = PlatformService(platform, prices) if platform else None
         self.app = create_app(
             None, service=self.documents, review=self.review, authenticator=self.auth,
             webhooks=self.webhooks, search=self.search, chat=self.chat,
             collections=self.collections, limits=self.limits, agents=self.tools,
             audit_log=AuditLogService(sessions), signup_enabled=signup,
             signups_per_day=signups_per_day, member_caps=caps or MemberCaps(),
-            platform=PlatformService(platform, prices) if platform else None,
+            platform=self.platform,
             model_prices=prices,
         )  # fmt: skip
         self.client = TestClient(self.app)

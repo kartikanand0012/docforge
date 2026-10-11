@@ -22,6 +22,8 @@ pytestmark = [pytest.mark.integration, pytest.mark.no_ambient_tenant]
 
 RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 HEADER = "X-DocForge-Workspace"
+# The scripted reader's and the stand-in chat model's, in USD per million tokens.
+PRICES = {"fake/fake-1": (1.0, 2.0), "fake/fake-chat-1": (0.5, 1.0)}
 PIN = "482913"
 
 
@@ -33,7 +35,7 @@ class Platform:
         owner_engine: Engine,
         platform_sessions: SessionFactory | None,
     ) -> None:
-        self.stack = FullStack(sessions, world, platform=platform_sessions)
+        self.stack = FullStack(sessions, world, platform=platform_sessions, prices=PRICES)
         self.api = self.stack.client
         self.owner_engine = owner_engine
         review = ReviewService(sessions, world.store, {})
@@ -384,3 +386,26 @@ def test_the_administrator_does_not_read_a_members_conversations(platform: Platf
 
     assert platform.api.get("/v1/conversations", headers=looking).json() == []
     assert platform.api.get(f"/v1/conversations/{conversation}", headers=looking).status_code == 404
+
+
+def test_questions_and_their_cost_stay_in_the_overview_when_a_conversation_is_deleted(
+    platform: Platform,
+) -> None:
+    platform.stack.model.reply = lambda passages: {"statements": [], "unanswerable": True}
+    asked = platform.api.post("/v1/chat", headers=platform.asha, json={"question": "Total?"})
+    conversation = asked.json()["conversation_id"]
+
+    def asha() -> dict[str, Any]:
+        assert platform.stack.platform is not None
+        platform.stack.platform.clear_cache()
+        body = platform.api.get("/v1/platform/overview", headers=platform.admin).json()
+        return next(r for r in body["workspaces"] if r["tenant_id"] == str(platform.asha_ws))
+
+    before = asha()
+    platform.api.delete(f"/v1/conversations/{conversation}", headers=platform.asha)
+    platform.api.delete(f"/v1/documents/{platform.asha_doc}", headers=platform.asha)
+    after = asha()
+
+    assert before["questions"] == after["questions"] == 1
+    # Tokens spent on a document since deleted, and on questions since deleted, stay spent.
+    assert after["model_cost_usd"] == before["model_cost_usd"]

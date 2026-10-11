@@ -140,3 +140,20 @@ def test_an_empty_workspace_has_nothing_yet(sessions: SessionFactory, world: Wor
         "documents_last_7_days": 0, "median_read_seconds": None, "model_cost_usd": 0.0,
     }  # fmt: skip
     assert stack.client.get("/v1/stats").status_code == 401
+
+
+def test_a_questions_cost_stays_when_its_conversation_is_deleted(
+    sessions: SessionFactory, world: World, owner_engine: Engine
+) -> None:
+    stack = FullStack(sessions, world, prices=PRICES)
+    me = stack.sign_up("Asha", "asha@example.com")
+    stack.read(FullStack.workspace_of(owner_engine, "asha@example.com"))
+    stack.model.reply = lambda passages: {"statements": [], "unanswerable": True}
+    asked = stack.client.post("/v1/chat", headers=me, json={"question": "Total?"}).json()
+    before = stack.client.get("/v1/stats", headers=me).json()["model_cost_usd"]
+
+    deleted = stack.client.delete(f"/v1/conversations/{asked['conversation_id']}", headers=me)
+
+    assert deleted.status_code == 204
+    after = stack.client.get("/v1/stats", headers=me).json()["model_cost_usd"]
+    assert after == pytest.approx(before) and after > ONE_READING
