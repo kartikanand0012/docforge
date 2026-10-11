@@ -16,6 +16,7 @@ def clean_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "DATABASE_URL",
         "MIGRATION_DATABASE_URL",
+        "PLATFORM_DATABASE_URL",
         "ENVIRONMENT",
         "S3_ENDPOINT_URL",
         "S3_BUCKET",
@@ -384,3 +385,27 @@ def test_a_model_timeout_must_be_sensible(seconds: str) -> None:
 def test_prices_must_be_real_non_negative_numbers(prices: str) -> None:
     with pytest.raises(ValueError, match="MODEL_PRICES"):
         make_settings(MODEL_PRICES=prices)
+
+
+LOCAL_PLATFORM_URL = (
+    "postgresql+psycopg://docforge_platform_user:platform-secret@127.0.0.1:5432/docforge"
+)
+
+
+def test_the_platform_login_is_unset_unless_given() -> None:
+    assert make_settings().platform_database_url is None
+    assert make_settings(platform_database_url="").platform_database_url is None
+    given = make_settings(platform_database_url=LOCAL_PLATFORM_URL).platform_database_url
+    assert given is not None and given.get_secret_value() == LOCAL_PLATFORM_URL
+
+
+@pytest.mark.parametrize("url", [LOCAL_APP_URL, LOCAL_OWNER_URL])
+def test_the_platform_login_must_be_its_own_and_is_never_echoed(url: str) -> None:
+    with pytest.raises(ValueError, match="PLATFORM_DATABASE_URL must name a login of its own") as e:
+        make_settings(platform_database_url=url)
+    assert "docforge-app-local" not in str(e.value) and "docforge@" not in str(e.value)
+
+
+def test_the_platform_login_must_be_postgres_psycopg() -> None:
+    with pytest.raises(ValueError, match="postgresql\\+psycopg"):
+        make_settings(platform_database_url="mysql://u:p@h/d")

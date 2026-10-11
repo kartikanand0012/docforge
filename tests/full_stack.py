@@ -42,6 +42,7 @@ class FullStack:
         signups_per_day: int = 200,
         caps: MemberCaps | None = None,
         prices: dict[str, tuple[float, float]] | None = None,
+        platform: SessionFactory | None = None,
     ) -> None:
         self.sessions, self.world = sessions, world
         self.documents = world.service or world.build()
@@ -65,7 +66,8 @@ class FullStack:
             collections=self.collections, limits=self.limits, agents=self.tools,
             audit_log=AuditLogService(sessions), signup_enabled=signup,
             signups_per_day=signups_per_day, member_caps=caps or MemberCaps(),
-            platform=PlatformService(sessions, prices), model_prices=prices,
+            platform=PlatformService(platform, prices) if platform else None,
+            model_prices=prices,
         )  # fmt: skip
         self.client = TestClient(self.app)
 

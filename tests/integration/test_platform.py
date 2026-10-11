@@ -7,7 +7,8 @@ from typing import Any
 
 import pytest
 from sqlalchemy import text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import URL, Engine
+from sqlalchemy.exc import ProgrammingError
 from test_accounts import filled, routes
 
 from docforge.db import DEFAULT_TENANT_ID
@@ -25,8 +26,14 @@ PIN = "482913"
 
 
 class Platform:
-    def __init__(self, sessions: SessionFactory, world: World, owner_engine: Engine) -> None:
-        self.stack = FullStack(sessions, world)
+    def __init__(
+        self,
+        sessions: SessionFactory,
+        world: World,
+        owner_engine: Engine,
+        platform_sessions: SessionFactory | None,
+    ) -> None:
+        self.stack = FullStack(sessions, world, platform=platform_sessions)
         self.api = self.stack.client
         self.owner_engine = owner_engine
         review = ReviewService(sessions, world.store, {})
@@ -55,10 +62,11 @@ def platform(
     raw_invoice_from_label: RawFromLabel,
     raw_order_from_label: RawFromLabel,
     owner_engine: Engine,
+    platform_sessions: SessionFactory,
 ) -> Platform:
     world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
     world.build()
-    return Platform(sessions, world, owner_engine)
+    return Platform(sessions, world, owner_engine, platform_sessions)
 
 
 # Making one
@@ -181,25 +189,95 @@ def test_nobody_else_sees_the_platform(platform: Platform, path: str) -> None:
     assert platform.api.get(path).status_code == 401
 
 
-def test_the_platform_functions_are_for_the_application_alone(owner_engine: Engine) -> None:
+def test_the_platform_functions_are_for_the_platform_login_alone(owner_engine: Engine) -> None:
     with owner_engine.connect() as conn:
         rows = conn.execute(
             text(
                 "SELECT p.proname, p.prosecdef, p.proconfig, "
-                "has_function_privilege('public', p.oid, 'EXECUTE') "
+                "has_function_privilege('public', p.oid, 'EXECUTE'), "
+                "has_function_privilege('docforge_app', p.oid, 'EXECUTE'), "
+                "has_function_privilege('docforge_platform', p.oid, 'EXECUTE') "
                 "FROM pg_proc p WHERE p.proname LIKE 'docforge\\_platform\\_%'"
             )
         ).all()
-    assert len(rows) >= 3
-    for name, definer, config, public in rows:
-        assert definer and not public, name
+    assert len(rows) == 4
+    for name, definer, config, public, app, platform in rows:
+        assert definer and not public and not app and platform, name
         assert config == ["search_path=pg_catalog, public, pg_temp"], name
 
 
-def test_the_platform_functions_give_nothing_unless_the_service_checked(engine: Engine) -> None:
-    with engine.connect() as conn:
-        rows = conn.execute(text("SELECT count(*) FROM docforge_platform_workspaces()"))
+def test_the_application_login_cannot_call_the_platform_functions(engine: Engine) -> None:
+    # Even after making the setting the functions check: an injected query gets nothing.
+    for call in (
+        "docforge_platform_workspaces()", "docforge_platform_usage()",
+        "docforge_platform_accounts()", "docforge_platform_activity(NULL, 10, NULL)",
+    ):  # fmt: skip
+        with engine.connect() as conn:
+            conn.execute(text("SELECT set_config('docforge.platform_admin', 'checked', true)"))
+            with pytest.raises(ProgrammingError, match="permission denied"):
+                conn.execute(text(f"SELECT * FROM {call}"))  # noqa: S608 - fixed text
+
+
+def test_the_platform_login_calls_them_and_reads_nothing_else(
+    platform: Platform, platform_sessions: SessionFactory
+) -> None:
+    with platform_sessions() as session:
+        session.execute(text("SELECT set_config('docforge.platform_admin', 'checked', true)"))
+        assert (
+            session.execute(
+                text("SELECT count(*) FROM docforge_platform_workspaces()")
+            ).scalar_one()
+            == 3
+        )
+    for table in ("tenants", "accounts", "reviewers", "documents", "audit_log"):
+        with platform_sessions() as session, pytest.raises(ProgrammingError, match="permission"):
+            session.execute(text(f"SELECT count(*) FROM {table}"))  # noqa: S608 - fixed names
+    with platform_sessions() as session, pytest.raises(ProgrammingError, match="permission"):
+        session.execute(text("SELECT docforge_account_tenant('asha@example.com')"))
+
+
+def test_the_logins_are_members_of_their_own_role_only(
+    owner_engine: Engine, app_login: URL, platform_login: URL
+) -> None:
+    with owner_engine.connect() as conn:
+        member = conn.execute(
+            text("SELECT pg_has_role(:login, :role, 'MEMBER')"),
+            {"login": app_login.username, "role": "docforge_platform"},
+        ).scalar_one()
+        assert member is False
+        member = conn.execute(
+            text("SELECT pg_has_role(:login, :role, 'MEMBER')"),
+            {"login": platform_login.username, "role": "docforge_app"},
+        ).scalar_one()
+        assert member is False
+
+
+def test_the_platform_functions_give_nothing_unless_the_service_checked(
+    platform_sessions: SessionFactory,
+) -> None:
+    with platform_sessions() as session:
+        rows = session.execute(text("SELECT count(*) FROM docforge_platform_workspaces()"))
         assert rows.scalar_one() == 0
+
+
+@pytest.mark.parametrize("path", ["/v1/platform/overview", "/v1/platform/activity"])
+def test_without_a_platform_login_the_screens_say_so_and_refuse_everyone_else(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+    owner_engine: Engine,
+    path: str,
+) -> None:
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    world.build()
+    unconfigured = Platform(sessions, world, owner_engine, None)
+
+    response = unconfigured.api.get(path, headers=unconfigured.admin)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "The platform dashboard is not configured."
+    assert unconfigured.api.get(path, headers=unconfigured.asha).status_code == 403
+    assert unconfigured.api.get(path).status_code == 401
 
 
 # Looking into a workspace
