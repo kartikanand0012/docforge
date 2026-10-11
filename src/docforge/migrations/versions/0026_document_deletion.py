@@ -75,6 +75,18 @@ def downgrade() -> None:
             "some documents are deleted and this downgrade would show them again; "
             f"set {_ALLOW_DOWNGRADE}=1 to do it anyway"
         )
+    duplicated = op.get_bind().execute(
+        sa.text(
+            "SELECT EXISTS (SELECT 1 FROM documents GROUP BY tenant_id, sha256 "
+            "HAVING count(*) > 1)"
+        )
+    )
+    if duplicated.scalar():
+        raise RuntimeError(
+            "a workspace holds the same content in more than one document (deleted and "
+            "uploaded again); this downgrade restores one document per content and cannot "
+            "until those are merged or removed"
+        )
     op.execute("SET LOCAL lock_timeout = '5s'")
     op.execute(f"DROP FUNCTION {_DELETE.split('(')[0]}")
     for name in ("documents_read", "documents_insert", "documents_update"):

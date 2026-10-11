@@ -16,6 +16,7 @@ Revision ID: 0027
 Revises: 0026
 """
 
+import os
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -34,6 +35,7 @@ _REVIEWER_INSERT = (
     "deactivated_at, created_at"
 )
 _REVIEWER_UPDATE = "failed_attempts, locked_until, deactivated_at"
+_ALLOW_DOWNGRADE = "DOCFORGE_ALLOW_DESTRUCTIVE_DOWNGRADE"
 
 _FUNCTIONS = {
     "docforge_account_tenant(account_email text)": (
@@ -131,7 +133,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    found = op.get_bind().execute(
+        sa.text(
+            "SELECT EXISTS (SELECT 1 FROM accounts) OR EXISTS (SELECT 1 FROM reviewers "
+            "WHERE role = 'member' OR credential = 'password')"
+        )
+    )
+    if found.scalar() and os.environ.get(_ALLOW_DOWNGRADE) != "1":
+        raise RuntimeError(
+            "accounts exist and this downgrade would remove them (their people could no "
+            f"longer sign in by email); set {_ALLOW_DOWNGRADE}=1 to do it anyway"
+        )
     op.execute("SET LOCAL lock_timeout = '5s'")
+    # Told to: an account's person stays, as a plain reviewer of their workspace.
+    op.execute("UPDATE reviewers SET role = 'reviewer' WHERE role = 'member'")
     for signature in _FUNCTIONS:
         op.execute(f"DROP FUNCTION {signature.split('(')[0]}")
     op.drop_table("accounts")
