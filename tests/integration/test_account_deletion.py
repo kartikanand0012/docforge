@@ -272,9 +272,10 @@ def test_without_a_fresh_grant_of_its_own_the_database_refuses_to_delete(
     [(erasure_id, token)] = in_scope(engine, two.asha_ws, delete_with, g=fresh)
     assert erasure_id is not None and token is not None
     assert rows_of(owner_engine, two.asha_ws)["tenants"] == 0
-    # Used up: it cannot be used again (here, for nothing is left; it is gone with the rest).
+    # Its grants go with it; Ben's stays his.
     with owner_engine.connect() as conn:
-        assert conn.execute(text("SELECT count(*) FROM deletion_grants")).scalar_one() == 1
+        left = conn.execute(text("SELECT tenant_id FROM deletion_grants")).scalars().all()
+    assert left == [two.ben_ws]
 
 
 def test_the_application_cannot_read_or_make_deletion_grants_itself(
@@ -321,9 +322,9 @@ def test_work_still_queued_for_a_deleted_workspace_writes_nothing(
     from docforge.documents import DocumentNotFound
 
     with owner_engine.connect() as conn:
-        version = conn.execute(
+        version: uuid.UUID = conn.execute(
             text("SELECT id FROM document_versions WHERE document_id = :d"), {"d": two.doc}
-        ).scalar()
+        ).scalar_one()
     assert delete(two, two.asha).status_code == 204
     before = two.stack.world.store.keys()  # a store's keys, not a dict's
 
