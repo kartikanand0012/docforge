@@ -11,6 +11,9 @@ answer is then checked as extracted values are:
 
 A conversation belongs to the person who started it. Questions and answers are stored in
 `messages`, never in the audit log or a trace: a question may name a patient or a price.
+That a question was asked, and by whom, is audited (`chat.question_asked`, with neither the
+question nor the answer): the daily limits count those entries, which deleting a
+conversation does not remove.
 """
 
 import logging
@@ -25,15 +28,17 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
+from docforge import audit
 from docforge.chat.injection import reads_as_instructions
 from docforge.chat.prompt import CHAT_PROMPT_VERSION, SYSTEM_INSTRUCTION, Passage, build_prompt
 from docforge.chat.statements import CODE, RawStatement, check_statements
 from docforge.chat.verify import cited_blocks
 from docforge.collections import CollectionNotFound, CollectionService
-from docforge.db.models import Conversation, Document, Message
+from docforge.db.models import AuditEntry, Conversation, Document, Message, QuestionUsage, live
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.llm.base import LLMError, LLMProvider, LLMRequest, LLMResponse
+from docforge.llm.replay import NotRecorded
 from docforge.search.service import Mode, SearchHit, SearchHits
 from docforge.telemetry import traced
 
@@ -41,12 +46,17 @@ logger = logging.getLogger(__name__)
 Status = Literal["supported", "partly_supported", "unsupported", "not_found"]
 
 NOT_FOUND = "The documents do not say."
+NOT_RECORDED = (
+    "This demo answers only the questions it has recorded, and this one was not recorded. "
+    "Ask one of its recorded questions; a deployment with a model key answers any question."
+)
 WITHHELD = (
     "An answer was drafted, but none of its quotes could be found in the documents, so it "
     "is not shown. Try asking about a specific document or value."
 )
 DEFAULT_PASSAGES = 8
 DEFAULT_DAILY_LIMIT = 500
+QUESTION_ASKED = "chat.question_asked"  # the audit action the daily limits count
 _HISTORY = 3  # earlier turns given with a follow-up
 _ANSWERED = ("supported", "partly_supported")
 _ANCHORS = 3  # documents an earlier answer cited, searched first for a follow-up
@@ -293,10 +303,13 @@ class ChatService:
         collection_id: uuid.UUID | None = None,
         conversation_id: uuid.UUID | None = None,
         progress: Progress | None = None,
+        daily_limit: int | None = None,
     ) -> Answer:
         """Raises `QuestionLimitReached`, `ConversationNotFound`, `DocumentNotFound`,
         `CollectionNotFound`, `ScopeConflict`, `ScopeGone`, or `LLMError` when the model
         cannot answer. `progress` is told each stage: searching, reading, checking.
+        `daily_limit`, when given, is a lower cap on the organisation's questions today (a
+        free workspace's).
 
         The question takes its place for the day before the model is asked, so the limit
         holds when questions arrive together and counts those that fail. It is completed
@@ -307,7 +320,12 @@ class ChatService:
             raise ScopeConflict("a question is about one document or one knowledge base")
         tell = _safe(progress)
         conversation_id, message_id, scope, history, anchors = self._reserve(
-            tenant_id, owner, question, Scope(document_id, collection_id), conversation_id
+            tenant_id,
+            owner,
+            question,
+            Scope(document_id, collection_id),
+            conversation_id,
+            daily_limit,
         )
         responses: tuple[LLMResponse, ...] = ()
         try:
@@ -333,14 +351,22 @@ class ChatService:
                     text, dropped, dropped_statements = NOT_FOUND, 0, 0
                     reason, detail = "no_passages", {"scope": scope.kind}
                 else:
-                    raw, responses = self._ask(build_prompt(passages, question, history))
+                    try:
+                        raw, responses = self._ask(build_prompt(passages, question, history))
+                    except NotRecorded:
+                        # A replaying deployment (the demo): trying again would not help.
+                        raw = None
                     tell("checking", {})
-                    # Figures a statement repeats from the question or the conversation need
-                    # no quote of their own.
-                    given = " ".join([question, *(f"{q} {a}" for q, a in history)])
-                    status, text, citations, dropped, dropped_statements, reason, detail = _checked(
-                        raw, passages, hits, given
-                    )
+                    if raw is None:
+                        status, text, dropped, dropped_statements = "not_found", NOT_RECORDED, 0, 0
+                        reason, detail = "not_recorded", {}
+                    else:
+                        # Figures a statement repeats from the question or the conversation
+                        # need no quote of their own.
+                        given = " ".join([question, *(f"{q} {a}" for q, a in history)])
+                        (status, text, citations, dropped, dropped_statements, reason, detail) = (
+                            _checked(raw, passages, hits, given)
+                        )
                 if held_back:
                     detail = {**detail, "held_back": held_back}
                 span.set_attribute("docforge.chat.status", status)
@@ -493,26 +519,29 @@ class ChatService:
         question: str,
         asked: "Scope",
         conversation_id: uuid.UUID | None,
+        daily_limit: int | None = None,
     ) -> tuple[uuid.UUID, uuid.UUID, "Scope", list[tuple[str, str]], list[uuid.UUID]]:
         """Check the limits and take the question's place, in one transaction under a lock
         per organisation, so two questions cannot both take the last place."""
         with self._sessions.begin() as session:
             lock = func.hashtext(f"chat:{tenant_id}")
             session.execute(select(func.pg_advisory_xact_lock(lock)))
-            today = Message.created_at >= func.date_trunc("day", func.now(), "UTC")
-            count = session.scalar(
+            # Counted from the audit log, not the messages: a person may delete their
+            # conversations, and with them the messages, but not the day's questions.
+            asked_today = (
                 select(func.count())
-                .select_from(Message)
-                .where(Message.tenant_id == tenant_id, today)
+                .select_from(AuditEntry)
+                .where(
+                    AuditEntry.tenant_id == tenant_id,
+                    AuditEntry.action == QUESTION_ASKED,
+                    AuditEntry.occurred_at >= func.date_trunc("day", func.now(), "UTC"),
+                )
             )
-            if (count or 0) >= self._daily_limit:
-                raise QuestionLimitReached(f"{self._daily_limit} questions a day")
-            mine = session.scalar(
-                select(func.count())
-                .select_from(Message)
-                .join(Conversation, Conversation.id == Message.conversation_id)
-                .where(Message.tenant_id == tenant_id, Conversation.owner == owner, today)
-            )
+            count = session.scalar(asked_today)
+            limit = min(self._daily_limit, daily_limit or self._daily_limit)
+            if (count or 0) >= limit:
+                raise QuestionLimitReached(f"{limit} questions a day")
+            mine = session.scalar(asked_today.where(AuditEntry.actor == owner))
             if (mine or 0) >= self._per_person:
                 raise QuestionLimitReached(f"{self._per_person} questions a day per person")
 
@@ -524,7 +553,10 @@ class ChatService:
                 # Its document or knowledge base was deleted: continuing would widen the
                 # question to the whole organisation, so it is refused instead. Checked
                 # first: resending the deleted id is not a conflict, it is gone.
-                if conversation.scope != scope.kind:
+                if conversation.scope != scope.kind or (
+                    scope.document_id is not None
+                    and not _live_documents(session, [scope.document_id])
+                ):
                     raise ScopeGone(conversation.scope)
                 if asked.kind != "organisation" and asked != scope:
                     raise ScopeConflict("a conversation keeps the scope it began with")
@@ -535,9 +567,18 @@ class ChatService:
                     .limit(_HISTORY)
                 ).all()
                 # What was asked, and what was answered: a non-answer is not an answer to
-                # build on.
+                # build on, and nor is one drawn from a document deleted since.
+                cited = _live_documents(
+                    session, [uuid.UUID(c["document_id"]) for m in earlier for c in m.citations]
+                )
                 history = [
-                    (m.question, m.answer if m.status in _ANSWERED else "(no answer found)")
+                    (
+                        m.question,
+                        m.answer
+                        if m.status in _ANSWERED
+                        and all(uuid.UUID(c["document_id"]) in cited for c in m.citations)
+                        else "(no answer found)",
+                    )
                     for m in reversed(earlier)
                 ]
                 # The documents the conversation is about: those its answers cited, newest
@@ -548,6 +589,7 @@ class ChatService:
                         for m in earlier
                         if m.status in _ANSWERED
                         for c in m.citations
+                        if uuid.UUID(c["document_id"]) in cited
                     )
                 )[:_ANCHORS]
             else:
@@ -555,7 +597,9 @@ class ChatService:
                 if scope.document_id is not None:
                     found = session.scalar(
                         select(Document.id).where(
-                            Document.tenant_id == tenant_id, Document.id == scope.document_id
+                            Document.tenant_id == tenant_id,
+                            Document.id == scope.document_id,
+                            live(),
                         )
                     )
                     if found is None:
@@ -585,6 +629,16 @@ class ChatService:
             )
             session.add(message)
             session.flush()
+            # Neither the question nor the answer: only that one was asked, and by whom.
+            audit.append(
+                session,
+                tenant_id=tenant_id,
+                actor=owner,
+                action=QUESTION_ASKED,
+                target_type="conversation",
+                target_id=str(conversation.id),
+                details={},
+            )
             return conversation.id, message.id, scope, history, anchors
 
     def _complete(
@@ -615,6 +669,17 @@ class ChatService:
                 message.model = responses[-1].model if responses else None
                 message.input_tokens = input_tokens
                 message.output_tokens = output_tokens
+                if message.provider and message.model:
+                    # Kept when the conversation is deleted: what was spent stays spent.
+                    session.add(
+                        QuestionUsage(
+                            tenant_id=message.tenant_id,
+                            provider=message.provider,
+                            model=message.model,
+                            input_tokens=input_tokens or 0,
+                            output_tokens=output_tokens or 0,
+                        )
+                    )
         except Exception:
             # The answer was paid for: say what it cost even if it could not be stored.
             logger.exception(
@@ -667,13 +732,17 @@ class ChatService:
                 .where(Message.conversation_id == conversation_id, Message.status != "pending")
                 .order_by(Message.created_at, Message.id)
             ).all()
+            # Quotes from a document deleted since are not shown again.
+            kept = _live_documents(
+                session, [uuid.UUID(c["document_id"]) for m in rows for c in m.citations]
+            )
             return [
                 StoredMessage(
                     id=m.id,
                     question=m.question,
                     answer=m.answer,
                     status=m.status,
-                    citations=list(m.citations),
+                    citations=[c for c in m.citations if uuid.UUID(c["document_id"]) in kept],
                     model=m.model,
                     input_tokens=m.input_tokens,
                     output_tokens=m.output_tokens,
@@ -752,6 +821,13 @@ class ChatService:
         if conversation is None:
             raise ConversationNotFound(conversation_id)
         return conversation
+
+
+def _live_documents(session: Session, ids: Sequence[uuid.UUID]) -> set[uuid.UUID]:
+    """Those of `ids` that are documents of the tenant in scope and not deleted."""
+    if not ids:
+        return set()
+    return set(session.scalars(select(Document.id).where(Document.id.in_(set(ids)), live())))
 
 
 def _follow_up_query(question: str, history: Sequence[tuple[str, str]]) -> str:

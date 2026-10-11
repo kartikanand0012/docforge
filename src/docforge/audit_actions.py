@@ -36,12 +36,25 @@ ACTIONS: dict[str, Action] = {
     ),
     "processing.failed": Action("Reading failed", ("version_no", "error")),
     "indexing.completed": Action("Ready to search and ask", ("version_no",)),
+    "document.deleted": Action("Document deleted"),
     # People
+    "account.created": Action("Account made"),
+    "platform.workspace_viewed": Action("Workspace viewed by the platform administrator"),
     "reviewer.pin_failed": Action("Wrong PIN", ("attempt", "at")),
     "review.corrected": Action("Value corrected", ("path", "version_no", "changed")),
     "review.signed": Action(
         "Review signed", ("outcome", "version_no", "record_sha256", "overridden")
     ),
+    "review.claimed": Action("Review started", ("version_no",)),
+    "review.taken_over": Action("Review taken over", ("from_reviewer",)),
+    # Questions (never the question or its answer)
+    "chat.question_asked": Action("Question asked"),
+    # Knowledge bases
+    "collection.created": Action("Knowledge base made", ("name",)),
+    "collection.renamed": Action("Knowledge base renamed", ("name",)),
+    "collection.deleted": Action("Knowledge base deleted", ("name",)),
+    "collection.documents_added": Action("Documents added to a knowledge base", ("count",)),
+    "collection.documents_removed": Action("Documents removed from a knowledge base", ("count",)),
     # Keys and webhooks
     "api_key.created": Action("API key made", ("name", "role")),
     "api_key.revoked": Action("API key revoked", ("name",)),

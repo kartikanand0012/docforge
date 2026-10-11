@@ -3,6 +3,8 @@
 #   .env       images, domain and demo PIN (no secrets beyond the public PIN)
 #   app.env    what the API and worker need: the restricted database login, S3, keys
 #   owner.env  the database owner: only Postgres and the one-shot `admin` service see it
+#   platform.env  the platform administrator's database login: the API and `admin` only
+#              (optional: without it the platform screens answer 503)
 # Only Caddy publishes ports. The `local` profile adds MinIO, for trying this on a laptop.
 name: docforge-demo  # not "docforge": that is the development stack
 
@@ -40,7 +42,10 @@ services:
   api:
     <<: *hardened
     image: ${APP_IMAGE:?set in .env}
-    env_file: app.env
+    env_file:
+      - app.env
+      - path: platform.env
+        required: false
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,7 +93,11 @@ services:
   admin:
     profiles: ["tools"]
     image: ${APP_IMAGE:?set in .env}
-    env_file: [app.env, owner.env]
+    env_file:
+      - app.env
+      - owner.env
+      - path: platform.env
+        required: false
     depends_on:
       postgres:
         condition: service_healthy

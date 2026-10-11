@@ -15,8 +15,9 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
+from docforge.accounts import MemberCaps
 from docforge.api.auth import require
-from docforge.auth import Principal
+from docforge.auth import MEMBER, Principal
 from docforge.chat.service import (
     ChatService,
     ConversationNotFound,
@@ -113,9 +114,15 @@ class ConversationSummaryOut(BaseModel):
     created_at: datetime
 
 
-def _http_error(error: Exception) -> HTTPException:
-    """What a failed question means to the caller."""
+def _http_error(error: Exception, caps: MemberCaps | None = None) -> HTTPException:
+    """What a failed question means to the caller; `caps`, a free workspace's."""
     if isinstance(error, QuestionLimitReached):
+        if caps is not None:
+            return HTTPException(
+                429,
+                f"This free workspace has {caps.questions_per_day} questions a day. "
+                "Try again tomorrow.",
+            )
         return HTTPException(429, "The organisation's questions for today are used up.")
     if isinstance(error, ConversationNotFound | DocumentNotFound | CollectionNotFound):
         return HTTPException(404, "Not found.")
@@ -149,8 +156,14 @@ def _answer_out(answer: Any) -> "AnswerOut":
     )
 
 
-def chat_router(chat: ChatService, per_minute: int, limits: Limits) -> APIRouter:
+def chat_router(
+    chat: ChatService, per_minute: int, limits: Limits, member_caps: MemberCaps | None = None
+) -> APIRouter:
     router = APIRouter(prefix="/v1")
+    member = member_caps or MemberCaps()
+
+    def caps(principal: Principal) -> MemberCaps | None:
+        return member if principal.role == MEMBER else None
 
     def minute(principal: Principal) -> bool:
         # Each question is a paid model call: counted per caller and minute, everywhere.
@@ -181,6 +194,7 @@ def chat_router(chat: ChatService, per_minute: int, limits: Limits) -> APIRouter
             collection_id=body.collection_id,
             conversation_id=body.conversation_id,
             progress=progress,
+            daily_limit=member.questions_per_day if principal.role == MEMBER else None,
         )
 
     @router.post("/chat", response_model=AnswerOut)
@@ -189,7 +203,7 @@ def chat_router(chat: ChatService, per_minute: int, limits: Limits) -> APIRouter
         try:
             answer = await run_in_threadpool(call, body, principal)
         except Exception as error:
-            raise _http_error(error) from error
+            raise _http_error(error, caps(principal)) from error
         finally:
             await run_in_threadpool(held.__exit__, None, None, None)
         return _answer_out(answer)
@@ -214,7 +228,7 @@ def chat_router(chat: ChatService, per_minute: int, limits: Limits) -> APIRouter
                 answer = await run_in_threadpool(call, body, principal, tell)
                 await queue.put(("answer", _answer_out(answer).model_dump(mode="json")))
             except Exception as error:
-                failure = _http_error(error)
+                failure = _http_error(error, caps(principal))
                 await queue.put(
                     ("error", {"status": failure.status_code, "detail": failure.detail})
                 )

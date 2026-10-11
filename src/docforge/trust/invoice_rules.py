@@ -54,6 +54,26 @@ def _lines(invoice: InvoiceExtraction) -> Iterator[tuple[str, LineExtraction]]:
         yield f"lines[{index}]", line
 
 
+def _printed(invoice: InvoiceExtraction, name: str) -> bool:
+    """Whether any line prints this field, read or not. A column the invoice does not have
+    (a camera has no expiry) is not checked at all, rather than reported as missing."""
+    return any(getattr(line, name).raw is not None for line in invoice.lines)
+
+
+def _medicine(invoice: InvoiceExtraction) -> bool:
+    """Whether this is a medicine invoice, from evidence on the whole document rather than one
+    column the model may miss on every line: a batch or expiry on any line, a drug licence
+    number on either party, or a line in HSN chapter 30 (pharmaceutical products). A medicine
+    invoice is checked for batch, expiry, rate and MRP even where no line's was read."""
+    if _printed(invoice, "batch_no") or _printed(invoice, "expiry"):
+        return True
+    if any(n.raw is not None for p in (invoice.seller, invoice.buyer) for n in p.drug_licence_nos):
+        return True
+    return any(
+        (line.hsn.value or line.hsn.raw or "").strip().startswith("30") for line in invoice.lines
+    )
+
+
 def _intra_state(invoice: InvoiceExtraction) -> bool | None:
     seller, buyer = invoice.seller.gstin.value, invoice.buyer.gstin.value
     if not seller or not buyer:
@@ -97,6 +117,9 @@ def hsn_format(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_dates(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    # A manufacture month is not printed on every medicine invoice; expiry is.
+    if not _printed(invoice, "mfg") or not (_medicine(invoice) or _printed(invoice, "expiry")):
+        return
     issued = invoice.invoice_date.value
     for path, line in _lines(invoice):
         mfg, expiry = line.mfg.value, line.expiry.value
@@ -113,6 +136,8 @@ def line_dates(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_not_expired(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    if not (_medicine(invoice) or _printed(invoice, "expiry")):
+        return
     issued = invoice.invoice_date.value
     for path, line in _lines(invoice):
         expiry = line.expiry.value
@@ -138,6 +163,8 @@ def line_not_expired(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_ptr_not_above_mrp(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    if not (_medicine(invoice) or (_printed(invoice, "ptr") and _printed(invoice, "mrp"))):
+        return
     for path, line in _lines(invoice):
         ptr, mrp = line.ptr.value, line.mrp.value
         yield _result(
@@ -150,6 +177,10 @@ def line_ptr_not_above_mrp(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def line_taxable_value(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+    # Quantity x rate needs a rate column; an invoice that prints only quantity and line value
+    # has nothing to multiply, and the line values are still checked against the totals.
+    if not (_medicine(invoice) or _printed(invoice, "ptr")):
+        return
     for path, line in _lines(invoice):
         qty, ptr, discount = line.qty.value, line.ptr.value, line.discount_pct.value
         taxable = line.taxable_value.value
@@ -169,7 +200,15 @@ def line_taxable_value(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 def line_amount(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
     intra = _intra_state(invoice)
+    totals = invoice.totals
+    no_heads = all(v is None for v in (totals.cgst.value, totals.sgst.value, totals.igst.value))
     for path, line in _lines(invoice):
+        # An invoice that prints its tax once ("GST 10%") gives no rate on the line, so there
+        # is nothing to check the line against: a rate inferred from the totals would assume
+        # every line bears it. The line amounts are still checked together, by
+        # totals.grand_total and totals.tax, so a wrong one fails the grand total.
+        if no_heads and line.gst_rate.raw is None:
+            continue
         taxable, rate, amount = line.taxable_value.value, line.gst_rate.value, line.amount.value
         ok, expected = None, None
         if taxable is not None and rate is not None and amount is not None:
@@ -218,13 +257,52 @@ def totals_tax(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         expected = sum(differences, Decimal(0))
         tax = sum((value for value in printed if value is not None), Decimal(0))
         ok = abs(expected - tax) <= _TOLERANCE
+    elif not any(value is not None for value in printed):
+        # One "GST 10%" line, read by no head: the tax is what the totals leave over the
+        # taxable value. It passes when that is the tax on the lines; when it is not, the
+        # grand total fails and says so, and this check stays not evaluated, since there is
+        # no printed head to fault.
+        lines_total = _lines_total(invoice)
+        taxables = [line.taxable_value.value for line in invoice.lines]
+        taxable, grand = totals.taxable_value.value, totals.grand_total.value
+        if (
+            lines_total is not None
+            and all(value is not None for value in taxables)
+            and taxable is not None
+            and grand is not None
+        ):
+            implied = grand - (totals.round_off.value or Decimal(0)) - taxable
+            on_lines = lines_total - sum((v for v in taxables if v is not None), Decimal(0))
+            ok = True if abs(on_lines - implied) <= _TOLERANCE else None
     yield _result(
         "totals.tax",
         "error",
         ("totals.cgst", "totals.sgst", "totals.igst"),
         ok,
         f"Total tax {tax} is not the sum of the tax on the lines ({expected}).",
+        version=2,
     )
+
+
+def _lines_total(invoice: InvoiceExtraction) -> Decimal | None:
+    """The lines' amounts added up: each as printed, or else its taxable value plus tax at its
+    rate. None when a line has neither."""
+    if not invoice.lines:
+        return None
+    intra = _intra_state(invoice)
+    total = Decimal(0)
+    for line in invoice.lines:
+        amount, taxable, rate = line.amount.value, line.taxable_value.value, line.gst_rate.value
+        if amount is None:
+            if taxable is None or rate is None:
+                return None
+            # As in line_amount: two halves within a state, one whole tax otherwise.
+            tax = (
+                2 * _money(taxable * rate / Decimal(200)) if intra else _money(taxable * rate / 100)
+            )
+            amount = taxable + tax
+        total += amount
+    return total
 
 
 def totals_grand_total(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
@@ -234,22 +312,33 @@ def totals_grand_total(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         totals.round_off.value,
         totals.grand_total.value,
     )
+    heads = (totals.cgst.value, totals.sgst.value, totals.igst.value)
     ok, expected = None, None
+    message = ""
     if taxable is not None and grand is not None:
-        tax = sum(
-            (v for v in (totals.cgst.value, totals.sgst.value, totals.igst.value) if v is not None),
-            Decimal(0),
+        tax = sum((v for v in heads if v is not None), Decimal(0))
+        rounding = round_off or Decimal(0)
+        expected = taxable + tax + rounding
+        small_round_off = abs(rounding) <= Decimal("0.50")
+        ok = abs(expected - grand) <= _TOLERANCE and small_round_off
+        message = (
+            f"Grand total {grand} is not taxable value plus tax plus round-off ({expected}), "
+            "or the round-off is more than half a rupee."
         )
-        expected = taxable + tax + (round_off or Decimal(0))
-        ok = abs(expected - grand) <= _TOLERANCE and abs(round_off or Decimal(0)) <= Decimal("0.50")
-    yield _result(
-        "totals.grand_total",
-        "error",
-        ("totals.grand_total",),
-        ok,
-        f"Grand total {grand} is not taxable value plus tax plus round-off ({expected}), "
-        "or the round-off is more than half a rupee.",
-    )
+        # An invoice that prints its tax as one line ("GST 10%") has no tax head read, so the
+        # sum above has no tax in it. Its lines' amounts carry the tax instead; when every
+        # line has one, they are what the grand total is compared with.
+        lines_total = _lines_total(invoice) if all(v is None for v in heads) else None
+        if not ok and lines_total is not None:
+            by_lines = lines_total + rounding
+            ok = abs(by_lines - grand) <= _TOLERANCE and small_round_off
+            message = (
+                f"Grand total {grand} is not taxable value plus tax plus round-off ({expected}), "
+                "and no tax head (CGST, SGST, IGST) was read; nor is it the sum of the line "
+                f"amounts plus round-off ({by_lines})"
+                + ("." if small_round_off else ", or the round-off is more than half a rupee.")
+            )
+    yield _result("totals.grand_total", "error", ("totals.grand_total",), ok, message, version=2)
 
 
 def tax_matches_supply_type(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
@@ -271,21 +360,35 @@ def tax_matches_supply_type(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
 
 
 def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
-    required: dict[str, object] = {
-        "invoice_no": invoice.invoice_no.value,
-        "invoice_date": invoice.invoice_date.value,
-        "seller.gstin": invoice.seller.gstin.value,
-        "buyer.gstin": invoice.buyer.gstin.value,
-        "totals.grand_total": invoice.totals.grand_total.value,
-        "lines": invoice.lines or None,
-    }
-    for path, line in _lines(invoice):
-        for name in ("product_name", "batch_no", "expiry", "qty"):
-            required[f"{path}.{name}"] = getattr(line, name).value
-    for path, value in required.items():
-        yield _result(
-            "required.present", "error", (path,), value is not None, f"{path} is missing."
+    # Each path with its value and the text printed for it.
+    required: dict[str, tuple[object, str | None]] = {
+        path: (field.value, field.raw)
+        for path, field in (
+            ("invoice_no", invoice.invoice_no),
+            ("invoice_date", invoice.invoice_date),
+            ("seller.gstin", invoice.seller.gstin),
+            ("buyer.gstin", invoice.buyer.gstin),
+            ("totals.grand_total", invoice.totals.grand_total),
         )
+    }
+    required["lines"] = (invoice.lines or None, None)
+    # Batch and expiry are required of a medicine invoice, which prints them; a general goods
+    # invoice (a camera) prints neither. A medicine invoice is known from the whole document
+    # (`_medicine`), so a batch column missed on every line is still caught as missing.
+    batched = _medicine(invoice)
+    names = ("product_name", "batch_no", "expiry", "qty") if batched else ("product_name", "qty")
+    for path, line in _lines(invoice):
+        for name in names:
+            field = getattr(line, name)
+            required[f"{path}.{name}"] = (field.value, field.raw)
+    for path, (value, raw) in required.items():
+        # A value printed but not readable (a quantity of 7.5) is not the same as no value.
+        message = (
+            f"{path} is missing."
+            if raw is None
+            else f"{path} is printed as {raw!r} but could not be read."
+        )
+        yield _result("required.present", "error", (path,), value is not None, message, 2)
 
 
 INVOICE_RULES: tuple[Callable[[InvoiceExtraction], Iterable[RuleResult]], ...] = (

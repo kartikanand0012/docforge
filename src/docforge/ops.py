@@ -16,7 +16,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from docforge.config import get_settings
+from docforge.config import Settings, get_settings
 
 Severity = Literal["warning", "critical"]
 
@@ -159,6 +159,20 @@ def check(state: Snapshot, thresholds: Thresholds) -> list[Alert]:
     return alerts
 
 
+def settings_alerts(settings: Settings) -> list[Alert]:
+    """What the running configuration itself needs a person to know."""
+    if settings.simulated_model:
+        return [
+            Alert(
+                "simulated_model",
+                "warning",
+                f"the model is simulated ({settings.simulated_model_time}): documents are "
+                "parsed but not read; for robustness and capacity runs only",
+            )
+        ]
+    return []
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m docforge.ops", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -166,7 +180,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--database-url", default=None, help="defaults to MIGRATION_DATABASE_URL")
     args = parser.parse_args(argv)
 
-    url = args.database_url or get_settings().migration_database_url.get_secret_value()
+    settings = get_settings()
+    url = args.database_url or settings.migration_database_url.get_secret_value()
     thresholds = Thresholds()
     try:
         engine = create_engine(url)
@@ -182,7 +197,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         print(json.dumps({"status": "critical", "alerts": [asdict(alert)], "snapshot": None}))
         return 2
-    alerts = check(state, thresholds)
+    alerts = check(state, thresholds) + settings_alerts(settings)
     worst = 2 if any(a.severity == "critical" for a in alerts) else 1 if alerts else 0
     status = ("ok", "warning", "critical")[worst]
     print(

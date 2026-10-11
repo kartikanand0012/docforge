@@ -55,6 +55,23 @@ def test_putting_the_same_key_again_keeps_one_object(store: ObjectStore) -> None
     assert store.get(key) == b"first"
 
 
+def test_deleting_a_prefix_removes_everything_under_it_and_nothing_else(
+    store: ObjectStore,
+) -> None:
+    base = f"tests/{uuid.uuid4()}"
+    under = [f"{base}/a/1.pdf", f"{base}/a/2/3.pdf", f"{base}/a.pdf"]
+    beside = [f"{base}/b/1.pdf", f"{base}/ab.pdf"]
+    for key in under + beside:
+        store.put(key, b"x", "application/pdf")
+
+    assert store.delete_prefix(f"{base}/a") == 4  # a.pdf and ab.pdf start with it too
+    assert store.delete_prefix(f"{base}/a") == 0
+    assert [store.exists(k) for k in beside] == [True, False]
+    assert store.delete_prefix(f"{base}/") == 1
+    with pytest.raises(ValueError, match="prefix"):
+        store.delete_prefix("")
+
+
 def test_original_key_is_built_from_tenant_and_content_hash() -> None:
     assert original_key(DEFAULT_TENANT_ID, "ab" * 32) == (
         f"originals/{DEFAULT_TENANT_ID}/{'ab' * 32}.pdf"

@@ -76,7 +76,7 @@ class Setup:
     def kb(self, tenant: uuid.UUID = DEFAULT_TENANT_ID) -> uuid.UUID:
         kb = self.collections.create(tenant, f"Invoices {uuid.uuid4().hex[:6]}", actor="admin:a")
         if tenant == DEFAULT_TENANT_ID:
-            self.collections.add(tenant, kb.id, [self.invoice_id])
+            self.collections.add(tenant, kb.id, [self.invoice_id], actor="admin:a")
         return kb.id
 
 
@@ -181,6 +181,7 @@ def test_search_finds_the_organisations_passages_marked_as_data(setup: Setup) ->
     hit = found["results"][0]
     assert hit["document_id"] == str(setup.invoice_id) and hit["filename"].endswith(".pdf")
     assert setup.batch in hit["text"] and hit["page"] == 1 and hit["withheld"] is False
+    assert hit["matched_words"] is True  # it prints the batch asked for
 
 
 def test_ask_gives_the_checked_cited_answer_and_a_follow_up_keeps_its_scope(setup: Setup) -> None:

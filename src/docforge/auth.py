@@ -7,6 +7,7 @@ tenant always comes from the credential, never from the request.
 
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 import threading
@@ -17,15 +18,27 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from docforge import audit
-from docforge.db.models import ApiKey, Reviewer, SessionToken, Tenant
+from docforge.accounts import (
+    AccountTaken,
+    check_email,
+    check_name,
+    check_password,
+    normalise_email,
+    workspace_label,
+    workspace_name,
+)
+from docforge.db.models import ApiKey, AuditEntry, Reviewer, SessionToken, Tenant
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
-from docforge.review.signing import verify_pin
+from docforge.erasure import Erasure
+from docforge.review.signing import hash_pin, upgrade_hash, verify_pin
 
-Role = Literal["integrator", "reviewer", "admin", "reader"]
+Role = Literal["integrator", "reviewer", "admin", "reader", "member", "observer"]
 Kind = Literal["api_key", "session"]
 
 PERMISSIONS: dict[str, frozenset[str]] = {
@@ -34,13 +47,27 @@ PERMISSIONS: dict[str, frozenset[str]] = {
     "admin": frozenset({"documents:read", "documents:write", "review", "admin"}),
     # For AI agents (the MCP server): reads, and nothing else.
     "reader": frozenset({"documents:read"}),
+    # A self-service account's person, in its own workspace: everything but administration.
+    "member": frozenset({"documents:read", "documents:write", "review"}),
+    # A platform administrator looking into a workspace: reads, and nothing else.
+    "observer": frozenset({"documents:read"}),
 }
+# Roles a person signed in may hold, and the one an account's person holds.
+MEMBER = "member"
+OBSERVER = "observer"
+_VIEWED_AUDIT_EVERY = timedelta(hours=1)
+logger = logging.getLogger(__name__)
 _TOKEN = re.compile(r"^(dfk|dfs)_([0-9a-f]{12})_([A-Za-z0-9_-]{43})$")
 _KINDS: dict[str, Kind] = {"dfk": "api_key", "dfs": "session"}
 _SESSION_HOURS = 8
-_DUMMY_PIN_HASH = "scrypt$16384$8$1$00$00"
+# Checked when there is no secret to check (an unknown email, a lock), with the same
+# algorithm and cost as a real one: how long a refusal takes says nothing.
+_DUMMY_PIN_HASH = hash_pin(secrets.token_urlsafe(16))
 _MAX_FAILED_PINS = 5  # as for a PIN re-entered to correct or sign
 _LOCK_FOR = timedelta(minutes=15)
+# An address that got a reviewer's secret wrong this recently stays locked out while the
+# reviewer is locked: longer than the lock, so its own failures cannot age out before it ends.
+_FAILED_HERE_FOR = 2 * _LOCK_FOR
 
 
 @dataclass(frozen=True)
@@ -50,6 +77,11 @@ class Principal:
     subject_id: uuid.UUID  # the API key's id, or the reviewer's for a session
     role: str
     name: str
+    # The owner of the platform: may read every workspace's figures and look into one.
+    platform_admin: bool = False
+    # Set while a platform administrator looks into another workspace (`tenant_id`): their
+    # own workspace. They read there as an observer and change nothing.
+    home_tenant_id: uuid.UUID | None = None
 
     @property
     def actor(self) -> str:
@@ -83,6 +115,20 @@ def token_matches(token: str, digest: str) -> bool:
 
 class LoginFailed(Exception):
     """Unknown tenant, unknown or deactivated reviewer, or wrong PIN: deliberately one error."""
+
+
+class NotAWorkspace(LookupError):
+    """No workspace has that id."""
+
+
+@dataclass(frozen=True)
+class Caller:
+    """Who a credential stands for, as the web app shows it."""
+
+    email: str | None
+    organisation: str  # the workspace's name to show
+    workspace: str  # personal or organisation
+    credential: str | None  # pin or password for a person; None for a key
 
 
 class TooManyAttempts(Exception):
@@ -119,6 +165,41 @@ class FailureLimiter:
     def failed(self, client: str) -> None:
         with self._lock:
             self._failures.setdefault(client, deque()).append(time.monotonic())
+
+
+def _failure_key(reviewer_id: uuid.UUID, client: str) -> str:
+    # Hashed: the shared counts table keeps neither the address nor whose it was.
+    digest = hashlib.sha256(f"{reviewer_id}:{client}".encode()).hexdigest()
+    return f"sign-in-failed:{digest}"
+
+
+def _record_failure(session: Session, reviewer_id: uuid.UUID, client: str) -> None:
+    """A wrong secret for this reviewer from this address, in the shared counts table, so
+    every API process sees it (cleared with the rest of it after two hours)."""
+    session.execute(
+        text(
+            "INSERT INTO rate_windows (key, window_start, count) "
+            "VALUES (:key, date_trunc('minute', now()), 1) ON CONFLICT (key, window_start) "
+            "DO UPDATE SET count = rate_windows.count + 1"
+        ),
+        {"key": _failure_key(reviewer_id, client)},
+    )
+
+
+def _failed_here(session: Session, reviewer_id: uuid.UUID, client: str) -> bool:
+    """Whether this address got this reviewer's secret wrong recently."""
+    return bool(
+        session.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM rate_windows WHERE key = :key "
+                "AND window_start >= now() - make_interval(secs => :seconds))"
+            ),
+            {
+                "key": _failure_key(reviewer_id, client),
+                "seconds": _FAILED_HERE_FOR.total_seconds(),
+            },
+        ).scalar_one()
+    )
 
 
 class Authenticator:
@@ -196,15 +277,26 @@ class Authenticator:
 
     # Sessions
 
-    def login(self, tenant_name: str, email: str, pin: str, client: str) -> str:
-        """A session token for a reviewer, after their PIN.
+    def login(self, tenant_name: str | None, email: str, pin: str, client: str) -> str:
+        """A session token for a reviewer, after their PIN or password.
 
-        A wrong PIN counts against both the client address and the reviewer: five in a row
-        lock the reviewer for 15 minutes, from wherever the attempts come.
+        Without `tenant_name` the email is an account's, and its workspace is the account's.
+        A wrong PIN or password counts against both the client address and the reviewer:
+        five in a row, from wherever they come, lock the reviewer for 15 minutes - but only
+        for the addresses that got it wrong, so no one elsewhere can keep its person out on
+        purpose. While locked, an address with no recent failure is still checked; one wrong
+        guess and it is locked out too, so many addresses together get one guess each.
         """
         self.limiter.check(client)
         with self._sessions() as session:
-            tenant_id = session.scalar(select(Tenant.id).where(Tenant.name == tenant_name))
+            if tenant_name is None:
+                # Found without reading the accounts table, which this role cannot read.
+                tenant_id = session.scalar(
+                    select(func.docforge_account_tenant(normalise_email(email)))
+                )
+            else:
+                # Nor the workspaces, before one is known: an organisation's id, by its name.
+                tenant_id = session.scalar(select(func.docforge_organisation_tenant(tenant_name)))
         if tenant_id is None:
             verify_pin(pin, _DUMMY_PIN_HASH)
             self.limiter.failed(client)
@@ -220,29 +312,7 @@ class Authenticator:
                 .with_for_update(key_share=True)
             )
             now = datetime.now(UTC)
-            if reviewer is None:
-                verify_pin(pin, _DUMMY_PIN_HASH)
-                ok = False
-            elif reviewer.locked_until is not None and reviewer.locked_until > now:
-                ok = False
-            elif verify_pin(pin, reviewer.pin_hash):
-                reviewer.failed_attempts, reviewer.locked_until = 0, None
-                ok = True
-            else:
-                # Committed with this transaction, which then ends normally: the count holds.
-                audit.append(
-                    session,
-                    tenant_id=tenant_id,
-                    actor="api",
-                    action="reviewer.pin_failed",
-                    target_type="reviewer",
-                    target_id=str(reviewer.id),
-                    details={"attempt": reviewer.failed_attempts + 1, "at": "sign-in"},
-                )
-                reviewer.failed_attempts += 1
-                if reviewer.failed_attempts >= _MAX_FAILED_PINS and not reviewer.shared:
-                    reviewer.failed_attempts, reviewer.locked_until = 0, now + _LOCK_FOR
-                ok = False
+            ok = self._secret_is_right(session, tenant_id, reviewer, pin, client, "sign-in")
             token = None
             if ok and reviewer is not None:
                 token, prefix, digest = new_token("dfs")
@@ -260,6 +330,57 @@ class Authenticator:
             raise LoginFailed
         return token
 
+    @staticmethod
+    def _secret_is_right(
+        session: Session,
+        tenant_id: uuid.UUID,
+        reviewer: Reviewer | None,
+        secret: str,
+        client: str,
+        at: str,
+    ) -> bool:
+        """Whether `secret` is the (locked-for-update) reviewer's PIN or password, counting a
+        wrong one against the reviewer and this address, in the caller's transaction.
+
+        Five wrong in a row, from wherever they come, lock the reviewer for 15 minutes - but
+        only for the addresses that got it wrong. While locked, an address with no recent
+        failure is still checked; one wrong guess and it is locked out too.
+        """
+        now = datetime.now(UTC)
+        locked = (
+            reviewer is not None
+            and reviewer.locked_until is not None
+            and reviewer.locked_until > now
+        )
+        if reviewer is None:
+            verify_pin(secret, _DUMMY_PIN_HASH)
+            return False
+        if locked and _failed_here(session, reviewer.id, client):
+            # Checked against nothing, but checked: a lock takes as long as a wrong secret.
+            verify_pin(secret, _DUMMY_PIN_HASH)
+            return False
+        if verify_pin(secret, reviewer.pin_hash):
+            upgrade_hash(session, reviewer.id, reviewer.pin_hash, secret)
+            # Signing in from elsewhere does not lift a lock on the addresses that failed.
+            if not locked:
+                reviewer.failed_attempts, reviewer.locked_until = 0, None
+            return True
+        # Committed with this transaction, which then ends normally: the count holds.
+        audit.append(
+            session,
+            tenant_id=tenant_id,
+            actor="api",
+            action="reviewer.pin_failed",
+            target_type="reviewer",
+            target_id=str(reviewer.id),
+            details={"attempt": reviewer.failed_attempts + 1, "at": at},
+        )
+        reviewer.failed_attempts += 1
+        if reviewer.failed_attempts >= _MAX_FAILED_PINS and not reviewer.shared:
+            reviewer.failed_attempts, reviewer.locked_until = 0, now + _LOCK_FOR
+        _record_failure(session, reviewer.id, client)
+        return False
+
     def logout(self, principal: Principal, token: str) -> None:
         parsed = parse_token(token)
         if parsed is None or principal.kind != "session":
@@ -269,18 +390,176 @@ class Authenticator:
             if row is not None:
                 row.revoked_at = row.revoked_at or datetime.now(UTC)
 
-    def describe(self, principal: Principal) -> tuple[str | None, str]:
-        """The caller's email (a person's; None for a key) and their organisation's name."""
+    def describe(self, principal: Principal) -> Caller:
+        """The caller's email and credential (a person's; None for a key), and the name and
+        kind of the workspace the request is served in."""
         with tenant_scope(principal.tenant_id), self._sessions() as session:
-            organisation = session.scalar(
-                select(Tenant.name).where(Tenant.id == principal.tenant_id)
+            tenant = session.scalar(select(Tenant).where(Tenant.id == principal.tenant_id))
+        person = None
+        if principal.kind == "session":
+            # An observer is a person of another workspace: theirs is where they are found.
+            home = principal.home_tenant_id or principal.tenant_id
+            with tenant_scope(home), self._sessions() as session:
+                person = session.execute(
+                    select(Reviewer.email, Reviewer.credential).where(
+                        Reviewer.id == principal.subject_id
+                    )
+                ).first()
+        return Caller(
+            email=person.email if person else None,
+            organisation=(tenant.display_name or tenant.name) if tenant else "",
+            workspace=tenant.kind if tenant else "organisation",
+            credential=person.credential if person else None,
+        )
+
+    # Accounts
+
+    def create_account(self, name: str, email: str, password: str) -> str:
+        """A new account - a private workspace with its one member - signed in: the session
+        token. Raises `ValueError` for an unacceptable name, email or password, and
+        `AccountTaken` when the email already has an account."""
+        name, email = check_name(name), check_email(email)
+        secret = hash_pin(check_password(password))
+        now = datetime.now(UTC)
+        try:
+            with self._sessions.begin() as session:
+                # As the owner, in one statement: this role cannot make workspaces itself.
+                tenant_id = session.scalar(
+                    select(
+                        func.docforge_create_account(
+                            workspace_name(), workspace_label(name), name, email, secret
+                        )
+                    )
+                )
+                assert tenant_id is not None  # noqa: S101 - the function returns it or raises
+                # The rest belongs to the new workspace: its scope, for this transaction only.
+                session.execute(
+                    text("SELECT set_config('docforge.tenant_id', :tenant, true)"),
+                    {"tenant": str(tenant_id)},
+                )
+                member = session.scalar(
+                    select(Reviewer).where(Reviewer.tenant_id == tenant_id, Reviewer.email == email)
+                )
+                assert member is not None  # noqa: S101 - made just above
+                audit.append(
+                    session, tenant_id=tenant_id, actor=f"reviewer:{member.id}",
+                    action="account.created", target_type="reviewer", target_id=str(member.id),
+                    details={},
+                )  # fmt: skip
+                token, prefix, digest = new_token("dfs")
+                session.add(
+                    SessionToken(
+                        tenant_id=tenant_id,
+                        reviewer_id=member.id,
+                        prefix=prefix,
+                        digest=digest,
+                        expires_at=now + timedelta(hours=self._session_hours),
+                    )
+                )
+        except IntegrityError as error:
+            if "uq_accounts_email" in str(error.orig):
+                raise AccountTaken(email) from None
+            raise
+        return token
+
+    def delete_account(self, principal: Principal, password: str, client: str) -> Erasure:
+        """Delete the caller's account and its whole workspace, after their password again.
+
+        Only an account's own person, signed in to their personal workspace, may: anyone
+        else gets `PermissionError`. A wrong password is a wrong password at sign-in
+        (`LoginFailed`, counted and locked alike; `TooManyAttempts`). Every row of the
+        workspace is gone when this returns, its sessions with it; its stored files are
+        returned as the erasure still to do. The audit log goes with the workspace, so the
+        deletion is logged here instead, with the workspace's id and nothing else.
+        """
+        if (
+            principal.kind != "session"
+            or principal.role != MEMBER
+            or principal.home_tenant_id is not None
+        ):
+            raise PermissionError("not an account's own person")
+        self.limiter.check(client)
+        tenant_id = principal.tenant_id
+        with tenant_scope(tenant_id), self._sessions.begin() as session:
+            kind = session.scalar(select(Tenant.kind).where(Tenant.id == tenant_id))
+            if kind != "personal":
+                raise PermissionError("not a personal workspace")
+            reviewer = session.scalar(
+                select(Reviewer)
+                .where(Reviewer.id == principal.subject_id, Reviewer.deactivated_at.is_(None))
+                .with_for_update(key_share=True)
             )
-            email = (
-                session.scalar(select(Reviewer.email).where(Reviewer.id == principal.subject_id))
-                if principal.kind == "session"
+            ok = self._secret_is_right(
+                session, tenant_id, reviewer, password, client, "account deletion"
+            )
+            # Right: a single-use grant, good for a minute, that the deletion needs.
+            grant = (
+                session.scalar(select(func.docforge_grant_deletion(principal.subject_id)))
+                if ok
                 else None
             )
-        return email, organisation or ""
+        if grant is None:
+            self.limiter.failed(client)
+            raise LoginFailed
+        with tenant_scope(tenant_id), self._sessions.begin() as session:
+            # As the owner, for this workspace only, only if it is personal, using the grant.
+            erasure_id, token = session.execute(
+                select(func.docforge_delete_account(grant).table_valued(
+                    "erasure_id", "erasure_token"
+                ))
+            ).one()  # fmt: skip
+        logger.info("account.deleted tenant=%s", tenant_id)
+        return Erasure(int(erasure_id), "workspace", tenant_id, token=token)
+
+    def signups_since(self, since: datetime) -> int:
+        with self._sessions() as session:
+            return int(session.scalar(select(func.docforge_signups_since(since))) or 0)
+
+    # Platform administrators
+
+    def observe(self, principal: Principal, workspace: uuid.UUID) -> Principal:
+        """A platform administrator's session looking into `workspace`, read-only.
+
+        Raises `PermissionError` for anyone else, and `NotAWorkspace`. The look is audited in
+        that workspace, at most once an hour per administrator.
+        """
+        if principal.kind != "session" or not principal.platform_admin:
+            raise PermissionError("not a platform administrator")
+        # In its scope, the one workspace row the application may read is that one, if any.
+        with tenant_scope(workspace), self._sessions() as session:
+            if session.scalar(select(Tenant.id).where(Tenant.id == workspace)) is None:
+                raise NotAWorkspace(workspace)
+        actor = principal.actor
+        with tenant_scope(workspace), self._sessions.begin() as session:
+            # One look at a time per administrator and workspace, so two at once log once.
+            session.execute(
+                select(func.pg_advisory_xact_lock(func.hashtext(f"viewed:{workspace}:{actor}")))
+            )
+            recent = session.scalar(
+                select(AuditEntry.id)
+                .where(
+                    AuditEntry.tenant_id == workspace,
+                    AuditEntry.action == "platform.workspace_viewed",
+                    AuditEntry.actor == actor,
+                    AuditEntry.occurred_at > datetime.now(UTC) - _VIEWED_AUDIT_EVERY,
+                )
+                .limit(1)
+            )
+            if recent is None:
+                audit.append(
+                    session, tenant_id=workspace, actor=actor,
+                    action="platform.workspace_viewed", target_type="tenant",
+                    target_id=str(workspace), details={},
+                )  # fmt: skip
+        return Principal(
+            tenant_id=workspace,
+            kind="session",
+            subject_id=principal.subject_id,
+            role=OBSERVER,
+            name=principal.name,
+            platform_admin=True,
+            home_tenant_id=principal.tenant_id,
+        )
 
     # Checking
 
@@ -328,5 +607,10 @@ class Authenticator:
             ):
                 return None
             return Principal(
-                reviewer.tenant_id, "session", reviewer.id, reviewer.role, reviewer.name
+                reviewer.tenant_id,
+                "session",
+                reviewer.id,
+                reviewer.role,
+                reviewer.name,
+                platform_admin=reviewer.platform_admin,
             )

@@ -200,6 +200,40 @@ def test_every_line_must_carry_its_batch_number(raw_invoice_from_label: RawFromL
     assert ("required.present", ("lines[1].batch_no",)) in failures(run(raw))
 
 
+def test_a_quantity_printed_with_a_zero_fraction_is_read_as_the_count(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    count = raw["lines"][0]["qty"]["text"]
+    raw["lines"][0]["qty"]["text"] = f"{count}.00"
+
+    invoice = extraction(raw)
+
+    assert invoice.lines[0].qty.value == int(count)
+    assert invoice.issues == ()
+    assert failures(run_rules(INVOICE_RULES, invoice)) == []
+
+
+def test_a_fractional_quantity_is_reported_as_unreadable_not_as_missing(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][0]["qty"]["text"] = "7.5"
+
+    invoice = extraction(raw)
+    results = run_rules(INVOICE_RULES, invoice)
+
+    assert invoice.lines[0].qty.value is None
+    assert [(issue.path, issue.code) for issue in invoice.issues] == [
+        ("lines[0].qty", "unparseable")
+    ]
+    [required] = [
+        r for r in results if r.rule_id == "required.present" and r.paths == ("lines[0].qty",)
+    ]
+    assert required.outcome == "failed"
+    assert required.message == "lines[0].qty is printed as '7.5' but could not be read."
+
+
 def test_a_blank_discount_is_read_as_no_discount(raw_invoice_from_label: RawFromLabel) -> None:
     raw = copy.deepcopy(raw_invoice_from_label(label("pair_002")))  # line 0 has no discount
     raw["lines"][0]["discount_pct"] = {"text": None, "block_ids": []}
@@ -221,3 +255,398 @@ def test_line_tax_must_be_split_within_a_state_and_whole_between_states(
     assert ("line.amount", ("lines[0].amount",)) in failures(run(raw))
     line["amount"]["text"] = "105.22"
     assert ("line.amount", ("lines[0].amount",)) not in failures(run(raw))
+
+
+def without_batches_or_expiry(raw: dict[str, Any]) -> None:
+    for line in raw["lines"]:
+        for name in ("batch_no", "mfg", "expiry"):
+            line[name] = {"text": None, "block_ids": []}
+
+
+def as_general_goods(raw: dict[str, Any]) -> dict[str, Any]:
+    """Nothing on it says medicine: no drug licence number on either party, and no line in
+    HSN chapter 30 (pharmaceutical products). A camera dealer's invoice prints neither."""
+    for party in ("seller", "buyer"):
+        raw[party]["drug_licence_nos"] = []
+    for line in raw["lines"]:
+        line["hsn"] = {"text": "85258900", "block_ids": []}
+    return raw
+
+
+def test_an_invoice_that_prints_no_batch_or_expiry_is_not_asked_for_them(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # A general goods invoice (a camera, not a medicine) has no batch or expiry column.
+    raw = as_general_goods(copy.deepcopy(raw_invoice_from_label(label("pair_001"))))
+    without_batches_or_expiry(raw)
+
+    results = run(raw)
+
+    required = {r.paths[0] for r in results if r.rule_id == "required.present"}
+    assert not any(path.endswith((".batch_no", ".expiry")) for path in required)
+    assert "lines[0].qty" in required and "lines[0].product_name" in required
+    assert [path for rule, (path, *_) in failures(results) if rule == "required.present"] == []
+
+
+def test_once_one_line_prints_an_expiry_every_line_needs_its_batch_and_expiry(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    without_batches_or_expiry(raw)
+    raw["lines"][0]["expiry"] = {"text": "06/28", "block_ids": []}
+
+    failed = failures(run(raw))
+
+    assert ("required.present", ("lines[0].batch_no",)) in failed
+    assert ("required.present", ("lines[1].batch_no",)) in failed
+    assert ("required.present", ("lines[1].expiry",)) in failed
+    assert ("required.present", ("lines[0].expiry",)) not in failed
+
+
+def test_a_batch_printed_but_unreadable_still_counts_as_printed(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    without_batches_or_expiry(raw)
+    raw["lines"][0]["expiry"] = {"text": "13/99", "block_ids": []}  # not a month
+
+    failed = failures(run(raw))
+
+    assert ("required.present", ("lines[0].expiry",)) in failed
+    assert ("required.present", ("lines[1].batch_no",)) in failed
+
+
+def general_goods_invoice(raw: dict[str, Any], grand_total: str) -> dict[str, Any]:
+    """Two camera lines under one "GST 10%" tax line, which no tax head (CGST, SGST, IGST)
+    reads: taxable 471,772.00 + 1,588,947.00 = 2,060,719.00; with 10% tax the lines come to
+    518,949.20 + 1,747,841.70 = 2,266,790.90."""
+    template = raw["lines"][0]
+
+    def line(product: str, qty: str, rate: str, taxable: str, amount: str) -> dict[str, Any]:
+        printed: dict[str, str | None] = dict.fromkeys(template)
+        printed |= {
+            "product_name": product,
+            "hsn": "85258900",
+            "qty": qty,
+            "ptr": rate,
+            "taxable_value": taxable,
+            "amount": amount,
+        }
+        return {name: {"text": text, "block_ids": []} for name, text in printed.items()}
+
+    raw["lines"] = [
+        line(
+            "Canon EOS R50 Mirrorless Camera Body", "7.00", "67,396.00", "471,772.00", "518,949.20"
+        ),
+        line("Canon EOS R6 Mark II Body", "3.00", "529,649.00", "1,588,947.00", "1,747,841.70"),
+    ]
+    raw["totals"] = {name: {"text": None, "block_ids": []} for name in raw["totals"]}
+    raw["totals"]["taxable_value"]["text"] = "2,060,719.00"
+    raw["totals"]["grand_total"]["text"] = grand_total
+    return as_general_goods(raw)
+
+
+def grand_total_result(raw: dict[str, Any]) -> RuleResult:
+    [result] = [r for r in run(raw) if r.rule_id == "totals.grand_total"]
+    return result
+
+
+def test_without_tax_heads_a_grand_total_equal_to_the_line_amounts_passes(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "INR 2,266,790.90"
+    )
+
+    result = grand_total_result(raw)
+
+    assert result.outcome == "passed"
+    assert [rule for rule, _ in failures(run(raw))] == []
+
+
+def test_without_tax_heads_the_line_amounts_take_the_round_off(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,791.00"
+    )
+    raw["totals"]["round_off"]["text"] = "0.10"
+
+    assert grand_total_result(raw).outcome == "passed"
+
+
+def test_without_tax_heads_a_grand_total_the_line_amounts_do_not_explain_fails(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,890.90"
+    )
+
+    result = grand_total_result(raw)
+
+    assert result.outcome == "failed"
+    assert result.message == (
+        "Grand total 2266890.90 is not taxable value plus tax plus round-off (2060719.00), "
+        "and no tax head (CGST, SGST, IGST) was read; nor is it the sum of the line amounts "
+        "plus round-off (2266790.90)."
+    )
+
+
+def test_without_tax_heads_or_every_line_amount_the_grand_total_fails_as_before(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,790.90"
+    )
+    raw["lines"][1]["amount"]["text"] = None
+
+    result = grand_total_result(raw)
+
+    assert result.outcome == "failed"
+    assert "(2060719.00)" in result.message
+
+
+def test_with_a_tax_head_read_the_line_amounts_do_not_excuse_a_grand_total(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # The heads are read, so they decide: a wrong CGST fails the grand total even though
+    # the (correct) line amounts still add up to it.
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    set_total("cgst", "1.00")(raw)
+
+    assert grand_total_result(raw).outcome == "failed"
+
+
+def test_without_tax_heads_a_line_without_an_amount_counts_its_taxable_value_and_rate(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,790.90"
+    )
+    raw["lines"][1]["amount"]["text"] = None
+    raw["lines"][1]["gst_rate"]["text"] = "10"
+
+    assert grand_total_result(raw).outcome == "passed"
+
+
+def camera_invoice(raw_invoice_from_label: RawFromLabel) -> dict[str, Any]:
+    return general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "INR 2,266,790.90"
+    )
+
+
+def rule_ids(results: tuple[RuleResult, ...]) -> set[str]:
+    return {result.rule_id for result in results}
+
+
+def test_an_invoice_that_prints_no_expiry_or_manufacture_has_no_date_checks(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    results = run(camera_invoice(raw_invoice_from_label))
+
+    assert not rule_ids(results) & {"line.dates", "line.not_expired", "line.shelf_life"}
+
+
+def test_an_invoice_that_prints_expiry_but_no_manufacture_checks_only_expiry(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    for line in raw["lines"]:
+        line["mfg"] = {"text": None, "block_ids": []}
+
+    results = run(raw)
+
+    assert "line.dates" not in rule_ids(results)
+    assert {r.outcome for r in results if r.rule_id == "line.not_expired"} == {"passed"}
+
+
+def test_a_line_whose_expiry_is_blank_on_an_invoice_that_prints_expiry_is_not_evaluated(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][1]["expiry"] = {"text": None, "block_ids": []}
+
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+    assert outcomes[("line.not_expired", "lines[1].expiry")] == "not_evaluated"
+    assert outcomes[("line.dates", "lines[1].mfg")] == "not_evaluated"
+
+
+def test_an_invoice_that_prints_no_mrp_has_no_ptr_above_mrp_check(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    results = run(camera_invoice(raw_invoice_from_label))  # a rate column, but no MRP
+
+    assert "line.ptr_not_above_mrp" not in rule_ids(results)
+
+
+def test_a_line_whose_mrp_is_blank_on_an_invoice_that_prints_mrp_is_not_evaluated(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][1]["mrp"] = {"text": None, "block_ids": []}
+
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+    assert outcomes[("line.ptr_not_above_mrp", "lines[1].ptr")] == "not_evaluated"
+
+
+def tax_result(raw: dict[str, Any]) -> RuleResult:
+    [result] = [r for r in run(raw) if r.rule_id == "totals.tax"]
+    return result
+
+
+def test_without_tax_heads_the_tax_the_totals_imply_is_checked_against_the_lines(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # 2,266,790.90 - 2,060,719.00 = 206,071.90, the lines' 47,177.20 + 158,894.70.
+    assert tax_result(camera_invoice(raw_invoice_from_label)).outcome == "passed"
+
+
+def test_without_tax_heads_a_tax_the_lines_do_not_explain_is_left_to_the_grand_total(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = general_goods_invoice(
+        copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "2,266,890.90"
+    )
+
+    assert tax_result(raw).outcome == "not_evaluated"
+    assert grand_total_result(raw).outcome == "failed"
+
+
+def test_without_tax_heads_a_line_that_prints_no_rate_has_no_line_amount_check(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    results = run(camera_invoice(raw_invoice_from_label))
+
+    assert "line.amount" not in rule_ids(results)
+
+
+def test_without_tax_heads_a_wrong_line_amount_still_fails_the_grand_total(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = camera_invoice(raw_invoice_from_label)
+    raw["lines"][0]["amount"]["text"] = "518,994.20"
+
+    assert grand_total_result(raw).outcome == "failed"
+
+
+def test_with_a_tax_head_read_a_line_without_a_rate_is_not_evaluated(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][1]["gst_rate"] = {"text": None, "block_ids": []}
+
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+    assert outcomes[("line.amount", "lines[1].amount")] == "not_evaluated"
+
+
+def test_a_general_goods_invoice_that_adds_up_has_no_failed_or_unevaluated_error_check(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    results = run(camera_invoice(raw_invoice_from_label))
+
+    assert [
+        (r.rule_id, r.paths, r.outcome)
+        for r in results
+        if r.severity == "error" and r.outcome != "passed"
+    ] == []
+
+
+def test_an_invoice_that_prints_no_unit_rate_has_no_taxable_value_check(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # Many invoices print quantity and line value but no unit rate column: there is nothing
+    # to multiply, so the check does not run rather than reporting a value as missing.
+    raw = camera_invoice(raw_invoice_from_label)
+    for line in raw["lines"]:
+        line["ptr"] = {"text": None, "block_ids": []}
+
+    results = run(raw)
+
+    assert "line.taxable_value" not in rule_ids(results)
+    assert [
+        (r.rule_id, r.paths, r.outcome)
+        for r in results
+        if r.severity == "error" and r.outcome != "passed"
+    ] == []
+
+
+def test_a_pharma_invoice_missing_one_lines_rate_still_reports_it(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["lines"][0]["ptr"] = {"text": None, "block_ids": []}
+
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+    assert outcomes[("line.taxable_value", "lines[0].taxable_value")] == "not_evaluated"
+
+
+# A medicine invoice is known from the whole document, not from one column the model may miss
+
+
+def missing(raw: dict[str, Any], *names: str) -> dict[str, Any]:
+    for line in raw["lines"]:
+        for name in names:
+            line[name] = {"text": None, "block_ids": []}
+    return raw
+
+
+def test_a_medicine_invoice_whose_batch_column_was_missed_on_every_line_still_needs_it(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # HSN 3004 (medicaments) and drug licence numbers: a medicine invoice, whatever was read.
+    raw = missing(copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "batch_no")
+
+    failed = failures(run(raw))
+
+    for index in range(len(raw["lines"])):
+        assert ("required.present", (f"lines[{index}].batch_no",)) in failed
+
+
+def test_a_medicine_invoice_whose_batch_and_expiry_were_missed_still_checks_them(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = missing(copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "batch_no", "expiry")
+
+    results = run(raw)
+
+    failed = failures(results)
+    assert ("required.present", ("lines[0].batch_no",)) in failed
+    assert ("required.present", ("lines[0].expiry",)) in failed
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in results}
+    assert outcomes[("line.not_expired", "lines[0].expiry")] == "not_evaluated"
+    assert outcomes[("line.dates", "lines[0].mfg")] == "not_evaluated"
+
+
+@pytest.mark.parametrize("evidence", ["hsn", "drug_licence"])
+def test_one_sign_of_medicine_is_enough(
+    raw_invoice_from_label: RawFromLabel, evidence: str
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    licences = {p: raw[p]["drug_licence_nos"] for p in ("seller", "buyer")}
+    as_general_goods(raw)
+    if evidence == "hsn":
+        raw["lines"][1]["hsn"] = {"text": "3004 90 99", "block_ids": []}
+    else:
+        raw["seller"]["drug_licence_nos"] = licences["seller"]
+    missing(raw, "batch_no", "expiry")
+
+    failed = failures(run(raw))
+
+    assert ("required.present", ("lines[0].batch_no",)) in failed
+    assert ("required.present", ("lines[0].expiry",)) in failed
+
+
+def test_a_medicine_invoice_whose_rate_or_mrp_column_was_missed_still_checks_them(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    for column, rule in (("ptr", "line.taxable_value"), ("mrp", "line.ptr_not_above_mrp")):
+        raw = missing(copy.deepcopy(raw_invoice_from_label(label("pair_001"))), column)
+
+        outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+        path = "lines[0].taxable_value" if column == "ptr" else "lines[0].ptr"
+        assert outcomes[(rule, path)] == "not_evaluated", column

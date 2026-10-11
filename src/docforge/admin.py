@@ -12,7 +12,7 @@ import sys
 import uuid
 from collections.abc import Sequence
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from docforge.auth import PERMISSIONS
 from docforge.config import Settings, get_settings
@@ -24,7 +24,10 @@ from docforge.wiring import build_authenticator
 def tenant_by_name(settings: Settings, name: str) -> uuid.UUID:
     sessions = make_session_factory(make_engine(settings.database_url.get_secret_value()))
     with sessions() as session:
-        tenant_id = session.scalar(select(Tenant.id).where(Tenant.name == name))
+        # This login cannot read other workspaces' rows: the owner's function finds the id.
+        tenant_id: uuid.UUID | None = session.scalar(
+            select(func.docforge_organisation_tenant(name))
+        )
     if tenant_id is None:
         raise ValueError(f"there is no organisation called {name!r}")
     return tenant_id

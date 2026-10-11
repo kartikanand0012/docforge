@@ -1,5 +1,7 @@
 """Compare an invoice with the purchase order it claims to fulfil."""
 
+import re
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -18,6 +20,18 @@ class Discrepancy(BaseModel):
     order_path: str | None
     invoice_value: str | None
     order_value: str | None
+
+
+# A company's suffix written another way: "Private Limited", "Pvt. Ltd." and "pvt ltd" agree.
+_COMPANY_WORDS = {"private": "pvt", "limited": "ltd"}
+
+
+def company_key(name: object) -> str | None:
+    """A company name as compared: case, full stops, commas and spacing aside."""
+    if not isinstance(name, str):
+        return None
+    words = re.sub(r"[.,]", " ", name).casefold().split()
+    return " ".join(_COMPANY_WORDS.get(word, word) for word in words) or None
 
 
 def _key(product_name: str) -> str:
@@ -65,6 +79,50 @@ def _differs[T](
     ]
 
 
+def _warning(
+    code: str,
+    message: str,
+    invoice: tuple[str, object],
+    order: tuple[str, object],
+) -> Discrepancy:
+    return Discrepancy(
+        code=code,
+        severity="warning",
+        message=message,
+        invoice_path=invoice[0],
+        order_path=order[0],
+        invoice_value=_text(invoice[1]),
+        order_value=_text(order[1]),
+    )
+
+
+def _hsn_key(hsn: str) -> str:
+    return "".join(hsn.split())
+
+
+def _total(invoice: InvoiceExtraction, order: PurchaseOrderExtraction) -> list[Discrepancy]:
+    """The order's total against the invoice's. A PO total may be printed with tax or
+    without it, so it agrees if it equals either the invoice's grand total or its taxable
+    value. Only a warning: a part shipment or a changed price is billed for less or more,
+    and the lines are compared one by one anyway."""
+    ordered = order.total.value
+    grand, taxable = invoice.totals.grand_total.value, invoice.totals.taxable_value.value
+    billed = [value for value in (grand, taxable) if value is not None]
+    if ordered is None or not billed:
+        return []
+    if any(abs(value - ordered) <= Decimal("0.01") for value in billed):
+        return []
+    return [
+        _warning(
+            "order.total",
+            f"The order total ({ordered}) is neither the invoice's grand total ({grand}) nor "
+            f"its taxable value ({taxable}).",
+            ("totals.grand_total", grand),
+            ("total", ordered),
+        )
+    ]
+
+
 def _free_quantity(scheme: str | None, qty: int) -> int:
     if scheme is None:
         return 0
@@ -94,6 +152,18 @@ def _line(
             (f"{invoice_path}.pack", billed.pack),
             (f"{order_path}.pack", ordered.pack),
         )
+    billed_hsn, ordered_hsn = billed.hsn.value, ordered.hsn.value
+    if billed_hsn and ordered_hsn and _hsn_key(billed_hsn) != _hsn_key(ordered_hsn):
+        # A warning: the classification is the supplier's to state, and it does not change
+        # what was ordered; a person decides whether it matters.
+        found.append(
+            _warning(
+                "line.hsn",
+                f"HSN on the invoice ({billed_hsn}) differs from the order ({ordered_hsn}).",
+                (f"{invoice_path}.hsn", billed_hsn),
+                (f"{order_path}.hsn", ordered_hsn),
+            )
+        )
     # A scheme that was printed but could not be read is unknown, not absent.
     if ordered.scheme.raw is not None and ordered.scheme.value is None:
         return found
@@ -121,12 +191,28 @@ def match_invoice_to_order(
 ) -> tuple[Discrepancy, ...]:
     """Every difference between what was ordered and what was billed. Empty means they agree."""
     found = _differs("po_no", "Order number", ("po_no", invoice.po_no), ("po_no", order.po_no))
-    found += _differs(
-        "supplier.gstin",
-        "Supplier GSTIN",
-        ("seller.gstin", invoice.seller.gstin),
-        ("supplier_gstin", order.supplier_gstin),
-    )
+    gstins = (invoice.seller.gstin.value, order.supplier_gstin.value)
+    named = company_key(invoice.seller.name.value)
+    if None in gstins and named is not None and named == company_key(order.supplier_name.value):
+        # Many orders print only the supplier's name: the pair was made by it, so a person
+        # is told, but it is not a mismatch.
+        missing = "order" if order.supplier_gstin.value is None else "invoice"
+        found.append(
+            _warning(
+                "supplier.by_name",
+                f"The {missing} prints no supplier GSTIN; the supplier was matched by name "
+                f"({order.supplier_name.value}).",
+                ("seller.name", invoice.seller.name.value),
+                ("supplier_name", order.supplier_name.value),
+            )
+        )
+    else:
+        found += _differs(
+            "supplier.gstin",
+            "Supplier GSTIN",
+            ("seller.gstin", invoice.seller.gstin),
+            ("supplier_gstin", order.supplier_gstin),
+        )
     found += _differs(
         "buyer.gstin",
         "Buyer GSTIN",
@@ -199,4 +285,5 @@ def match_invoice_to_order(
                     order_value=line.product_name.value,
                 )
             )
+    found += _total(invoice, order)
     return tuple(found)

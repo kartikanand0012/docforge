@@ -120,3 +120,121 @@ def test_version_numbers_are_unique_per_document(migrated: Engine) -> None:
 
     with pytest.raises(IntegrityError), migrated.begin() as conn:
         conn.execute(insert_version, {"id": document_id})
+
+
+# Downgrades that would lose or contradict data refuse unless told
+
+
+ALLOW = "DOCFORGE_ALLOW_DESTRUCTIVE_DOWNGRADE"
+
+
+def make_account(engine: Engine) -> None:
+    from docforge.review.signing import hash_pin
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("SELECT docforge_create_account('u-0123456789ab', 'A', 'A', 'a@example.com', :h)"),
+            {"h": hash_pin("correct horse battery staple")},
+        )
+
+
+def test_removing_accounts_refuses_while_accounts_exist_unless_told(
+    empty_database_url: URL, migrated: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    make_account(migrated)
+    config = alembic_config(empty_database_url)
+    monkeypatch.delenv(ALLOW, raising=False)
+
+    with pytest.raises(RuntimeError, match=ALLOW):
+        command.downgrade(config, "0026")
+    with migrated.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM accounts")).scalar_one() == 1
+
+    monkeypatch.setenv(ALLOW, "1")
+    command.downgrade(config, "0026")
+    with migrated.connect() as conn:
+        role = conn.execute(
+            text("SELECT role FROM reviewers WHERE email = 'a@example.com'")
+        ).scalar_one()
+    assert role == "reviewer"  # its account is gone; the person stays, as a plain reviewer
+
+
+def test_the_one_document_per_content_rule_is_not_restored_over_duplicates(
+    empty_database_url: URL, migrated: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    tenant_id = insert_tenant(migrated, "acme")
+    first = insert_document(migrated, tenant_id)
+    with migrated.begin() as conn:
+        conn.execute(text("UPDATE documents SET deleted_at = now() WHERE id = :d"), {"d": first})
+    insert_document(migrated, tenant_id)  # the same bytes uploaded again
+    monkeypatch.setenv(ALLOW, "1")
+
+    with pytest.raises(RuntimeError, match="same content"):
+        command.downgrade(alembic_config(empty_database_url), "0025")
+
+
+# Indexes for the counts every upload and the screens make
+
+
+def test_the_readings_index_and_count_name_exactly_the_actions_that_are_readings(
+    migrated: Engine,
+) -> None:
+    import re
+
+    from docforge.documents import READINGS
+
+    with migrated.connect() as conn:
+        index = conn.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_audit_log_readings'")
+        ).scalar_one()
+        counted = conn.execute(
+            text("SELECT pg_get_functiondef('docforge_member_readings_since'::regproc)")
+        ).scalar_one()
+    in_index = set(re.findall(r"'(document\.[a-z_]+)'", index))
+    in_count = set(re.findall(r"'(document\.[a-z_]+)'", counted))
+    assert in_index == in_count == set(READINGS)
+    assert "(occurred_at, tenant_id)" in index
+
+
+def test_the_audit_and_sign_in_figures_have_their_indexes(migrated: Engine) -> None:
+    with migrated.connect() as conn:
+        found: dict[str, bool] = dict(
+            conn.execute(
+                text(
+                    "SELECT c.relname, i.indisvalid FROM pg_index i "
+                    "JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname IN "
+                    "('ix_audit_log_action_time', 'ix_sessions_tenant_created')"
+                )
+            ).all()
+        )
+        action_time = conn.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_audit_log_action_time'")
+        ).scalar_one()
+    assert found == {"ix_audit_log_action_time": True, "ix_sessions_tenant_created": True}
+    assert "(tenant_id, action, occurred_at) INCLUDE (actor)" in action_time
+
+
+# What the database holds of accounts
+
+
+def test_a_personal_workspace_has_one_member_at_most(migrated: Engine) -> None:
+    make_account(migrated)
+    with pytest.raises(IntegrityError, match="uq_reviewers_one_member"), migrated.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO reviewers (tenant_id, name, email, pin_hash, role, credential) "
+                "SELECT tenant_id, 'B', 'b@example.com', 'x', 'member', 'password' "
+                "FROM accounts LIMIT 1"
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "email", ["no-at-sign", "two@@example.com", "a b@example.com", "a@nodot", f"{'a' * 250}@x.io"]
+)
+def test_an_accounts_email_is_an_address_of_at_most_254_characters(
+    migrated: Engine, email: str
+) -> None:
+    make_account(migrated)
+    with pytest.raises(IntegrityError, match="ck_accounts_email_format"), migrated.begin() as conn:
+        conn.execute(text("UPDATE accounts SET email = :e"), {"e": email})

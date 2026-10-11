@@ -35,6 +35,15 @@ class CommandParser:
             self.hoard = bytearray(400 * 1024 * 1024)
             self.hoard[::4096] = b"x" * len(self.hoard[::4096])  # touch every page
             time.sleep(60)
+        kind, _, megabytes = command.partition(":")
+        if kind == "keep":  # memory a document leaves behind in the process
+            self.hoard = bytearray(int(megabytes) * 1024 * 1024)
+            self.hoard[::4096] = b"x" * len(self.hoard[::4096])
+        if kind == "spike":  # memory a document needs while it is read, then gives back
+            spike = bytearray(int(megabytes) * 1024 * 1024)
+            spike[::4096] = b"x" * len(spike[::4096])
+            time.sleep(1)
+            del spike
         if command == "no-text":
             raise NoTextLayer("nothing to read")
         if command == "too-large":

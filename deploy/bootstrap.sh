@@ -34,6 +34,11 @@ for part in compose:.env app:app.env owner:owner.env; do
   aws ssm get-parameter --name "/docforge/demo/${part%%:*}" --with-decryption \
     --query Parameter.Value --output text > "${part#*:}"
 done
+# The platform administrator's login, if this deployment has one (the API and admin only).
+if ! aws ssm get-parameter --name /docforge/demo/platform --with-decryption \
+    --query Parameter.Value --output text > platform.env 2>/dev/null; then
+  rm -f platform.env
+fi
 # The converter reads its token and nothing else of app.env.
 grep '^CONVERTER_TOKEN=' app.env > converter.env
 umask 022

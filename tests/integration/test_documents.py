@@ -785,6 +785,8 @@ def test_reprocess_and_the_worker_on_one_document_never_deadlock(
 def test_a_document_that_exceeds_a_parser_limit_fails_with_the_reason(
     sessions: SessionFactory,
 ) -> None:
+    """In words, without the limits themselves (V1 security review: they help someone tune
+    a file to sit just under them); the detail is logged for the operator."""
     harness = Harness(sessions, [])
 
     def over_the_limit(pdf: bytes) -> ParsedDocument:
@@ -796,5 +798,83 @@ def test_a_document_that_exceeds_a_parser_limit_fails_with_the_reason(
     assert harness.service.process(ingested.version.id) == "failed"
     assert (
         harness.version(ingested.version.id).error
-        == "Parsing was stopped: it exceeded the time limit of 900 s."
+        == "Reading it was stopped: it needed more time or memory than one document may use."
     )
+
+
+# --- V1 review: a replaying deployment and a file it never recorded ------------------------
+
+
+def test_a_reply_never_recorded_fails_at_once_saying_so(sessions: SessionFactory) -> None:
+    from docforge.llm.replay import NotRecorded
+
+    harness = Harness(sessions, [NotRecorded("no recorded response")], max_attempts=5)
+    ingested = harness.ingest()
+
+    assert harness.service.process(ingested.version.id) == "failed"  # not retried: it cannot help
+    version = harness.version(ingested.version.id)
+    assert version.attempts == 1
+    assert (
+        version.error
+        == "This demo reads only its recorded sample documents; this file was not recorded."
+    )
+
+
+def test_a_parse_never_recorded_fails_saying_so(sessions: SessionFactory) -> None:
+    from docforge.parsing.cache import NotCached
+
+    harness = Harness(sessions, [])
+
+    def miss(pdf: bytes) -> ParsedDocument:
+        raise NotCached("no cached parse for this file")
+
+    harness.parser.parse = miss  # type: ignore[method-assign]
+    ingested = harness.ingest()
+
+    assert harness.service.process(ingested.version.id) == "failed"
+    assert harness.version(ingested.version.id).error == (
+        "This demo reads only its recorded sample documents; this file was not recorded."
+    )
+
+
+# Storing the file: before the transaction, never inside its lock
+
+
+def test_an_upload_stores_its_file_before_taking_the_lock_on_its_content(
+    sessions: SessionFactory, owner_engine: Any
+) -> None:
+    from sqlalchemy import text
+
+    harness = Harness(sessions, [])
+    sha = hashlib.sha256(PDF).hexdigest()
+    seen: list[bool] = []
+
+    class Watching(MemoryObjectStore):
+        def put(self, key: str, data: bytes, content_type: str) -> None:
+            # From another connection: free only if no transaction holds it.
+            with owner_engine.begin() as conn:
+                seen.append(
+                    conn.execute(
+                        text("SELECT pg_try_advisory_xact_lock(hashtext(:k))"),
+                        {"k": f"content:{DEFAULT_TENANT_ID}:{sha}"},
+                    ).scalar_one()
+                )
+            super().put(key, data, content_type)
+
+    harness.service._store = Watching()
+
+    assert harness.ingest(PDF).created
+
+    assert seen == [True]
+
+
+def test_a_refused_upload_leaves_no_file_behind(sessions: SessionFactory) -> None:
+    harness = Harness(sessions, [], max_pending=1)
+    harness.ingest(PDF)
+
+    with pytest.raises(QueueFull):
+        harness.ingest(OTHER_PDF)
+
+    other = original_key(DEFAULT_TENANT_ID, hashlib.sha256(OTHER_PDF).hexdigest())
+    assert not harness.store.exists(other)
+    assert harness.store.exists(original_key(DEFAULT_TENANT_ID, hashlib.sha256(PDF).hexdigest()))

@@ -68,6 +68,10 @@ describe("reasonNote", () => {
     expect(reasonNote(null, {})).toBeNull();
   });
 
+  it("says when a demo was asked a question it never recorded", () => {
+    expect(reasonNote("not_recorded", {})).toMatch(/demo.*recorded/i);
+  });
+
   it("says when passages were held back for reading like instructions", () => {
     expect(reasonNote(null, { held_back: 1 })).toBe("1 passage was held back because it reads like instructions to the AI, not document content.");
   });

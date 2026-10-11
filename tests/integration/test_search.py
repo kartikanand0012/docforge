@@ -429,3 +429,58 @@ def test_a_normal_hybrid_search_is_not_words_only(
     hits = search.search(DEFAULT_TENANT_ID, world.invoice_raw["lines"][0]["batch_no"]["text"])
 
     assert hits and not hits.words_only
+
+
+def test_each_hit_says_whether_it_holds_the_question_words_or_is_only_similar_in_meaning(
+    indexed: tuple[World, SearchService, uuid.UUID, uuid.UUID],
+) -> None:
+    world, search, _, _ = indexed
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    by_words = search.search(DEFAULT_TENANT_ID, batch, mode="keyword")
+    by_meaning = search.search(DEFAULT_TENANT_ID, batch, mode="vector")
+    nonsense = search.search(DEFAULT_TENANT_ID, "zebra quokka marmalade", mode="hybrid")
+
+    assert by_words and all(hit.matched_words for hit in by_words)
+    assert by_meaning and not any(hit.matched_words for hit in by_meaning)
+    # Nothing prints these words: what comes back is only the closest in meaning, and says so.
+    assert nonsense and not any(hit.matched_words for hit in nonsense)
+    client = TestClient(signed_in(create_app(None, search=search), role="integrator"))
+    results = client.get("/v1/search", params={"q": "zebra quokka marmalade"}).json()["results"]
+    assert results and {r["matched_words"] for r in results} == {False}
+    assert all(isinstance(r["score"], float) for r in results)
+    top = client.get("/v1/search", params={"q": batch}).json()["results"][0]
+    assert top["matched_words"] is True
+
+
+def test_in_hybrid_search_every_passage_printing_a_named_code_ranks_above_any_only_similar(
+    sessions: SessionFactory,
+    raw_invoice_from_label: RawFromLabel,
+    raw_order_from_label: RawFromLabel,
+) -> None:
+    world = World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
+    world.invoice_parsed = CachingParser(RECORDED).parse(world.invoice_pdf)
+    batch = world.invoice_raw["lines"][0]["batch_no"]["text"]
+
+    class Misleading(FakeEmbedder):
+        """By meaning, the passages that print the code are the furthest from the question,
+        and every other passage is the question itself."""
+
+        def embed(self, texts: list[str], task: str) -> list[list[float]]:
+            if task == "query":
+                return super().embed(["the question"] * len(texts), task)
+            return super().embed(
+                ["something else" if batch.lower() in t.lower() else "the question" for t in texts],
+                task,
+            )
+
+    search = SearchService(sessions, Misleading())
+    for document_id in (world.process("purchase_order"), world.process("invoice")):
+        search.index_document(DEFAULT_TENANT_ID, document_id)
+
+    hits = search.search(DEFAULT_TENANT_ID, f"which document has batch {batch}", k=20)
+
+    flags = [hit.matched_words for hit in hits]
+    assert True in flags and False in flags
+    assert flags == sorted(flags, reverse=True)  # every passage printing it first
+    assert all(batch in hit.text for hit in hits if hit.matched_words)

@@ -276,24 +276,27 @@ def test_an_admin_reviewer_may_upload_and_a_plain_reviewer_may_not(stack: Stack)
     assert upload.status_code == 202
 
 
-def test_wrong_pins_at_sign_in_lock_the_reviewer_whatever_address_they_come_from(
+def test_wrong_pins_from_many_addresses_lock_the_reviewer_for_those_addresses(
     stack: Stack,
 ) -> None:
-    """The address limit can be dodged; the reviewer's own count cannot."""
+    """The address limit can be dodged; the reviewer's own count cannot. It locks the
+    addresses the wrong PINs came from, not the reviewer's own."""
+    body = {"tenant": "default", "email": "asha@example.com"}
     for attempt in range(5):
-        response = stack.client.post(
-            "/v1/sessions",
-            json={"tenant": "default", "email": "asha@example.com", "pin": "000000"},
-            headers={"X-Forwarded-For": f"203.0.113.{attempt}"},
+        response = TestClient(stack.client.app, client=(f"203.0.113.{attempt}", 1)).post(
+            "/v1/sessions", json={**body, "pin": "000000"}
         )
         assert response.status_code == 401
-    locked = stack.client.post(
-        "/v1/sessions",
-        json={"tenant": "default", "email": "asha@example.com", "pin": "482913"},
-        headers={"X-Forwarded-For": "198.51.100.1"},
+
+    locked = TestClient(stack.client.app, client=("203.0.113.0", 1)).post(
+        "/v1/sessions", json={**body, "pin": "482913"}
+    )
+    asha = TestClient(stack.client.app, client=("198.51.100.1", 1)).post(
+        "/v1/sessions", json={**body, "pin": "482913"}
     )
 
-    assert locked.status_code == 401  # the right PIN, but the reviewer is locked for now
+    assert locked.status_code == 401  # the right PIN, but this address is locked for now
+    assert asha.status_code == 201
 
 
 def test_a_shared_account_with_a_public_pin_is_never_locked(stack: Stack) -> None:
@@ -324,10 +327,11 @@ def test_a_caller_can_ask_who_they_are(stack: Stack) -> None:
     assert me.headers["cache-control"] == "no-store"
     assert me.json() == {
         "kind": "session", "name": "Asha Rao", "email": "asha@example.com",
-        "role": "reviewer", "organisation": "default",
+        "role": "reviewer", "organisation": "default", "credential": "pin",
+        "platform_admin": False, "workspace": "organisation",
     }  # fmt: skip
     key = stack.client.get("/v1/sessions/current", headers=stack.key("integrator")).json()
-    assert (key["kind"], key["name"], key["email"], key["role"]) == (
-        "api_key", "integrator key", None, "integrator",
+    assert (key["kind"], key["name"], key["email"], key["role"], key["credential"]) == (
+        "api_key", "integrator key", None, "integrator", None,
     )  # fmt: skip
     assert stack.client.get("/v1/sessions/current").status_code == 401

@@ -18,15 +18,26 @@ from pydantic import BaseModel
 from sqlalchemy.exc import OperationalError
 
 from docforge import __version__
+from docforge.accounts import MemberCaps
 from docforge.api.agents import agents_router
 from docforge.api.audit import audit_router
-from docforge.api.auth import require, sessions_router
+from docforge.api.auth import (
+    NOT_ALLOWED,
+    READ_METHODS,
+    WORKSPACE_HEADER,
+    account_router,
+    accounts_router,
+    require,
+    sessions_router,
+)
 from docforge.api.chat import chat_router
 from docforge.api.collections import collections_router
 from docforge.api.documents import documents_router
 from docforge.api.exports import exports_router
+from docforge.api.platform import platform_router
 from docforge.api.review import review_router
 from docforge.api.search import search_router
+from docforge.api.stats import stats_router
 from docforge.api.uploads import (
     DEFAULT_MAX_UPLOAD_BYTES,
     MULTIPART_OVERHEAD,
@@ -36,7 +47,7 @@ from docforge.api.uploads import (
 )
 from docforge.api.webhooks import webhooks_router
 from docforge.audit_log import AuditLogService
-from docforge.auth import Authenticator, FailureLimiter, Principal
+from docforge.auth import MEMBER, Authenticator, FailureLimiter, Principal
 from docforge.chat.service import ChatService
 from docforge.collections import CollectionService
 from docforge.documents import DocumentService
@@ -47,12 +58,15 @@ from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.mcp_server.server import mount as mount_mcp
 from docforge.mcp_server.tools import AgentTools
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
+from docforge.platform import PlatformService
 from docforge.review.service import ReviewService
+from docforge.review.signing import HashingBusy
 from docforge.search.service import SearchService
 from docforge.telemetry import traced
 from docforge.webhooks import WebhookService
 
 logger = logging.getLogger(__name__)
+__all__ = ["MemberCaps", "create_app"]
 
 
 class DocumentInfo(BaseModel):
@@ -118,6 +132,12 @@ def create_app(
     limits: Limits | None = None,
     agents: AgentTools | None = None,
     audit_log: AuditLogService | None = None,
+    signup_enabled: bool = False,
+    signups_per_day: int = 200,
+    signups_per_address_per_hour: int = 5,
+    member_caps: MemberCaps | None = None,
+    platform: PlatformService | None = None,
+    model_prices: dict[str, tuple[float, float]] | None = None,
 ) -> FastAPI:
     """`pipeline` enables the stateless preview endpoint; `service` the document endpoints."""
     # FastAPI's own telemetry is off: its request spans record the query string (a search
@@ -138,7 +158,7 @@ def create_app(
             CORSMiddleware,
             allow_origins=list(cors_origins),
             allow_methods=["GET", "POST", "DELETE"],
-            allow_headers=["Content-Type", "Authorization"],
+            allow_headers=["Content-Type", "Authorization", "X-DocForge-Workspace"],
         )
 
     @app.middleware("http")
@@ -150,6 +170,23 @@ def create_app(
         declared = request.headers.get("content-length", "")
         if declared.isdigit() and int(declared) > max_upload_bytes + MULTIPART_OVERHEAD:
             return JSONResponse({"detail": too_large_message(max_upload_bytes)}, status_code=413)
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def read_only_when_looking_in(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        # Looking into another workspace is for reading the API: any other method, any route
+        # outside it, and the MCP server are refused before they run.
+        # Who may look at all is checked with the credential (`current_principal`).
+        path = request.url.path
+        if WORKSPACE_HEADER in request.headers and (
+            request.method not in READ_METHODS
+            or not path.startswith("/v1/")
+            or path == "/v1/mcp"  # the agents' server authenticates keys on its own
+            or path.startswith("/v1/mcp/")
+        ):
+            return JSONResponse({"detail": NOT_ALLOWED}, status_code=403)
         return await call_next(request)
 
     @app.middleware("http")
@@ -179,6 +216,15 @@ def create_app(
             {"detail": "The database is unavailable. Try again later."}, status_code=503
         )
 
+    @app.exception_handler(HashingBusy)
+    async def hashing_busy(request: Request, error: HashingBusy) -> JSONResponse:
+        # Every place for working out a PIN's or password's hash stayed taken: many sign-ins
+        # at once. Nothing was checked or counted; the caller tries again in a moment.
+        logger.warning("no place to hash a secret on %s", request.url.path)
+        return JSONResponse(
+            {"detail": "Busy, try again."}, status_code=503, headers={"Retry-After": "1"}
+        )
+
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, error: Exception) -> JSONResponse:
         logger.exception("unhandled error on %s", request.url.path)
@@ -191,12 +237,29 @@ def create_app(
     if service is not None:
         app.include_router(
             documents_router(
-                service, max_upload_bytes=max_upload_bytes, max_pages=max_pages, limits=caps
+                service,
+                max_upload_bytes=max_upload_bytes,
+                max_pages=max_pages,
+                limits=caps,
+                member_caps=member_caps,
+                prices=model_prices,
             )
         )
+        app.include_router(stats_router(service, review, model_prices))
     limiter = authenticator.limiter if authenticator else FailureLimiter(20, 300)
     if authenticator is not None:
         app.include_router(sessions_router(authenticator))
+        app.include_router(
+            account_router(authenticator, service.eraser.erase_quietly if service else None)
+        )
+    if authenticator is not None and signup_enabled:
+        # Off unless switched on: without it there is no such route (404).
+        app.include_router(
+            accounts_router(
+                authenticator, caps, per_address_per_hour=signups_per_address_per_hour,
+                per_day=signups_per_day,
+            )
+        )  # fmt: skip
     if review is not None:
         app.include_router(review_router(review, evals_dir, prices, limiter))
     if webhooks is not None:
@@ -206,11 +269,15 @@ def create_app(
     if search is not None:
         app.include_router(search_router(search, searches_per_minute, caps))
     if chat is not None:
-        app.include_router(chat_router(chat, questions_per_minute, caps))
+        app.include_router(chat_router(chat, questions_per_minute, caps, member_caps))
     if collections is not None:
         app.include_router(collections_router(collections))
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
+    if authenticator is not None:
+        # Behind the owner's functions, which serve every workspace: platform admins only,
+        # through a login of their own. Without one the screens say they are not configured.
+        app.include_router(platform_router(platform))
     if agents is not None and authenticator is not None:
         # AI agents, through the MCP server, with keys administrators make.
         app.include_router(agents_router(authenticator, agents))
@@ -228,6 +295,9 @@ def _add_preview_endpoint(app: FastAPI, pipeline: InvoicePipeline, max_upload_by
         include_blocks: bool = False,
     ) -> ExtractionResponse:
         """Extract one born-digital invoice PDF in the request. Nothing is stored."""
+        if principal.role == MEMBER:
+            # A model call outside every cap a free workspace has: for integrations only.
+            raise HTTPException(403, "This credential is not allowed to do that.")
         data = await read_pdf_upload(file, max_upload_bytes)
 
         # Error details stay in the log: provider messages are not for API clients.

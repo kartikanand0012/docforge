@@ -34,37 +34,50 @@ class Limits(Protocol):
         `LimitReached` if none is free. A place held longer than `seconds` is given back."""
         ...
 
+    def allow_hourly(self, key: str, per_hour: int) -> bool:
+        """Count one request against `key` this hour; False once over `per_hour`."""
+        ...
+
 
 class DatabaseLimits:
     def __init__(self, sessions: SessionFactory) -> None:
         self._sessions = sessions
 
     def allow(self, key: str, per_minute: int) -> bool:
+        return self._allow(key, per_minute, "minute")
+
+    def allow_hourly(self, key: str, per_hour: int) -> bool:
+        # Its own key: an hour's window starts at the same instant as one of its minutes.
+        return self._allow(f"hour:{key}", per_hour, "hour")
+
+    def _allow(self, key: str, limit: int, unit: str) -> bool:
+        # `unit` is one of two fixed words, never input: it names the window.
+        span = {"minute": 60, "hour": 3600}[unit]
         with self._sessions.begin() as session:
             count = session.execute(
                 text(
                     "INSERT INTO rate_windows (key, window_start, count) "
-                    "VALUES (:key, date_trunc('minute', now()), 1) "
+                    "VALUES (:key, date_trunc(:unit, now()), 1) "
                     "ON CONFLICT (key, window_start) "
                     "DO UPDATE SET count = rate_windows.count + 1 RETURNING count"
                 ),
-                {"key": key},
+                {"key": key, "unit": unit},
             ).scalar_one()
-            # A sliding minute: the minute before counts for the part of it still within the
-            # last sixty seconds, so a caller cannot double the rate at the turn of a minute.
+            # A sliding window: the one before counts for the part of it still within the
+            # last minute (or hour), so a caller cannot double the rate at the turn of one.
             before = session.execute(
                 text(
                     "SELECT coalesce(max(count), 0) * (1 - extract(epoch FROM now() - "
-                    "date_trunc('minute', now())) / 60) FROM rate_windows "
-                    "WHERE key = :key AND window_start = date_trunc('minute', now()) "
-                    "- interval '1 minute'"
+                    "date_trunc(:unit, now())) / :span) FROM rate_windows "
+                    "WHERE key = :key AND window_start = date_trunc(:unit, now()) "
+                    "- make_interval(secs => :span)"
                 ),
-                {"key": key},
+                {"key": key, "unit": unit, "span": span},
             ).scalar_one()
             count = float(count) + float(before)
         if random.random() < 0.01:  # noqa: S311 - housekeeping, not security
             self.sweep()
-        return count <= per_minute
+        return count <= limit
 
     @contextmanager
     def hold(self, key: str, at_most: int, seconds: int) -> Iterator[None]:
@@ -102,10 +115,11 @@ class DatabaseLimits:
             session.execute(text("DELETE FROM leases WHERE id = :id"), {"id": lease})
 
     def sweep(self) -> None:
-        """Counts older than an hour and places past their expiry, for every key."""
+        """Counts older than two hours (an hourly count needs the hour before) and places
+        past their expiry, for every key."""
         with self._sessions.begin() as session:
             session.execute(
-                text("DELETE FROM rate_windows WHERE window_start < now() - interval '1 hour'")
+                text("DELETE FROM rate_windows WHERE window_start < now() - interval '2 hours'")
             )
             session.execute(text("DELETE FROM leases WHERE expires_at < now()"))
 
@@ -119,12 +133,18 @@ class LocalLimits:
         self._lock = threading.Lock()
 
     def allow(self, key: str, per_minute: int) -> bool:
+        return self._allow(key, per_minute, 60)
+
+    def allow_hourly(self, key: str, per_hour: int) -> bool:
+        return self._allow(f"hour:{key}", per_hour, 3600)
+
+    def _allow(self, key: str, limit: int, seconds: float) -> bool:
         now = time.monotonic()
         with self._lock:
             recent = self._seen.setdefault(key, deque())
-            while recent and recent[0] <= now - 60:
+            while recent and recent[0] <= now - seconds:
                 recent.popleft()
-            if len(recent) >= per_minute:
+            if len(recent) >= limit:
                 return False
             recent.append(now)
             return True

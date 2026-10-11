@@ -323,6 +323,31 @@ def test_a_person_can_delete_their_conversation(setup: Setup) -> None:
         setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", first.conversation_id)
 
 
+def test_deleting_conversations_does_not_give_back_the_days_questions(setup: Setup) -> None:
+    """The count is kept where a person cannot delete it: the audit log."""
+    for _ in range(5):
+        answer = setup.ask("What is the supplier's bank account number?")
+        setup.chat.delete(DEFAULT_TENANT_ID, "reviewer:a", answer.conversation_id)
+
+    with pytest.raises(QuestionLimitReached):
+        setup.ask("One more?")
+
+
+def test_deleting_conversations_does_not_give_a_person_their_questions_back(
+    sessions: SessionFactory, setup: Setup
+) -> None:
+    chat = ChatService(
+        sessions, setup.search, setup.model, daily_limit=10, daily_limit_per_person=2
+    )
+    for _ in range(2):
+        answer = chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Bank account?")
+        chat.delete(DEFAULT_TENANT_ID, "reviewer:a", answer.conversation_id)
+
+    with pytest.raises(QuestionLimitReached):
+        chat.ask(DEFAULT_TENANT_ID, "reviewer:a", "Bank account?")
+    assert chat.ask(DEFAULT_TENANT_ID, "reviewer:b", "Bank account?").status == "not_found"
+
+
 # --- follow-ups keep their subject (hardening) --------------------------------------------
 
 
@@ -629,3 +654,24 @@ def test_an_answer_records_which_provider_answered_it(
             text("SELECT provider, model FROM messages WHERE id = :m"), {"m": answer.message_id}
         ).one()
     assert tuple(row) == ("fake", "fake-chat-1")
+
+
+# --- V1 finding F1: a replaying demo asked something it never recorded ---------------------
+
+
+def test_a_question_never_recorded_is_answered_as_such_not_as_an_outage(setup: Setup) -> None:
+    """On a deployment that replays recorded answers (the demo), trying again never helps: the
+    answer says the question was not recorded, rather than "try again shortly"."""
+    from docforge.llm.replay import NotRecorded
+
+    def miss(passages: dict[int, str]) -> str:
+        raise NotRecorded("no recorded response for this request")
+
+    setup.model.reply = miss
+
+    answer = setup.ask("Who signed the delivery challan?")
+
+    assert (answer.status, answer.reason) == ("not_found", "not_recorded")
+    assert "recorded" in answer.text and "try again" not in answer.text.lower()
+    (message,) = setup.chat.conversation(DEFAULT_TENANT_ID, "reviewer:a", answer.conversation_id)
+    assert (message.status, message.answer) == ("not_found", answer.text)

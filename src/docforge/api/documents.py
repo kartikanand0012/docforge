@@ -7,7 +7,7 @@ import logging
 import time
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile
@@ -16,25 +16,39 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from starlette.background import BackgroundTask
 
+from docforge.accounts import MemberCaps
 from docforge.api.auth import require
 from docforge.api.uploads import read_upload, safe_filename
-from docforge.auth import Principal
+from docforge.auth import MEMBER, Principal
 from docforge.documents import (
+    DailyReadingsUsed,
     DocumentNotFound,
     DocumentService,
     DocumentTypeConflict,
+    FreeReadingsUsed,
     QueueFull,
     ReprocessInProgress,
     UnknownDocumentType,
     UnsupportedFormat,
+    WorkspaceFull,
 )
 from docforge.formats import ACCEPTED, extension
 from docforge.limits import LimitReached, Limits
-from docforge.parsing.base import ParseError
+from docforge.parsing.base import ParseError, PasswordProtected
 from docforge.parsing.pdf import pdf_page_count
+from docforge.review.claims import ClaimedByOther
 from docforge.storage import StorageUnavailable
+from docforge.telemetry import Prices
 
 logger = logging.getLogger(__name__)
+PROTECTED_PDF_MESSAGE = (
+    "The PDF is protected by a password. Remove the password, or print it to a new PDF, "
+    "and upload that."
+)
+# Seconds a client should wait before sending again: the queue drains in minutes; storage
+# coming back is usually quicker.
+QUEUE_FULL_RETRY_AFTER = "60"
+UNAVAILABLE_RETRY_AFTER = "30"
 
 Reader = Annotated[Principal, Depends(require("documents:read"))]
 Writer = Annotated[Principal, Depends(require("documents:write"))]
@@ -60,6 +74,8 @@ class DocumentOut(_Out):
     stage: str  # stored, parsing, extracting, checking, indexing, processed, ready, ...
     ready_for_chat: bool
     created_at: datetime
+    # What reading it cost, in the list (null when a model's price is unknown).
+    model_cost_usd: float | None = None
 
 
 class VersionOut(_Out):
@@ -109,9 +125,19 @@ class StepOut(BaseModel):
     detail: str | None
 
 
+class CostOut(BaseModel):
+    """Every reading of the document; thinking tokens are counted as output."""
+
+    model_cost_usd: float | None  # null when a model's price is unknown
+    input_tokens: int
+    output_tokens: int
+    model_calls: int
+
+
 class DocumentDetailOut(BaseModel):
     document: DocumentOut
     versions: list[VersionOut]
+    cost: CostOut
 
 
 class ModelRunOut(_Out):
@@ -172,10 +198,37 @@ _NOT_FOUND = HTTPException(404, "No such document.")
 AUDIT_CHECKS_PER_MINUTE = 6
 
 
+def seconds_to_midnight_utc() -> int:
+    """How long until a daily count (UTC) starts again."""
+    now = datetime.now(UTC)
+    tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(1, int((tomorrow - now).total_seconds()))
+
+
+def _readings_used(error: DailyReadingsUsed | FreeReadingsUsed) -> HTTPException:
+    """A free workspace's readings for today, or every free workspace's, are used up."""
+    if isinstance(error, FreeReadingsUsed):
+        detail = "Free workspaces have reached today's limit. Try again tomorrow."
+    else:
+        detail = (
+            f"This free workspace takes up to {error.args[0]} readings a day "
+            "(uploads and readings again). Try again tomorrow."
+        )
+    return HTTPException(429, detail, headers={"Retry-After": str(seconds_to_midnight_utc())})
+
+
 def documents_router(
-    service: DocumentService, *, max_upload_bytes: int, max_pages: int, limits: Limits
+    service: DocumentService,
+    *,
+    max_upload_bytes: int,
+    max_pages: int,
+    limits: Limits,
+    member_caps: MemberCaps | None = None,
+    prices: Prices | None = None,
 ) -> APIRouter:
     router = APIRouter(prefix="/v1")
+    member = member_caps or MemberCaps()
+    priced = prices or {}
 
     @router.post("/documents", status_code=202, response_model=UploadOut)
     async def upload_document(
@@ -196,6 +249,8 @@ def documents_router(
         if fmt == "pdf":
             try:
                 pages = await run_in_threadpool(pdf_page_count, data)
+            except PasswordProtected as error:
+                raise HTTPException(422, PROTECTED_PDF_MESSAGE) from error
             except ParseError as error:
                 raise HTTPException(422, "The file could not be read as a PDF.") from error
             if pages > max_pages:
@@ -203,6 +258,8 @@ def documents_router(
                     413, f"The document has {pages} pages; the limit is {max_pages}."
                 )
 
+        # A free workspace's caps; an organisation is held only to the queue's.
+        free = principal.role == MEMBER
         try:
             result = await run_in_threadpool(
                 service.ingest,
@@ -211,6 +268,9 @@ def documents_router(
                 filename=safe_filename(file.filename) or f"upload.{extension(fmt)}",
                 data=data,
                 actor=principal.actor,
+                max_documents=member.max_documents if free else None,
+                readings_per_day=member.uploads_per_day if free else None,
+                free_readings_per_day=member.readings_per_day_total if free else None,
             )
         except UnknownDocumentType as error:
             raise HTTPException(422, "Unknown document type.") from error
@@ -220,12 +280,28 @@ def documents_router(
             ) from error
         except DocumentTypeConflict as error:
             raise HTTPException(409, f"{str(error).capitalize()}.") from error
+        except WorkspaceFull as error:
+            raise HTTPException(
+                429,
+                f"This free workspace holds up to {member.max_documents} documents. "
+                "Delete one to upload another.",
+            ) from error
+        except (DailyReadingsUsed, FreeReadingsUsed) as error:
+            raise _readings_used(error) from error
         except QueueFull as error:
             logger.warning("upload refused: %s", error)
-            raise HTTPException(503, "The processing queue is full. Try again later.") from error
+            raise HTTPException(
+                503,
+                "The processing queue is full. Try again later.",
+                headers={"Retry-After": QUEUE_FULL_RETRY_AFTER},
+            ) from error
         except StorageUnavailable as error:
             logger.warning("upload refused, storage unavailable: %r", error.__cause__)
-            raise HTTPException(503, "Storage is unavailable. Try again later.") from error
+            raise HTTPException(
+                503,
+                "Storage is unavailable. Try again later.",
+                headers={"Retry-After": UNAVAILABLE_RETRY_AFTER},
+            ) from error
         response.headers["Location"] = f"/v1/documents/{result.document.id}"
         if not result.created:
             response.status_code = 200
@@ -241,9 +317,12 @@ def documents_router(
             detail = service.detail(principal.tenant_id, document_id)
         except DocumentNotFound:
             raise _NOT_FOUND from None
+        used = service.usage(principal.tenant_id, [document_id], priced)[document_id]
+        document = DocumentOut.model_validate(detail.document)
         return DocumentDetailOut(
-            document=DocumentOut.model_validate(detail.document),
+            document=document.model_copy(update={"model_cost_usd": used.model_cost_usd}),
             versions=[VersionOut.model_validate(version) for version in detail.versions],
+            cost=CostOut(**vars(used)),
         )
 
     @router.get("/documents/{document_id}/extraction", response_model=ExtractionOut)
@@ -291,16 +370,46 @@ def documents_router(
 
     @router.post("/documents/{document_id}/reprocess", status_code=202, response_model=VersionOut)
     def reprocess_document(document_id: uuid.UUID, principal: Writer) -> VersionOut:
-        """Queue a new version. Earlier versions and their extractions are kept."""
+        """Queue a new version. Earlier versions and their extractions are kept. In a free
+        workspace each is a reading, counted with uploads toward its readings a day."""
+        free = principal.role == MEMBER
         try:
             version = service.reprocess(
-                tenant_id=principal.tenant_id, document_id=document_id, actor=principal.actor
+                tenant_id=principal.tenant_id,
+                document_id=document_id,
+                actor=principal.actor,
+                reviewer_id=principal.subject_id if principal.kind == "session" else None,
+                readings_per_day=member.uploads_per_day if free else None,
+                free_readings_per_day=member.readings_per_day_total if free else None,
             )
         except DocumentNotFound:
             raise _NOT_FOUND from None
         except ReprocessInProgress:
             raise HTTPException(409, "This document is still being processed.") from None
+        except (DailyReadingsUsed, FreeReadingsUsed) as error:
+            raise _readings_used(error) from error
+        except ClaimedByOther as error:
+            raise HTTPException(409, str(error)) from None
         return VersionOut.model_validate(version)
+
+    @router.delete("/documents/{document_id}", status_code=204)
+    def delete_document(document_id: uuid.UUID, principal: Writer) -> Response:
+        """Delete a document: its stored file, and any PDF made from it, are erased; its record
+        is kept, hidden, for its audit trail, and disappears from every list, read, search,
+        answer, knowledge base and export. The same file can be uploaded again as a new
+        document. (Deleting an account, DELETE /v1/accounts/current, erases everything.)"""
+        try:
+            service.delete(
+                principal.tenant_id,
+                document_id,
+                actor=principal.actor,
+                reviewer_id=principal.subject_id if principal.kind == "session" else None,
+            )
+        except DocumentNotFound:
+            raise _NOT_FOUND from None
+        except ClaimedByOther as error:
+            raise HTTPException(409, str(error)) from None
+        return Response(status_code=204)
 
     @router.get("/documents", response_model=DocumentPage)
     def list_documents(
@@ -315,7 +424,14 @@ def documents_router(
         rows = service.list_documents(
             principal.tenant_id, limit=limit + 1, before=cursor, doc_type=doc_type, stage=stage
         )
-        items = [DocumentOut.model_validate(row) for row in rows[:limit]]
+        page = rows[:limit]
+        used = service.usage(principal.tenant_id, [row.id for row in page], priced)
+        items = [
+            DocumentOut.model_validate(row).model_copy(
+                update={"model_cost_usd": used[row.id].model_cost_usd}
+            )
+            for row in page
+        ]
         return DocumentPage(
             items=items, next_before=_cursor(items[-1]) if len(rows) > limit else None
         )

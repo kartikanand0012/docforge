@@ -479,7 +479,7 @@
     "report": "trust",
     "path": "order_prompt_version",
     "op": "==",
-    "value": "purchase-order-v1",
+    "value": "purchase-order-v2",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {

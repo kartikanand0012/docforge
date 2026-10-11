@@ -52,6 +52,9 @@ class Tenant(Base):
     id: Mapped[uuid.UUID] = _id()
     name: Mapped[str] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = _created_at()
+    kind: Mapped[str] = mapped_column(Text, server_default="organisation")  # or personal
+    # Shown in place of `name` when set: a personal workspace's is "<person>'s workspace".
+    display_name: Mapped[str | None] = mapped_column(Text)
 
 
 class Document(Base):
@@ -80,6 +83,14 @@ class Document(Base):
     # The version whose chunks search shows: the newest one indexed.
     indexed_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_at: Mapped[datetime] = _created_at()
+    # Set when deleted. The application's role cannot see a deleted document at all (its
+    # row-level policy), so `live` in a query is a second guard, not the only one.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+def live(document: Any = Document) -> ColumnElement[bool]:
+    """The condition that a document (or an alias of it) has not been deleted."""
+    return document.deleted_at.is_(None)  # type: ignore[no-any-return]
 
 
 class DocumentVersion(Base):
@@ -204,6 +215,11 @@ class Reviewer(Base):
     shared: Mapped[bool] = mapped_column(Boolean, server_default="false")
     deactivated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _created_at()
+    # What `pin_hash` is the hash of: a PIN, or an account's password.
+    credential: Mapped[str] = mapped_column(Text, server_default="pin")
+    # The owner: may see every workspace's figures and look into one, read-only. Set only
+    # as the database owner; the application's role cannot write this column.
+    platform_admin: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
 
 class Correction(Base):
@@ -238,6 +254,19 @@ class Review(Base):
     record_sha256: Mapped[str] = mapped_column(CHAR(64))
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
     signed_at: Mapped[datetime] = _created_at()
+
+
+class ReviewClaim(Base):
+    """Who has a document open for review now: a lease, renewed while their screen is open.
+    One per document; ignored once `expires_at` has passed."""
+
+    __tablename__ = "review_claims"
+
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    reviewer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("reviewers.id"))
+    claimed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class ApiKey(Base):
@@ -409,6 +438,22 @@ class Message(Base):
     prompt_version: Mapped[str] = mapped_column(Text)
     input_tokens: Mapped[int | None] = mapped_column(Integer)
     output_tokens: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class QuestionUsage(Base):
+    """What answering one question spent, kept when its conversation is deleted: tokens spent
+    stay spent. It holds no question or answer. The application may add rows, not change or
+    delete them; only an account's deletion removes a workspace's."""
+
+    __tablename__ = "question_usage"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    provider: Mapped[str] = mapped_column(Text)
+    model: Mapped[str] = mapped_column(Text)
+    input_tokens: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    output_tokens: Mapped[int] = mapped_column(BigInteger, server_default="0")
     created_at: Mapped[datetime] = _created_at()
 
 

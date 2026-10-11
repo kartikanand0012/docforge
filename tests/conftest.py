@@ -126,10 +126,11 @@ def raw_order_from_label() -> Callable[[dict[str, Any]], dict[str, Any]]:
             "lines": [
                 {
                     name: field(f"lines[{index}].{name}")
-                    for name in ("product_name", "pack", "qty", "scheme", "rate")
+                    for name in ("product_name", "pack", "hsn", "qty", "scheme", "rate", "amount")
                 }
                 for index in range(len(label["purchase_order"]["lines"]))
             ],
+            "total": field("total"),
         }
 
     return build
@@ -176,6 +177,39 @@ def app_login(settings: Settings) -> URL:
         settings.migration_database_url.get_secret_value(), settings.database_url.get_secret_value()
     )
     return make_url(settings.database_url.get_secret_value())
+
+
+# The platform administrator's own login (migration 0030), on the local Postgres only.
+LOCAL_PLATFORM_URL = (
+    "postgresql+psycopg://docforge_platform_user:docforge-platform-local@127.0.0.1:5432/docforge"
+)
+
+
+@pytest.fixture(scope="session")
+def platform_login(settings: Settings) -> URL:
+    """The platform's own database login, created once: it may call the platform functions
+    and nothing else."""
+    from docforge.db.roles import ensure_platform_login
+
+    url = (
+        settings.platform_database_url.get_secret_value()
+        if settings.platform_database_url is not None
+        else LOCAL_PLATFORM_URL
+    )
+    ensure_platform_login(settings.migration_database_url.get_secret_value(), url)
+    return make_url(url)
+
+
+@pytest.fixture
+def platform_sessions(
+    owner_engine: Engine, empty_database_url: URL, platform_login: URL
+) -> Iterator[SessionFactory]:
+    """The migrated test database as the platform's login connects to it."""
+    engine = make_engine(
+        empty_database_url.set(username=platform_login.username, password=platform_login.password)
+    )
+    yield make_session_factory(engine)
+    engine.dispose()
 
 
 @pytest.fixture

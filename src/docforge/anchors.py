@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from docforge import audit
@@ -41,6 +41,11 @@ class AnchorStore:
     def __init__(self, store: ObjectStore, prefix: str = "audit-anchors") -> None:
         self._store = store
         self._prefix = prefix
+
+    @property
+    def prefix(self) -> str:
+        """Every workspace's anchors are kept under `<prefix>/<tenant id>/`."""
+        return self._prefix
 
     def _latest_key(self, tenant_id: uuid.UUID) -> str:
         return f"{self._prefix}/{tenant_id}/latest.json"
@@ -101,16 +106,26 @@ def anchor_all(sessions: Any, anchors: AnchorStore) -> int:
     """Anchor every tenant's chain. Returns how many were anchored; one tenant's failure
     is logged and does not stop the others."""
     with sessions() as session:
-        tenants = list(session.scalars(select(Tenant.id)))
+        # Each workspace's id only, through the owner's function: no workspace row is read.
+        tenants = list(session.scalars(select(func.docforge_tenant_ids())))
     done = 0
     for tenant_id in tenants:
         try:
-            with tenant_scope(tenant_id), sessions() as session:
-                anchors.anchor(session, tenant_id)
-            done += 1
+            done += anchor_one(sessions, anchors, tenant_id)
         except Exception:
             logger.exception("could not anchor the audit chain of tenant %s", tenant_id)
     return done
+
+
+def anchor_one(sessions: Any, anchors: AnchorStore, tenant_id: uuid.UUID) -> bool:
+    """Anchor one tenant's chain, unless it no longer exists (deleted since it was listed):
+    nothing is written to storage for a workspace that is gone. Whether it was anchored."""
+    with tenant_scope(tenant_id), sessions() as session:
+        # In its scope, the one workspace row the application may read is that one, if any.
+        if session.scalar(select(Tenant.id).where(Tenant.id == tenant_id)) is None:
+            return False
+        anchors.anchor(session, tenant_id)
+    return True
 
 
 def main() -> int:

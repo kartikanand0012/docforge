@@ -106,6 +106,41 @@ def test_a_parser_that_takes_too_much_memory_is_stopped(parser: IsolatedParser) 
     assert pid(parser) != first
 
 
+def test_a_document_over_the_limit_in_a_used_process_is_tried_again_in_a_fresh_one(
+    parser: IsolatedParser,
+) -> None:
+    """Memory an earlier document left behind must not fail the next one (V1 finding F3):
+    only a document over the limit in a fresh process is over the limit itself."""
+    parser.parse(b"keep:110")  # about 140 MB now held: under three quarters of the limit
+
+    parsed = parser.parse(b"spike:80")  # 220 MB here; 110 MB in a fresh process
+
+    assert parsed.blocks[0].text == "spike:80"
+    assert parser.spawned >= 2  # it really was read again in a new process
+
+
+def test_a_heavy_document_in_a_nearly_empty_process_is_not_tried_twice(
+    parser: IsolatedParser,
+) -> None:
+    """The retry is for memory others left behind: a process that held little before the
+    document gains nothing from a second try (V1 review: a hostile file must not cost twice)."""
+    first = pid(parser)  # a process that has read one small document
+
+    with pytest.raises(ParserLimitExceeded, match="memory limit"):
+        parser.parse(b"hoard")
+
+    assert parser.spawned == 1  # one process started so far: the file was not tried again
+    assert pid(parser) != first
+
+
+def test_a_process_left_near_the_limit_is_replaced_before_the_next_document(
+    parser: IsolatedParser,
+) -> None:
+    first = int(parser.parse(b"keep:140").parser_version)  # about 170 MB of 200 MB
+
+    assert pid(parser) != first
+
+
 def test_closing_stops_the_process(parser: IsolatedParser) -> None:
     child = pid(parser)
 

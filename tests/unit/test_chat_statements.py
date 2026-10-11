@@ -216,3 +216,40 @@ def test_a_value_on_the_line_below_its_label_is_read_with_it() -> None:
     passage = "Grand total\n500\nDiscount 50"
     assert said("The grand total is 500.", passage, "Grand total 500")
     assert not said("The discount is 500.", passage, "Grand total 500")
+
+
+def test_a_kept_statement_keeps_only_the_quotes_that_hold_one_of_its_figures() -> None:
+    """A quote found in its passage but holding none of the statement's figures shows
+    nothing the statement says: it is left off, and not counted as a quote not found."""
+    passages = [
+        Passage(n=1, filename="po.pdf", page=1, text="PO Number: PO-SYN-1001 | PO Total: 2242.00"),
+        Passage(n=2, filename="inv.pdf", page=1, text="Invoice INV-77 | PO Number: PO-SYN-1001"),
+    ]
+    checked = check_statements(
+        [
+            statement(
+                "The PO number is PO-SYN-1001.",
+                (1, "PO Number: PO-SYN-1001"),
+                (1, "PO Total: 2242.00"),
+                (2, "PO Number: PO-SYN-1001"),
+            )
+        ],
+        passages,
+        given="",
+    )
+
+    (kept,) = checked.kept
+    assert kept.citations == ((0, "PO Number: PO-SYN-1001"), (1, "PO Number: PO-SYN-1001"))
+    assert checked.dropped_citations == 0
+
+
+def test_a_statement_without_figures_keeps_all_its_found_quotes() -> None:
+    passages = [Passage(n=1, filename="po.pdf", page=1, text="Purchase Order | Supplier copy")]
+    checked = check_statements(
+        [statement("It is a purchase order.", (1, "Purchase Order"), (1, "Supplier copy"))],
+        passages,
+        given="",
+    )
+
+    (kept,) = checked.kept
+    assert kept.citations == ((0, "Purchase Order"), (0, "Supplier copy"))

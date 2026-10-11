@@ -40,6 +40,16 @@ _OFFICE_PARTS: tuple[tuple[str, Format], ...] = (
 )
 
 
+# An OLE compound file: legacy .doc/.xls/.ppt, and also any password-protected
+# .docx/.xlsx/.pptx, which Office encrypts inside one.
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+
+
+def is_ole(data: bytes) -> bool:
+    """True for an older Office file or a password-protected one: neither is accepted."""
+    return data.startswith(_OLE_MAGIC)
+
+
 def sniff(data: bytes) -> Format | None:
     """The format of `data`, or None if it is not one DocForge accepts."""
     for magic, fmt in _MAGIC:

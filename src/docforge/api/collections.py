@@ -78,7 +78,11 @@ def collections_router(collections: CollectionService) -> APIRouter:
     ) -> CollectionOut:
         try:
             changed = collections.rename(
-                principal.tenant_id, collection_id, body.name, body.description
+                principal.tenant_id,
+                collection_id,
+                body.name,
+                body.description,
+                actor=principal.actor,
             )
         except CollectionNotFound as error:
             raise HTTPException(404, "Not found.") from error
@@ -92,7 +96,7 @@ def collections_router(collections: CollectionService) -> APIRouter:
     def delete_collection(collection_id: uuid.UUID, principal: Writer) -> Response:
         """The knowledge base goes; its documents stay."""
         try:
-            collections.delete(principal.tenant_id, collection_id)
+            collections.delete(principal.tenant_id, collection_id, actor=principal.actor)
         except CollectionNotFound as error:
             raise HTTPException(404, "Not found.") from error
         return Response(status_code=204)
@@ -111,7 +115,9 @@ def collections_router(collections: CollectionService) -> APIRouter:
     ) -> dict[str, int]:
         """All of them or none: a document not in the organisation refuses the lot."""
         try:
-            added = collections.add(principal.tenant_id, collection_id, body.document_ids)
+            added = collections.add(
+                principal.tenant_id, collection_id, body.document_ids, actor=principal.actor
+            )
         except (CollectionNotFound, DocumentsNotFound) as error:
             raise HTTPException(404, "Not found.") from error
         return {"added": added}
@@ -121,7 +127,9 @@ def collections_router(collections: CollectionService) -> APIRouter:
         collection_id: uuid.UUID, document_id: uuid.UUID, principal: Writer
     ) -> Response:
         try:
-            collections.remove(principal.tenant_id, collection_id, [document_id])
+            collections.remove(
+                principal.tenant_id, collection_id, [document_id], actor=principal.actor
+            )
         except CollectionNotFound as error:
             raise HTTPException(404, "Not found.") from error
         return Response(status_code=204)

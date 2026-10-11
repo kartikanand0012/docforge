@@ -193,6 +193,38 @@
                         }
                     }
                 }
+            },
+            "delete": {
+                "summary": "Delete Document",
+                "description": "Delete a document: its stored file, and any PDF made from it, are erased; its record\nis kept, hidden, for its audit trail, and disappears from every list, read, search,\nanswer, knowledge base and export. The same file can be uploaded again as a new\ndocument. (Deleting an account, DELETE /v1/accounts/current, erases everything.)",
+                "operationId": "delete_document_v1_documents__document_id__delete",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         "/v1/documents/{document_id}/extraction": {
@@ -280,7 +312,7 @@
         "/v1/documents/{document_id}/reprocess": {
             "post": {
                 "summary": "Reprocess Document",
-                "description": "Queue a new version. Earlier versions and their extractions are kept.",
+                "description": "Queue a new version. Earlier versions and their extractions are kept. In a free\nworkspace each is a reading, counted with uploads toward its readings a day.",
                 "operationId": "reprocess_document_v1_documents__document_id__reprocess_post",
                 "parameters": [
                     {
@@ -465,10 +497,29 @@
                 }
             }
         },
+        "/v1/stats": {
+            "get": {
+                "summary": "Stats",
+                "description": "The caller's workspace: how many documents, where they are, and what they cost.",
+                "operationId": "stats_v1_stats_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StatsOut"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/sessions": {
             "post": {
                 "summary": "Sign In",
-                "description": "Sign a reviewer in to the review screen with their email and PIN.",
+                "description": "Sign in: an organisation's reviewer with its name, their email and PIN; an\naccount's person with their email and password alone.",
                 "operationId": "sign_in_v1_sessions_post",
                 "requestBody": {
                     "content": {
@@ -532,6 +583,77 @@
                 }
             }
         },
+        "/v1/accounts/current": {
+            "delete": {
+                "summary": "Delete Account",
+                "description": "Delete your account and erase everything in its workspace - every document and\nits files, questions, knowledge bases, signatures, its audit log and the account\nitself, nothing kept - after your password again. It cannot be undone. Only an\naccount's person, in their own workspace. (Deleting one document erases its files\nand hides its record.)",
+                "operationId": "delete_account_v1_accounts_current_delete",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AccountDeletionIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/accounts": {
+            "post": {
+                "summary": "Sign Up",
+                "description": "Make an account - a private workspace with you in it - and sign in to it.",
+                "operationId": "sign_up_v1_accounts_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AccountIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SessionOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/review/queue": {
             "get": {
                 "summary": "Review Queue",
@@ -558,6 +680,7 @@
         "/v1/documents/{document_id}/review": {
             "get": {
                 "summary": "Review Detail",
+                "description": "The values, their checks and the signature, as a reviewer sees them. Reading it\nneeds only read access (the same values are in the extraction and the assessment);\nchanging anything needs `review`.",
                 "operationId": "review_detail_v1_documents__document_id__review_get",
                 "parameters": [
                     {
@@ -629,6 +752,89 @@
                                 }
                             }
                         }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/documents/{document_id}/claim": {
+            "post": {
+                "summary": "Claim",
+                "description": "Claim the review for a few minutes, or renew the claim; call again to keep it.\n\nWhile another reviewer's claim lasts it is returned unchanged (`mine` false), and\ntheir changes alone are accepted; an administrator may `take_over`.",
+                "operationId": "claim_v1_documents__document_id__claim_post",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ClaimIn"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ClaimOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "summary": "Release",
+                "description": "End the caller's claim. Someone else's is left alone (still 204).",
+                "operationId": "release_v1_documents__document_id__claim_delete",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
                     },
                     "422": {
                         "description": "Validation Error",
@@ -2064,6 +2270,137 @@
                 }
             }
         },
+        "/v1/platform/overview": {
+            "get": {
+                "summary": "Overview",
+                "description": "A page of every workspace's figures, most recently active first, and the totals\nover all of them. Counts and names only: never a document's name or contents.\nFigures may be up to half a minute old.",
+                "operationId": "overview_v1_platform_overview_get",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "default": 100,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "default": 0,
+                            "title": "Offset"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OverviewOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/platform/activity": {
+            "get": {
+                "summary": "Activity",
+                "description": "What happened in every workspace (or one), newest first, as labels: no details.",
+                "operationId": "activity_v1_platform_activity_get",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "before",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "integer",
+                                    "minimum": 1
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Before"
+                        }
+                    },
+                    {
+                        "name": "tenant_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "uuid"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Tenant Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ActivityPageOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/api-keys": {
             "get": {
                 "summary": "Keys",
@@ -2271,6 +2608,49 @@
     },
     "components": {
         "schemas": {
+            "AccountDeletionIn": {
+                "properties": {
+                    "password": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "title": "Password"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "password"
+                ],
+                "title": "AccountDeletionIn"
+            },
+            "AccountIn": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "title": "Name"
+                    },
+                    "email": {
+                        "type": "string",
+                        "maxLength": 320,
+                        "title": "Email"
+                    },
+                    "password": {
+                        "type": "string",
+                        "maxLength": 128,
+                        "title": "Password"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "name",
+                    "email",
+                    "password"
+                ],
+                "title": "AccountIn"
+            },
             "ActiveIn": {
                 "properties": {
                     "active": {
@@ -2284,6 +2664,84 @@
                     "active"
                 ],
                 "title": "ActiveIn"
+            },
+            "ActivityOut": {
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "occurred_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Occurred At"
+                    },
+                    "tenant_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Tenant Id"
+                    },
+                    "organisation": {
+                        "type": "string",
+                        "title": "Organisation"
+                    },
+                    "actor_name": {
+                        "type": "string",
+                        "title": "Actor Name"
+                    },
+                    "action": {
+                        "type": "string",
+                        "title": "Action"
+                    },
+                    "action_label": {
+                        "type": "string",
+                        "title": "Action Label"
+                    },
+                    "target_label": {
+                        "type": "string",
+                        "title": "Target Label"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "occurred_at",
+                    "tenant_id",
+                    "organisation",
+                    "actor_name",
+                    "action",
+                    "action_label",
+                    "target_label"
+                ],
+                "title": "ActivityOut"
+            },
+            "ActivityPageOut": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/ActivityOut"
+                        },
+                        "type": "array",
+                        "title": "Items"
+                    },
+                    "next_before": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Next Before"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "items",
+                    "next_before"
+                ],
+                "title": "ActivityPageOut"
             },
             "AgentCallOut": {
                 "properties": {
@@ -2664,6 +3122,25 @@
                     "organisation": {
                         "type": "string",
                         "title": "Organisation"
+                    },
+                    "credential": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Credential"
+                    },
+                    "platform_admin": {
+                        "type": "boolean",
+                        "title": "Platform Admin"
+                    },
+                    "workspace": {
+                        "type": "string",
+                        "title": "Workspace"
                     }
                 },
                 "type": "object",
@@ -2672,7 +3149,10 @@
                     "name",
                     "email",
                     "role",
-                    "organisation"
+                    "organisation",
+                    "credential",
+                    "platform_admin",
+                    "workspace"
                 ],
                 "title": "CallerOut"
             },
@@ -2807,6 +3287,48 @@
                     "boxes"
                 ],
                 "title": "CitationOut"
+            },
+            "ClaimIn": {
+                "properties": {
+                    "take_over": {
+                        "type": "boolean",
+                        "title": "Take Over",
+                        "default": false
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "ClaimIn"
+            },
+            "ClaimOut": {
+                "properties": {
+                    "reviewer_name": {
+                        "type": "string",
+                        "title": "Reviewer Name"
+                    },
+                    "claimed_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Claimed At"
+                    },
+                    "expires_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Expires At"
+                    },
+                    "mine": {
+                        "type": "boolean",
+                        "title": "Mine"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "reviewer_name",
+                    "claimed_at",
+                    "expires_at",
+                    "mine"
+                ],
+                "title": "ClaimOut"
             },
             "CollectionChange": {
                 "properties": {
@@ -2988,8 +3510,20 @@
                     },
                     "pin": {
                         "type": "string",
-                        "maxLength": 64,
+                        "maxLength": 128,
                         "title": "Pin"
+                    },
+                    "expected_record_sha256": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^[0-9a-f]{64}$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Expected Record Sha256"
                     }
                 },
                 "additionalProperties": false,
@@ -3055,6 +3589,42 @@
                     "created_at"
                 ],
                 "title": "CorrectionOut"
+            },
+            "CostOut": {
+                "properties": {
+                    "model_cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model Cost Usd"
+                    },
+                    "input_tokens": {
+                        "type": "integer",
+                        "title": "Input Tokens"
+                    },
+                    "output_tokens": {
+                        "type": "integer",
+                        "title": "Output Tokens"
+                    },
+                    "model_calls": {
+                        "type": "integer",
+                        "title": "Model Calls"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "model_cost_usd",
+                    "input_tokens",
+                    "output_tokens",
+                    "model_calls"
+                ],
+                "title": "CostOut",
+                "description": "Every reading of the document; thinking tokens are counted as output."
             },
             "DeliveryOut": {
                 "properties": {
@@ -3171,12 +3741,16 @@
                         },
                         "type": "array",
                         "title": "Versions"
+                    },
+                    "cost": {
+                        "$ref": "#/components/schemas/CostOut"
                     }
                 },
                 "type": "object",
                 "required": [
                     "document",
-                    "versions"
+                    "versions",
+                    "cost"
                 ],
                 "title": "DocumentDetailOut"
             },
@@ -3269,6 +3843,17 @@
                         "type": "string",
                         "format": "date-time",
                         "title": "Created At"
+                    },
+                    "model_cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model Cost Usd"
                     }
                 },
                 "type": "object",
@@ -3709,6 +4294,10 @@
                         "type": "number",
                         "title": "Score"
                     },
+                    "matched_words": {
+                        "type": "boolean",
+                        "title": "Matched Words"
+                    },
                     "boxes": {
                         "items": {
                             "additionalProperties": true,
@@ -3727,6 +4316,7 @@
                     "page",
                     "text",
                     "score",
+                    "matched_words",
                     "boxes"
                 ],
                 "title": "HitOut"
@@ -4038,8 +4628,15 @@
             "LoginIn": {
                 "properties": {
                     "tenant": {
-                        "type": "string",
-                        "maxLength": 200,
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 200
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Tenant"
                     },
                     "email": {
@@ -4048,19 +4645,37 @@
                         "title": "Email"
                     },
                     "pin": {
-                        "type": "string",
-                        "maxLength": 64,
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 128
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Pin"
+                    },
+                    "password": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 128
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Password"
                     }
                 },
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
-                    "tenant",
-                    "email",
-                    "pin"
+                    "email"
                 ],
-                "title": "LoginIn"
+                "title": "LoginIn",
+                "description": "An organisation's reviewer gives its name, the email and the PIN; an account's person\ngives only the email and the password. Either secret may travel in either field."
             },
             "MatchOut": {
                 "properties": {
@@ -4308,6 +4923,40 @@
                 ],
                 "title": "ModelRunOut"
             },
+            "OverviewOut": {
+                "properties": {
+                    "totals": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Totals"
+                    },
+                    "workspaces": {
+                        "items": {
+                            "$ref": "#/components/schemas/WorkspaceOut"
+                        },
+                        "type": "array",
+                        "title": "Workspaces"
+                    },
+                    "next_offset": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Next Offset"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "totals",
+                    "workspaces",
+                    "next_offset"
+                ],
+                "title": "OverviewOut"
+            },
             "ParserInfo": {
                 "properties": {
                     "name": {
@@ -4440,6 +5089,17 @@
                     "match_status": {
                         "type": "string",
                         "title": "Match Status"
+                    },
+                    "claimed_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Claimed By"
                     }
                 },
                 "type": "object",
@@ -4450,7 +5110,8 @@
                     "version_no",
                     "created_at",
                     "reasons",
-                    "match_status"
+                    "match_status",
+                    "claimed_by"
                 ],
                 "title": "QueueItemOut"
             },
@@ -4588,6 +5249,16 @@
                         },
                         "type": "array",
                         "title": "Certificates"
+                    },
+                    "claim": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/ClaimOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "type": "object",
@@ -4612,7 +5283,8 @@
                     "record_sha256",
                     "meanings",
                     "superseded",
-                    "certificates"
+                    "certificates",
+                    "claim"
                 ],
                 "title": "ReviewOut"
             },
@@ -4724,7 +5396,7 @@
                     },
                     "pin": {
                         "type": "string",
-                        "maxLength": 64,
+                        "maxLength": 128,
                         "title": "Pin"
                     }
                 },
@@ -4803,6 +5475,73 @@
                     "draft"
                 ],
                 "title": "SignedOut"
+            },
+            "StatsOut": {
+                "properties": {
+                    "documents": {
+                        "type": "integer",
+                        "title": "Documents"
+                    },
+                    "ready": {
+                        "type": "integer",
+                        "title": "Ready"
+                    },
+                    "awaiting_review": {
+                        "type": "integer",
+                        "title": "Awaiting Review"
+                    },
+                    "awaiting_review_capped": {
+                        "type": "boolean",
+                        "title": "Awaiting Review Capped"
+                    },
+                    "signed": {
+                        "type": "integer",
+                        "title": "Signed"
+                    },
+                    "failed": {
+                        "type": "integer",
+                        "title": "Failed"
+                    },
+                    "documents_last_7_days": {
+                        "type": "integer",
+                        "title": "Documents Last 7 Days"
+                    },
+                    "median_read_seconds": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Median Read Seconds"
+                    },
+                    "model_cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model Cost Usd"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "documents",
+                    "ready",
+                    "awaiting_review",
+                    "awaiting_review_capped",
+                    "signed",
+                    "failed",
+                    "documents_last_7_days",
+                    "median_read_seconds",
+                    "model_cost_usd"
+                ],
+                "title": "StatsOut"
             },
             "StepOut": {
                 "properties": {
@@ -5233,6 +5972,110 @@
                     "last_delivery"
                 ],
                 "title": "WebhookOut"
+            },
+            "WorkspaceOut": {
+                "properties": {
+                    "tenant_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Tenant Id"
+                    },
+                    "organisation": {
+                        "type": "string",
+                        "title": "Organisation"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "title": "Kind"
+                    },
+                    "owner_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Owner Name"
+                    },
+                    "owner_email": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Owner Email"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "last_active_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Active At"
+                    },
+                    "documents": {
+                        "type": "integer",
+                        "title": "Documents"
+                    },
+                    "pages": {
+                        "type": "integer",
+                        "title": "Pages"
+                    },
+                    "signed": {
+                        "type": "integer",
+                        "title": "Signed"
+                    },
+                    "questions": {
+                        "type": "integer",
+                        "title": "Questions"
+                    },
+                    "model_cost_usd": {
+                        "anyOf": [
+                            {
+                                "type": "number"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Model Cost Usd"
+                    },
+                    "sign_ins": {
+                        "type": "integer",
+                        "title": "Sign Ins"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "tenant_id",
+                    "organisation",
+                    "kind",
+                    "owner_name",
+                    "owner_email",
+                    "created_at",
+                    "last_active_at",
+                    "documents",
+                    "pages",
+                    "signed",
+                    "questions",
+                    "model_cost_usd",
+                    "sign_ins"
+                ],
+                "title": "WorkspaceOut"
             },
             "docforge__api__audit__PageOut": {
                 "properties": {

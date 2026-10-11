@@ -47,6 +47,9 @@ jobs:
       - name: Lint and type check
         run: make lint
 
+      - name: Known vulnerabilities in the locked dependencies
+        run: make audit
+
       - name: Test
         run: make test
 

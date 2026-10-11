@@ -13,6 +13,8 @@ from sqlalchemy.exc import ArgumentError
 
 DATABASE_DRIVER = "postgresql+psycopg"
 _FACTORY = re.compile(r"[A-Za-z_][\w.]*:[A-Za-z_]\w*")
+# Robustness and capacity runs: the real parser and converter, the model simulated.
+CAPACITY_FACTORY = "docforge.loadtest.pipelines:build_capacity_pipelines"
 # The owner, for migrations only, and the restricted login the API and worker use.
 _LOCAL_DATABASE_URL = "postgresql+psycopg://docforge:docforge@127.0.0.1:5432/docforge"
 _LOCAL_APP_PASSWORD = "docforge-app-local"  # noqa: S105 - local Compose default, not a real secret
@@ -49,6 +51,10 @@ class Settings(BaseSettings):
     # level security applies to and that owns nothing; migrations connect as the owner.
     database_url: SecretStr = SecretStr(_LOCAL_APP_DATABASE_URL)
     migration_database_url: SecretStr = SecretStr(_LOCAL_DATABASE_URL)
+    # The platform administrator's screens read every workspace's figures through a login of
+    # their own (a member of `docforge_platform`), held by the API only. Unset, those screens
+    # answer 503: the application's login is never used for them.
+    platform_database_url: SecretStr | None = None
 
     # Unset (or blank) means AWS S3 itself, with the instance's role for credentials.
     s3_endpoint_url: str | None = "http://127.0.0.1:9000"
@@ -109,6 +115,12 @@ class Settings(BaseSettings):
     # `module:function` returning one pipeline per document type; lets a deployment swap
     # the parser or model without changing this package.
     pipeline_factory: str = "docforge.wiring:build_pipelines"
+    # Robustness and capacity runs only: no model is called; every reply is empty and marked
+    # simulated, after SIMULATED_MODEL_TIME (zero, c1, fixed:N). Needs the capacity factory.
+    simulated_model: bool = False
+    # A production stack refuses the simulated model unless told it is a test stack.
+    allow_simulated_model_in_production: bool = False
+    simulated_model_time: str = "zero"
 
     # Signs webhook deliveries; each webhook's secret is derived from it. Changing it changes
     # every webhook's secret.
@@ -117,6 +129,18 @@ class Settings(BaseSettings):
     webhook_allow_local: bool = False
     # Failed sign-ins and PINs allowed per client address in five minutes, per API process.
     failed_logins_per_window: int = 20
+    # Self-service accounts (POST /v1/accounts): off unless switched on. Each is a private
+    # workspace; new ones per client address an hour, and in all a day.
+    signup_enabled: bool = False
+    signups_per_address_per_hour: int = Field(default=5, ge=1)
+    signups_per_day: int = Field(default=200, ge=0)
+    # What one free workspace may hold and do (organisations are not held to these).
+    member_max_documents: int = Field(default=30, ge=1)
+    # Readings a day: uploads and readings again (each a paid model reading).
+    member_uploads_per_day: int = Field(default=15, ge=1)
+    member_questions_per_day: int = Field(default=40, ge=1)
+    # Every free workspace's readings a day together: a safety valve on the model's bill.
+    member_readings_per_day_total: int = Field(default=1000, ge=1)
     # The review screen's origin(s), comma-separated, e.g. http://localhost:3000.
     cors_origins: str = ""
     # Traces are exported over OTLP/HTTP here (e.g. http://collector:4318); unset, none are.
@@ -135,9 +159,16 @@ class Settings(BaseSettings):
     worker_heartbeat_seconds: float = 10
     worker_stalled_after_seconds: float = 30
 
-    @field_validator("database_url", "migration_database_url")
+    @field_validator("platform_database_url", mode="before")
     @classmethod
-    def _require_postgres_psycopg(cls, value: SecretStr) -> SecretStr:
+    def _blank_platform_url_is_unset(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @field_validator("database_url", "migration_database_url", "platform_database_url")
+    @classmethod
+    def _require_postgres_psycopg(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
         # The message must not echo the value: it contains the password.
         try:
             driver = make_url(value.get_secret_value()).drivername
@@ -233,9 +264,36 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
+    def _simulated_model_only_by_name(self) -> Self:
+        capacity = self.pipeline_factory == CAPACITY_FACTORY
+        if capacity != self.simulated_model:
+            raise ValueError(
+                f"SIMULATED_MODEL=true and PIPELINE_FACTORY={CAPACITY_FACTORY} go together: "
+                "set both for a capacity run, or neither"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _openai_model_is_pinned(self) -> Self:
         if "openai" in (self.extraction_provider, self.chat_provider) and not self.openai_model:
             raise ValueError("OPENAI_MODEL must name the OpenAI model to use, pinned")
+        return self
+
+    @model_validator(mode="after")
+    def _platform_login_is_its_own(self) -> Self:
+        if self.platform_database_url is None:
+            return self
+        # Compared by user name only, so neither URL's password reaches a message.
+        platform = make_url(self.platform_database_url.get_secret_value()).username
+        others = {
+            make_url(self.database_url.get_secret_value()).username,
+            make_url(self.migration_database_url.get_secret_value()).username,
+        }
+        if not platform or platform in others:
+            raise ValueError(
+                "PLATFORM_DATABASE_URL must name a login of its own, not the application's "
+                "or the owner's"
+            )
         return self
 
     def provider_for(self, task: Task) -> str:
@@ -307,6 +365,14 @@ class Settings(BaseSettings):
             raise ValueError("CONVERTER_TOKEN must be set (32 characters or more)")
         if self.pipeline_factory == "docforge.wiring:build_replay_pipelines":
             return self  # the demo replays recorded replies and embeddings: no provider is called
+        if self.simulated_model:
+            if not self.allow_simulated_model_in_production:
+                raise ValueError(
+                    "SIMULATED_MODEL answers every document with empty values: it is for "
+                    "robustness and capacity runs. On a test stack set "
+                    "ALLOW_SIMULATED_MODEL_IN_PRODUCTION=true"
+                )
+            return self  # a capacity run: no provider is called (ops-check says so)
         keys = {"anthropic": self.anthropic_api_key, "openai": self.openai_api_key}
         for provider in dict.fromkeys((self.extraction_provider, self.chat_provider)):
             if provider in keys and keys[provider] is None:

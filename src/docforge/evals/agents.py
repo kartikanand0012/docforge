@@ -167,7 +167,9 @@ def run_agent_eval(
         bases = {}
         for tenant in ("a", "b"):
             bases[tenant] = collections.create(corpus.tenants[tenant], "Invoices", actor="eval")
-            collections.add(corpus.tenants[tenant], bases[tenant].id, invoices_of(tenant))
+            collections.add(
+                corpus.tenants[tenant], bases[tenant].id, invoices_of(tenant), actor="eval"
+            )
         base = bases["a"]
         invoice, large = invoices_of("a")[:2]
         auth = Authenticator(corpus.sessions)
