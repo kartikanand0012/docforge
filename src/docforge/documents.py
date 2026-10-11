@@ -46,7 +46,7 @@ from docforge.db.models import (
 )
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
-from docforge.erasure import ANCHORS_PREFIX, Eraser, Erasure, lock_content
+from docforge.erasure import ANCHORS_PREFIX, Eraser, Erasure, live_copy, lock_content
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, PipelineResult
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
@@ -401,6 +401,37 @@ class DocumentService:
         sha256 = hashlib.sha256(data).hexdigest()
         key = original_key(tenant_id, sha256, fmt)
 
+        # Stored first, outside the transaction and its lock: an object without a row is
+        # harmless and is reused by the next upload of the same bytes; a row without its
+        # object is not. One stored here for an upload then refused is removed again.
+        stored_now = False
+        if not self._store.exists(key):
+            self._store.put(key, data, media_type)
+            stored_now = True
+        try:
+            return self._ingest(
+                tenant_id, doc_type, filename, data, actor, sha256, key, media_type,
+                max_documents, readings_per_day, free_readings_per_day,
+            )  # fmt: skip
+        except Exception:
+            if stored_now:
+                self._discard_unused(tenant_id, sha256, key)
+            raise
+
+    def _ingest(
+        self,
+        tenant_id: uuid.UUID,
+        doc_type: str,
+        filename: str,
+        data: bytes,
+        actor: str,
+        sha256: str,
+        key: str,
+        media_type: str,
+        max_documents: int | None,
+        readings_per_day: int | None,
+        free_readings_per_day: int | None,
+    ) -> IngestResult:
         with self._sessions.begin() as session:
             # Not while these bytes' files are being erased (a document of them deleted).
             lock_content(session, tenant_id, sha256)
@@ -412,8 +443,7 @@ class DocumentService:
                 self._within_caps(
                     session, tenant_id, max_documents, readings_per_day, free_readings_per_day
                 )
-                # Store before the row: an object without a row is harmless and is reused
-                # by the next upload of the same bytes; a row without its object is not.
+                # Stored above, unless a deleted document's erasure removed it since.
                 if not self._store.exists(key):
                     self._store.put(key, data, media_type)
                 inserted = session.execute(
@@ -460,6 +490,17 @@ class DocumentService:
             )
             self._enqueue(session, version)
             return IngestResult(document, version, created=True)
+
+    def _discard_unused(self, tenant_id: uuid.UUID, sha256: str, key: str) -> None:
+        """Remove a file stored for an upload that was refused, unless a live document holds
+        the same bytes by now (best effort: an object without a row is harmless)."""
+        try:
+            with self._sessions.begin() as session:
+                lock_content(session, tenant_id, sha256)
+                if not live_copy(session, tenant_id, sha256):
+                    self._store.delete(key)
+        except Exception:
+            logger.warning("could not remove the unused object %s", key, exc_info=True)
 
     @scoped
     def reprocess(
