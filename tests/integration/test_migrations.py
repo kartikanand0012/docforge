@@ -171,3 +171,44 @@ def test_the_one_document_per_content_rule_is_not_restored_over_duplicates(
 
     with pytest.raises(RuntimeError, match="same content"):
         command.downgrade(alembic_config(empty_database_url), "0025")
+
+
+# Indexes for the counts every upload and the screens make
+
+
+def test_the_readings_index_and_count_name_exactly_the_actions_that_are_readings(
+    migrated: Engine,
+) -> None:
+    import re
+
+    from docforge.documents import READINGS
+
+    with migrated.connect() as conn:
+        index = conn.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_audit_log_readings'")
+        ).scalar_one()
+        counted = conn.execute(
+            text("SELECT pg_get_functiondef('docforge_member_readings_since'::regproc)")
+        ).scalar_one()
+    in_index = set(re.findall(r"'(document\.[a-z_]+)'", index))
+    in_count = set(re.findall(r"'(document\.[a-z_]+)'", counted))
+    assert in_index == in_count == set(READINGS)
+    assert "(occurred_at, tenant_id)" in index
+
+
+def test_the_audit_and_sign_in_figures_have_their_indexes(migrated: Engine) -> None:
+    with migrated.connect() as conn:
+        found = dict(
+            conn.execute(
+                text(
+                    "SELECT c.relname, i.indisvalid FROM pg_index i "
+                    "JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname IN "
+                    "('ix_audit_log_action_time', 'ix_sessions_tenant_created')"
+                )
+            ).all()
+        )
+        action_time = conn.execute(
+            text("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_audit_log_action_time'")
+        ).scalar_one()
+    assert found == {"ix_audit_log_action_time": True, "ix_sessions_tenant_created": True}
+    assert "(tenant_id, action, occurred_at) INCLUDE (actor)" in action_time
