@@ -263,11 +263,21 @@ def without_batches_or_expiry(raw: dict[str, Any]) -> None:
             line[name] = {"text": None, "block_ids": []}
 
 
+def as_general_goods(raw: dict[str, Any]) -> dict[str, Any]:
+    """Nothing on it says medicine: no drug licence number on either party, and no line in
+    HSN chapter 30 (pharmaceutical products). A camera dealer's invoice prints neither."""
+    for party in ("seller", "buyer"):
+        raw[party]["drug_licence_nos"] = []
+    for line in raw["lines"]:
+        line["hsn"] = {"text": "85258900", "block_ids": []}
+    return raw
+
+
 def test_an_invoice_that_prints_no_batch_or_expiry_is_not_asked_for_them(
     raw_invoice_from_label: RawFromLabel,
 ) -> None:
     # A general goods invoice (a camera, not a medicine) has no batch or expiry column.
-    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw = as_general_goods(copy.deepcopy(raw_invoice_from_label(label("pair_001"))))
     without_batches_or_expiry(raw)
 
     results = run(raw)
@@ -333,7 +343,7 @@ def general_goods_invoice(raw: dict[str, Any], grand_total: str) -> dict[str, An
     raw["totals"] = {name: {"text": None, "block_ids": []} for name in raw["totals"]}
     raw["totals"]["taxable_value"]["text"] = "2,060,719.00"
     raw["totals"]["grand_total"]["text"] = grand_total
-    return raw
+    return as_general_goods(raw)
 
 
 def grand_total_result(raw: dict[str, Any]) -> RuleResult:
@@ -572,3 +582,71 @@ def test_a_pharma_invoice_missing_one_lines_rate_still_reports_it(
     outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
 
     assert outcomes[("line.taxable_value", "lines[0].taxable_value")] == "not_evaluated"
+
+
+# A medicine invoice is known from the whole document, not from one column the model may miss
+
+
+def missing(raw: dict[str, Any], *names: str) -> dict[str, Any]:
+    for line in raw["lines"]:
+        for name in names:
+            line[name] = {"text": None, "block_ids": []}
+    return raw
+
+
+def test_a_medicine_invoice_whose_batch_column_was_missed_on_every_line_still_needs_it(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    # HSN 3004 (medicaments) and drug licence numbers: a medicine invoice, whatever was read.
+    raw = missing(copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "batch_no")
+
+    failed = failures(run(raw))
+
+    for index in range(len(raw["lines"])):
+        assert ("required.present", (f"lines[{index}].batch_no",)) in failed
+
+
+def test_a_medicine_invoice_whose_batch_and_expiry_were_missed_still_checks_them(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = missing(copy.deepcopy(raw_invoice_from_label(label("pair_001"))), "batch_no", "expiry")
+
+    results = run(raw)
+
+    failed = failures(results)
+    assert ("required.present", ("lines[0].batch_no",)) in failed
+    assert ("required.present", ("lines[0].expiry",)) in failed
+    outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in results}
+    assert outcomes[("line.not_expired", "lines[0].expiry")] == "not_evaluated"
+    assert outcomes[("line.dates", "lines[0].mfg")] == "not_evaluated"
+
+
+@pytest.mark.parametrize("evidence", ["hsn", "drug_licence"])
+def test_one_sign_of_medicine_is_enough(
+    raw_invoice_from_label: RawFromLabel, evidence: str
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    licences = {p: raw[p]["drug_licence_nos"] for p in ("seller", "buyer")}
+    as_general_goods(raw)
+    if evidence == "hsn":
+        raw["lines"][1]["hsn"] = {"text": "3004 90 99", "block_ids": []}
+    else:
+        raw["seller"]["drug_licence_nos"] = licences["seller"]
+    missing(raw, "batch_no", "expiry")
+
+    failed = failures(run(raw))
+
+    assert ("required.present", ("lines[0].batch_no",)) in failed
+    assert ("required.present", ("lines[0].expiry",)) in failed
+
+
+def test_a_medicine_invoice_whose_rate_or_mrp_column_was_missed_still_checks_them(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    for column, rule in (("ptr", "line.taxable_value"), ("mrp", "line.ptr_not_above_mrp")):
+        raw = missing(copy.deepcopy(raw_invoice_from_label(label("pair_001"))), column)
+
+        outcomes = {(r.rule_id, r.paths[0]): r.outcome for r in run(raw)}
+
+        path = "lines[0].taxable_value" if column == "ptr" else "lines[0].ptr"
+        assert outcomes[(rule, path)] == "not_evaluated", column
