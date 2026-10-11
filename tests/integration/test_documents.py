@@ -835,3 +835,46 @@ def test_a_parse_never_recorded_fails_saying_so(sessions: SessionFactory) -> Non
     assert harness.version(ingested.version.id).error == (
         "This demo reads only its recorded sample documents; this file was not recorded."
     )
+
+
+# Storing the file: before the transaction, never inside its lock
+
+
+def test_an_upload_stores_its_file_before_taking_the_lock_on_its_content(
+    sessions: SessionFactory, owner_engine: Any
+) -> None:
+    from sqlalchemy import text
+
+    harness = Harness(sessions, [])
+    sha = hashlib.sha256(PDF).hexdigest()
+    seen: list[bool] = []
+
+    class Watching(MemoryObjectStore):
+        def put(self, key: str, data: bytes, content_type: str) -> None:
+            # From another connection: free only if no transaction holds it.
+            with owner_engine.begin() as conn:
+                seen.append(
+                    conn.execute(
+                        text("SELECT pg_try_advisory_xact_lock(hashtext(:k))"),
+                        {"k": f"content:{DEFAULT_TENANT_ID}:{sha}"},
+                    ).scalar_one()
+                )
+            super().put(key, data, content_type)
+
+    harness.service._store = Watching()
+
+    assert harness.ingest(PDF).created
+
+    assert seen == [True]
+
+
+def test_a_refused_upload_leaves_no_file_behind(sessions: SessionFactory) -> None:
+    harness = Harness(sessions, [], max_pending=1)
+    harness.ingest(PDF)
+
+    with pytest.raises(QueueFull):
+        harness.ingest(OTHER_PDF)
+
+    other = original_key(DEFAULT_TENANT_ID, hashlib.sha256(OTHER_PDF).hexdigest())
+    assert not harness.store.exists(other)
+    assert harness.store.exists(original_key(DEFAULT_TENANT_ID, hashlib.sha256(PDF).hexdigest()))
