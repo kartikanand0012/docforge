@@ -301,3 +301,93 @@ def test_the_application_cannot_read_or_undelete_a_deleted_document_itself(
             text("UPDATE documents SET deleted_at = NULL WHERE id = :id"), {"id": stack.invoice_id}
         ).rowcount
     assert (seen, changed) == (0, 0)
+
+
+# Erasure: the stored files go, the hidden row stays
+
+
+def stored(stack: Stack, document_id: uuid.UUID, owner_engine: Engine) -> tuple[str, str]:
+    with owner_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT storage_key, sha256 FROM documents WHERE id = :d"), {"d": document_id}
+        ).one()
+    return row.storage_key, row.sha256
+
+
+def test_a_deleted_documents_file_and_the_pdfs_made_from_it_are_erased(
+    stack: Stack, owner_engine: Engine
+) -> None:
+    key, sha = stored(stack, stack.invoice_id, owner_engine)
+    store = stack.world.store
+    renditions = [f"renditions/{DEFAULT_TENANT_ID}/{sha}.pdf",
+                  f"renditions/{DEFAULT_TENANT_ID}/{sha}/0123456789abcdef.pdf"]  # fmt: skip
+    for rendition in renditions:
+        store.put(rendition, b"%PDF-", "application/pdf")
+    order_key, _ = stored(stack, stack.order_id, owner_engine)
+
+    assert stack.delete(stack.invoice_id) == 204
+
+    assert not store.exists(key)
+    assert not any(store.exists(r) for r in renditions)
+    assert store.exists(order_key)  # the other document's file stays
+    with owner_engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT deleted_at FROM documents WHERE id = :d"), {"d": stack.invoice_id}
+        ).one()
+        left = conn.execute(text("SELECT count(*) FROM erasures")).scalar_one()
+    assert row.deleted_at is not None and left == 0
+
+
+def test_the_same_file_uploaded_again_after_deleting_is_stored_again(
+    stack: Stack, owner_engine: Engine
+) -> None:
+    stack.delete(stack.invoice_id)
+
+    again = stack.world.process("invoice")
+
+    key, _ = stored(stack, again, owner_engine)
+    assert again != stack.invoice_id and stack.world.store.exists(key)
+
+
+def test_a_file_a_live_document_still_holds_is_not_erased(
+    stack: Stack, owner_engine: Engine
+) -> None:
+    from docforge.erasure import Erasure
+
+    key, sha = stored(stack, stack.invoice_id, owner_engine)
+    # As if the erasure of an earlier deletion of these bytes ran after their new upload.
+    stack.documents.eraser.erase(Erasure(0, "document", DEFAULT_TENANT_ID, sha, key))
+
+    assert stack.world.store.exists(key)
+
+
+def test_with_storage_down_the_deletion_stands_and_the_erasure_is_finished_later(
+    stack: Stack, owner_engine: Engine, owner_sessions: SessionFactory
+) -> None:
+    from docforge.erasure import finish_all
+    from docforge.storage import MemoryObjectStore, StorageUnavailable
+
+    key, _ = stored(stack, stack.invoice_id, owner_engine)
+    real = stack.world.store
+
+    class Down(MemoryObjectStore):
+        def delete(self, key: str) -> None:
+            raise StorageUnavailable("connection refused")
+
+    stack.documents.eraser._store = Down()
+
+    assert stack.delete(stack.invoice_id) == 204
+    assert real.exists(key)
+    with owner_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM erasures")).scalar_one() == 1
+
+    assert finish_all(owner_sessions, real) == (1, 0)
+
+    assert not real.exists(key)
+    with owner_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM erasures")).scalar_one() == 0
+
+
+def test_the_application_cannot_read_the_erasures_still_to_do(engine: Engine) -> None:
+    with engine.connect() as conn, pytest.raises(Exception, match="permission denied"):
+        conn.execute(text("SELECT count(*) FROM erasures"))
