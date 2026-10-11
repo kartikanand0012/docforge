@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # level security applies to and that owns nothing; migrations connect as the owner.
     database_url: SecretStr = SecretStr(_LOCAL_APP_DATABASE_URL)
     migration_database_url: SecretStr = SecretStr(_LOCAL_DATABASE_URL)
+    # The platform administrator's screens read every workspace's figures through a login of
+    # their own (a member of `docforge_platform`), held by the API only. Unset, those screens
+    # answer 503: the application's login is never used for them.
+    platform_database_url: SecretStr | None = None
 
     # Unset (or blank) means AWS S3 itself, with the instance's role for credentials.
     s3_endpoint_url: str | None = "http://127.0.0.1:9000"
@@ -155,9 +159,16 @@ class Settings(BaseSettings):
     worker_heartbeat_seconds: float = 10
     worker_stalled_after_seconds: float = 30
 
-    @field_validator("database_url", "migration_database_url")
+    @field_validator("platform_database_url", mode="before")
     @classmethod
-    def _require_postgres_psycopg(cls, value: SecretStr) -> SecretStr:
+    def _blank_platform_url_is_unset(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @field_validator("database_url", "migration_database_url", "platform_database_url")
+    @classmethod
+    def _require_postgres_psycopg(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None:
+            return None
         # The message must not echo the value: it contains the password.
         try:
             driver = make_url(value.get_secret_value()).drivername
@@ -266,6 +277,23 @@ class Settings(BaseSettings):
     def _openai_model_is_pinned(self) -> Self:
         if "openai" in (self.extraction_provider, self.chat_provider) and not self.openai_model:
             raise ValueError("OPENAI_MODEL must name the OpenAI model to use, pinned")
+        return self
+
+    @model_validator(mode="after")
+    def _platform_login_is_its_own(self) -> Self:
+        if self.platform_database_url is None:
+            return self
+        # Compared by user name only, so neither URL's password reaches a message.
+        platform = make_url(self.platform_database_url.get_secret_value()).username
+        others = {
+            make_url(self.database_url.get_secret_value()).username,
+            make_url(self.migration_database_url.get_secret_value()).username,
+        }
+        if not platform or platform in others:
+            raise ValueError(
+                "PLATFORM_DATABASE_URL must name a login of its own, not the application's "
+                "or the owner's"
+            )
         return self
 
     def provider_for(self, task: Task) -> str:

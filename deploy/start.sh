@@ -18,8 +18,9 @@ case "${DOCFORGE_ROLE:-api}" in
     exec python -m docforge.conversion_service
     ;;
   admin)
-    # One run per release: the schema, the application's restricted login, and the demo's
-    # organisation and documents (both steps are safe to repeat). Needs the owner's URL in
+    # One run per release: the schema, the application's restricted login (and the platform
+    # administrator's, when PLATFORM_DATABASE_URL is set), and the demo's organisation and
+    # documents (each step is safe to repeat). Needs the owner's URL in
     # MIGRATION_DATABASE_URL; the API and worker never hold it.
     alembic upgrade head
     python -m docforge.db.roles

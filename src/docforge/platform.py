@@ -1,7 +1,9 @@
 """The platform administrator's figures and activity across every workspace.
 
 Read through the owner's functions (migration 0028), which return counts, token sums and
-labels only. Callers must have checked that the person asking is a platform administrator.
+labels only, over the platform's own database login (PLATFORM_DATABASE_URL, migration 0030):
+the application's login cannot call them. Callers must have checked that the person asking
+is a platform administrator.
 """
 
 import uuid

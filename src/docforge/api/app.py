@@ -260,8 +260,9 @@ def create_app(
         app.include_router(collections_router(collections))
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
-    if platform is not None and authenticator is not None:
-        # Behind the owner's functions, which serve every workspace: platform admins only.
+    if authenticator is not None:
+        # Behind the owner's functions, which serve every workspace: platform admins only,
+        # through a login of their own. Without one the screens say they are not configured.
         app.include_router(platform_router(platform))
     if agents is not None and authenticator is not None:
         # AI agents, through the MCP server, with keys administrators make.

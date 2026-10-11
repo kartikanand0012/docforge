@@ -26,6 +26,7 @@ from docforge.parsing.base import Parser
 from docforge.parsing.cache import CachingParser
 from docforge.parsing.docling_parser import DoclingParser
 from docforge.parsing.isolation import IsolatedParser
+from docforge.platform import PlatformService
 from docforge.queue import JobQueue
 from docforge.review.service import ReviewService
 from docforge.search.embeddings import Embedder, FakeEmbedder, GeminiEmbedder, RecordingEmbedder
@@ -194,6 +195,15 @@ def build_authenticator(settings: Settings) -> Authenticator:
         make_session_factory(make_engine(database_url)),
         failed_logins_per_window=settings.failed_logins_per_window,
     )
+
+
+def build_platform(settings: Settings) -> PlatformService | None:
+    """The platform administrator's figures, through the platform's own login; None (the
+    screens say they are not configured) without one. Never the application's login."""
+    if settings.platform_database_url is None:
+        return None
+    engine = make_engine(settings.platform_database_url.get_secret_value())
+    return PlatformService(make_session_factory(engine), settings.prices())
 
 
 def embedder_for(settings: Settings) -> Embedder:

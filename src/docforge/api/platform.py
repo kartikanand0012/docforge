@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 
 from docforge.api.auth import platform_admin
@@ -55,14 +55,21 @@ class ActivityPageOut(BaseModel):
     next_before: int | None
 
 
-def platform_router(platform: PlatformService) -> APIRouter:
+def platform_router(platform: PlatformService | None) -> APIRouter:
+    """`platform` is None when the deployment has no platform login (PLATFORM_DATABASE_URL):
+    a platform administrator is then told so (503), and anyone else is refused as before."""
     router = APIRouter(prefix="/v1/platform")
+
+    def configured() -> PlatformService:
+        if platform is None:
+            raise HTTPException(503, "The platform dashboard is not configured.")
+        return platform
 
     @router.get("/overview", response_model=OverviewOut)
     def overview(principal: PlatformAdmin, response: Response) -> OverviewOut:
         """Every workspace's figures, most recently active first, and the totals. Counts and
         names only: never a document's name or contents."""
-        found = platform.overview()
+        found = configured().overview()
         response.headers["Cache-Control"] = "no-store"
         return OverviewOut(
             totals=found.totals,
@@ -78,7 +85,7 @@ def platform_router(platform: PlatformService) -> APIRouter:
         tenant_id: uuid.UUID | None = None,
     ) -> ActivityPageOut:
         """What happened in every workspace (or one), newest first, as labels: no details."""
-        items, next_before = platform.activity(before=before, limit=limit, tenant_id=tenant_id)
+        items, next_before = configured().activity(before=before, limit=limit, tenant_id=tenant_id)
         response.headers["Cache-Control"] = "no-store"
         return ActivityPageOut(
             items=[ActivityOut(**vars(i)) for i in items], next_before=next_before
