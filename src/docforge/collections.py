@@ -130,8 +130,12 @@ class CollectionService:
                     collection.description = description.strip()
                 session.flush()
                 self._audit(session, collection, actor, "collection.renamed", name=collection.name)
+                # As the list counts: documents not deleted.
                 n = session.scalar(
-                    select(func.count()).where(CollectionDocument.collection_id == collection.id)
+                    select(func.count())
+                    .select_from(CollectionDocument)
+                    .join(Document, Document.id == CollectionDocument.document_id)
+                    .where(CollectionDocument.collection_id == collection.id, live())
                 )
                 return self._summary(collection, n or 0)
         except IntegrityError as error:
