@@ -228,8 +228,136 @@ def test_the_database_deletes_only_a_personal_workspace_and_only_in_scope(
                     text("SELECT set_config('docforge.tenant_id', :t, true)"), {"t": str(scope)}
                 )
             with pytest.raises(Exception, match="only a personal workspace"):
-                conn.execute(text("SELECT docforge_delete_account()"))
+                conn.execute(text("SELECT * FROM docforge_delete_account(gen_random_uuid())"))
     assert rows_of(owner_engine, DEFAULT_TENANT_ID)["tenants"] == 1
+
+
+def in_scope(engine: Engine, tenant: uuid.UUID, sql: str, **params: Any) -> Any:
+    with engine.begin() as conn:
+        conn.execute(text("SELECT set_config('docforge.tenant_id', :t, true)"), {"t": str(tenant)})
+        return conn.execute(text(sql), params).all()
+
+
+def grant(owner_engine: Engine, tenant: uuid.UUID, *, expires: str = "60 seconds",
+          used: bool = False) -> uuid.UUID:  # fmt: skip
+    with owner_engine.begin() as conn:
+        token: uuid.UUID = conn.execute(
+            text(
+                "INSERT INTO deletion_grants (tenant_id, reviewer_id, expires_at, used_at) "
+                "SELECT a.tenant_id, a.reviewer_id, now() + CAST(:e AS interval), "
+                "CASE WHEN :u THEN now() END FROM accounts a WHERE a.tenant_id = :t "
+                "RETURNING token"
+            ),
+            {"t": tenant, "e": expires, "u": used},
+        ).scalar_one()
+    return token
+
+
+def test_without_a_fresh_grant_of_its_own_the_database_refuses_to_delete(
+    two: Two, engine: Engine, owner_engine: Engine
+) -> None:
+    delete_with = "SELECT * FROM docforge_delete_account(:g)"
+    refused = [
+        uuid.uuid4(),  # no grant at all
+        grant(owner_engine, two.asha_ws, expires="-1 second"),  # expired
+        grant(owner_engine, two.asha_ws, used=True),  # used already
+        grant(owner_engine, two.ben_ws),  # Ben's, not Asha's
+    ]
+    for token in refused:
+        with pytest.raises(Exception, match="deletion grant"):
+            in_scope(engine, two.asha_ws, delete_with, g=token)
+    assert rows_of(owner_engine, two.asha_ws)["tenants"] == 1
+
+    fresh = grant(owner_engine, two.asha_ws)
+    [(erasure_id, token)] = in_scope(engine, two.asha_ws, delete_with, g=fresh)
+    assert erasure_id is not None and token is not None
+    assert rows_of(owner_engine, two.asha_ws)["tenants"] == 0
+    # Used up: it cannot be used again (here, for nothing is left; it is gone with the rest).
+    with owner_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM deletion_grants")).scalar_one() == 1
+
+
+def test_the_application_cannot_read_or_make_deletion_grants_itself(
+    two: Two, engine: Engine
+) -> None:
+    with engine.connect() as conn, pytest.raises(Exception, match="permission denied"):
+        conn.execute(text("SELECT count(*) FROM deletion_grants"))
+    # Through the owner's function only, and only for the workspace's own member.
+    with pytest.raises(Exception, match="deletion grant"):
+        in_scope(engine, two.asha_ws, "SELECT docforge_grant_deletion(gen_random_uuid())")
+
+
+def test_one_workspace_cannot_complete_another_workspaces_erasure(
+    two: Two, engine: Engine, owner_engine: Engine
+) -> None:
+    from docforge.storage import MemoryObjectStore, StorageUnavailable
+
+    class Down(MemoryObjectStore):
+        def delete_prefix(self, prefix: str) -> int:
+            raise StorageUnavailable("connection refused")
+
+    two.stack.documents.eraser._store = Down()
+    assert delete(two, two.asha).status_code == 204
+    with owner_engine.connect() as conn:
+        [(erasure_id,)] = conn.execute(text("SELECT id FROM erasures")).all()
+
+    # Ben, knowing or guessing the id, with any token but the one the deletion was given.
+    in_scope(engine, two.ben_ws, "SELECT docforge_erasure_done(:i, gen_random_uuid())",
+             i=erasure_id)  # fmt: skip
+
+    with owner_engine.connect() as conn:
+        assert conn.execute(text("SELECT count(*) FROM erasures")).scalar_one() == 1
+    with engine.connect() as conn, pytest.raises(Exception, match="does not exist"):
+        conn.execute(text("SELECT docforge_erasure_done(:i)"), {"i": erasure_id})
+
+
+# Nothing is written for a workspace that is gone, and what was is swept away
+
+
+def test_work_still_queued_for_a_deleted_workspace_writes_nothing(
+    two: Two, owner_engine: Engine
+) -> None:
+    from docforge.anchors import AnchorStore, anchor_one
+    from docforge.documents import DocumentNotFound
+
+    with owner_engine.connect() as conn:
+        version = conn.execute(
+            text("SELECT id FROM document_versions WHERE document_id = :d"), {"d": two.doc}
+        ).scalar()
+    assert delete(two, two.asha).status_code == 204
+    before = two.stack.world.store.keys()  # a store's keys, not a dict's
+
+    with pytest.raises(DocumentNotFound):
+        two.stack.documents.process(version)
+    with pytest.raises(DocumentNotFound):
+        two.stack.search.index_version(version)
+    anchors = AnchorStore(two.stack.world.store)
+    assert anchor_one(two.stack.sessions, anchors, two.asha_ws) is False
+
+    assert two.stack.world.store.keys() == before
+
+
+def test_files_left_under_a_workspace_that_no_longer_exists_are_swept(
+    two: Two, owner_sessions: SessionFactory
+) -> None:
+    from docforge.erasure import sweep_orphans
+
+    store = two.stack.world.store
+    gone = uuid.uuid4()
+    left = [f"originals/{gone}/{'b' * 64}.pdf", f"renditions/{two.asha_ws}/{'c' * 64}/x.pdf",
+            f"audit-anchors/{gone}/latest.json"]  # fmt: skip
+    assert delete(two, two.asha).status_code == 204
+    for key in left:  # as a worker mid-reading, or an anchor taken just then, might leave
+        store.put(key, b"x", "application/octet-stream")
+    store.put("originals/not-a-workspace/keep.pdf", b"x", "application/pdf")
+    everything = store.keys()  # a store's keys, not a dict's
+    bens = [key for key in everything if str(two.ben_ws) in key]
+
+    assert sweep_orphans(owner_sessions, store) == 3
+
+    assert not any(store.exists(key) for key in left)
+    assert all(store.exists(key) for key in bens) and bens
+    assert store.exists("originals/not-a-workspace/keep.pdf")
 
 
 def test_the_append_only_tables_still_refuse_deletion_outside_an_erasure(

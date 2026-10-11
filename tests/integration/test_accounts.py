@@ -725,3 +725,27 @@ def test_the_database_takes_an_argon2id_hash_for_an_account_and_never_a_bare_sec
             text("SELECT docforge_create_account('u-test0000002', 'U', 'U', 'u@example.com', :h)"),
             {"h": PASSWORD},
         )
+
+
+def test_while_every_hashing_place_is_taken_sign_in_and_sign_up_answer_busy(
+    stack: FullStack, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import threading
+
+    import docforge.review.signing as signing
+
+    stack.sign_up("Asha", "asha@example.com")
+    full = threading.BoundedSemaphore(1)
+    full.acquire()
+    monkeypatch.setattr(signing, "_HASHING", full)
+    monkeypatch.setattr(signing, "HASHING_WAIT_SECONDS", 0.01)
+
+    signing_in = stack.client.post(
+        "/v1/sessions", json={"email": "asha@example.com", "password": PASSWORD}
+    )
+    signing_up = sign_up(stack.client, email="ben@example.com")
+
+    for response in (signing_in, signing_up):
+        assert response.status_code == 503
+        assert response.json()["detail"] == "Busy, try again."
+        assert response.headers["Retry-After"] == "1"

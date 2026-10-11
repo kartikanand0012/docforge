@@ -457,3 +457,28 @@ def test_a_deleted_documents_reading_never_counts_towards_the_queue_limit(
         )
 
     assert pending(stack) == 0
+
+
+def test_an_erasure_never_deletes_a_key_that_is_not_that_documents_original(
+    stack: Stack, owner_engine: Engine
+) -> None:
+    from docforge.erasure import Erasure
+
+    other = uuid.uuid4()
+    _, sha = stored(stack, stack.invoice_id, owner_engine)
+    stack.delete(stack.invoice_id)
+    store = stack.world.store
+    forged = [
+        f"originals/{other}/{sha}.pdf",
+        f"originals/{DEFAULT_TENANT_ID}/{'f' * 64}.pdf",
+        f"renditions/{DEFAULT_TENANT_ID}/{sha}.pdf/../x",
+        "audit-anchors/x/latest.json",
+    ]
+    for key in forged:
+        store.put(key, b"x", "application/pdf")
+
+    for key in forged:
+        with pytest.raises(ValueError, match="not the original"):
+            stack.documents.eraser.erase(Erasure(0, "document", DEFAULT_TENANT_ID, sha, key))
+
+    assert all(store.exists(key) for key in forged)

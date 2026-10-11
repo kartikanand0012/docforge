@@ -2,6 +2,8 @@
 still checked (and marked for replacing), and the hash checked when there is nothing to check
 made the same way, so a refusal takes as long either way."""
 
+import pytest
+
 import docforge.auth
 from docforge.review.signing import hash_pin, needs_rehash, verify_pin
 from fakes import scrypt_hash
@@ -40,3 +42,43 @@ def test_anything_else_is_never_right() -> None:
 
 def test_the_hash_checked_for_an_unknown_person_costs_what_a_real_one_does() -> None:
     assert docforge.auth._DUMMY_PIN_HASH.startswith(OWASP_MINIMUM)
+
+
+def test_only_a_few_hashes_are_worked_out_at_once_and_a_long_wait_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+    import time
+
+    import docforge.review.signing as signing
+
+    running, most = [0], [0]
+    lock = threading.Lock()
+
+    class Slow:
+        def hash(self, secret: str) -> str:
+            with lock:
+                running[0] += 1
+                most[0] = max(most[0], running[0])
+            time.sleep(0.05)
+            with lock:
+                running[0] -= 1
+            return "$argon2id$v=19$m=19456,t=2,p=1$x$y"
+
+    monkeypatch.setattr(signing, "_ARGON2", Slow())
+    monkeypatch.setattr(signing, "_HASHING", threading.BoundedSemaphore(2))
+    threads = [threading.Thread(target=signing.hash_pin, args=("482913",)) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert most[0] == 2
+
+    full = threading.BoundedSemaphore(1)
+    full.acquire()
+    monkeypatch.setattr(signing, "_HASHING", full)
+    monkeypatch.setattr(signing, "HASHING_WAIT_SECONDS", 0.01)
+    with pytest.raises(signing.HashingBusy):
+        signing.hash_pin("482913")
+    with pytest.raises(signing.HashingBusy):
+        signing.verify_pin("482913", "$argon2id$v=19$m=19456,t=2,p=1$x$y")
