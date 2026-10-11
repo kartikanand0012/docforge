@@ -198,7 +198,7 @@ def test_the_readings_index_and_count_name_exactly_the_actions_that_are_readings
 
 def test_the_audit_and_sign_in_figures_have_their_indexes(migrated: Engine) -> None:
     with migrated.connect() as conn:
-        found = dict(
+        found: dict[str, bool] = dict(
             conn.execute(
                 text(
                     "SELECT c.relname, i.indisvalid FROM pg_index i "
