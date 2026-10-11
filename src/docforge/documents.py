@@ -521,6 +521,17 @@ class DocumentService:
         with self._sessions.begin() as session:
             document = self._document(session, tenant_id, document_id, lock=True)
             refuse_if_claimed(session, document.id, reviewer_id, _now())
+            # A reading still waiting or under way ends here: the worker drops a deleted
+            # document's job, and a version left in flight would hold a place in the queue.
+            for version in session.scalars(
+                select(DocumentVersion)
+                .where(
+                    DocumentVersion.document_id == document.id,
+                    DocumentVersion.status.in_(IN_FLIGHT),
+                )
+                .with_for_update()
+            ):
+                version.status, version.error, version.finished_at = "failed", "Deleted", _now()
             # The application cannot mark it itself: once marked it cannot see the row. The
             # function also records that its stored files are to be erased.
             erasure_id = session.scalar(select(func.docforge_delete_document(document.id)))
@@ -1338,8 +1349,12 @@ class DocumentService:
             session.scalar(
                 select(func.count())
                 .select_from(DocumentVersion)
+                # A deleted document's version never holds a place, whatever its status.
+                .join(Document, Document.id == DocumentVersion.document_id)
                 .where(
-                    DocumentVersion.tenant_id == tenant_id, DocumentVersion.status.in_(IN_FLIGHT)
+                    DocumentVersion.tenant_id == tenant_id,
+                    DocumentVersion.status.in_(IN_FLIGHT),
+                    live(),
                 )
             )
             or 0
