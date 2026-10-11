@@ -7,6 +7,7 @@ tenant always comes from the credential, never from the request.
 
 import hashlib
 import hmac
+import logging
 import re
 import secrets
 import threading
@@ -34,6 +35,7 @@ from docforge.accounts import (
 from docforge.db.models import ApiKey, AuditEntry, Reviewer, SessionToken, Tenant
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
+from docforge.erasure import Erasure
 from docforge.review.signing import hash_pin, upgrade_hash, verify_pin
 
 Role = Literal["integrator", "reviewer", "admin", "reader", "member", "observer"]
@@ -54,6 +56,7 @@ PERMISSIONS: dict[str, frozenset[str]] = {
 MEMBER = "member"
 OBSERVER = "observer"
 _VIEWED_AUDIT_EVERY = timedelta(hours=1)
+logger = logging.getLogger(__name__)
 _TOKEN = re.compile(r"^(dfk|dfs)_([0-9a-f]{12})_([A-Za-z0-9_-]{43})$")
 _KINDS: dict[str, Kind] = {"dfk": "api_key", "dfs": "session"}
 _SESSION_HOURS = 8
@@ -309,40 +312,7 @@ class Authenticator:
                 .with_for_update(key_share=True)
             )
             now = datetime.now(UTC)
-            locked = (
-                reviewer is not None
-                and reviewer.locked_until is not None
-                and reviewer.locked_until > now
-            )
-            if reviewer is None:
-                verify_pin(pin, _DUMMY_PIN_HASH)
-                ok = False
-            elif locked and _failed_here(session, reviewer.id, client):
-                # Checked against nothing, but checked: a lock takes as long as a wrong secret.
-                verify_pin(pin, _DUMMY_PIN_HASH)
-                ok = False
-            elif verify_pin(pin, reviewer.pin_hash):
-                upgrade_hash(session, reviewer.id, reviewer.pin_hash, pin)
-                # Signing in from elsewhere does not lift a lock on the addresses that failed.
-                if not locked:
-                    reviewer.failed_attempts, reviewer.locked_until = 0, None
-                ok = True
-            else:
-                # Committed with this transaction, which then ends normally: the count holds.
-                audit.append(
-                    session,
-                    tenant_id=tenant_id,
-                    actor="api",
-                    action="reviewer.pin_failed",
-                    target_type="reviewer",
-                    target_id=str(reviewer.id),
-                    details={"attempt": reviewer.failed_attempts + 1, "at": "sign-in"},
-                )
-                reviewer.failed_attempts += 1
-                if reviewer.failed_attempts >= _MAX_FAILED_PINS and not reviewer.shared:
-                    reviewer.failed_attempts, reviewer.locked_until = 0, now + _LOCK_FOR
-                _record_failure(session, reviewer.id, client)
-                ok = False
+            ok = self._secret_is_right(session, tenant_id, reviewer, pin, client, "sign-in")
             token = None
             if ok and reviewer is not None:
                 token, prefix, digest = new_token("dfs")
@@ -359,6 +329,57 @@ class Authenticator:
             self.limiter.failed(client)
             raise LoginFailed
         return token
+
+    @staticmethod
+    def _secret_is_right(
+        session: Session,
+        tenant_id: uuid.UUID,
+        reviewer: Reviewer | None,
+        secret: str,
+        client: str,
+        at: str,
+    ) -> bool:
+        """Whether `secret` is the (locked-for-update) reviewer's PIN or password, counting a
+        wrong one against the reviewer and this address, in the caller's transaction.
+
+        Five wrong in a row, from wherever they come, lock the reviewer for 15 minutes - but
+        only for the addresses that got it wrong. While locked, an address with no recent
+        failure is still checked; one wrong guess and it is locked out too.
+        """
+        now = datetime.now(UTC)
+        locked = (
+            reviewer is not None
+            and reviewer.locked_until is not None
+            and reviewer.locked_until > now
+        )
+        if reviewer is None:
+            verify_pin(secret, _DUMMY_PIN_HASH)
+            return False
+        if locked and _failed_here(session, reviewer.id, client):
+            # Checked against nothing, but checked: a lock takes as long as a wrong secret.
+            verify_pin(secret, _DUMMY_PIN_HASH)
+            return False
+        if verify_pin(secret, reviewer.pin_hash):
+            upgrade_hash(session, reviewer.id, reviewer.pin_hash, secret)
+            # Signing in from elsewhere does not lift a lock on the addresses that failed.
+            if not locked:
+                reviewer.failed_attempts, reviewer.locked_until = 0, None
+            return True
+        # Committed with this transaction, which then ends normally: the count holds.
+        audit.append(
+            session,
+            tenant_id=tenant_id,
+            actor="api",
+            action="reviewer.pin_failed",
+            target_type="reviewer",
+            target_id=str(reviewer.id),
+            details={"attempt": reviewer.failed_attempts + 1, "at": at},
+        )
+        reviewer.failed_attempts += 1
+        if reviewer.failed_attempts >= _MAX_FAILED_PINS and not reviewer.shared:
+            reviewer.failed_attempts, reviewer.locked_until = 0, now + _LOCK_FOR
+        _record_failure(session, reviewer.id, client)
+        return False
 
     def logout(self, principal: Principal, token: str) -> None:
         parsed = parse_token(token)
@@ -440,6 +461,46 @@ class Authenticator:
                 raise AccountTaken(email) from None
             raise
         return token
+
+    def delete_account(self, principal: Principal, password: str, client: str) -> Erasure:
+        """Delete the caller's account and its whole workspace, after their password again.
+
+        Only an account's own person, signed in to their personal workspace, may: anyone
+        else gets `PermissionError`. A wrong password is a wrong password at sign-in
+        (`LoginFailed`, counted and locked alike; `TooManyAttempts`). Every row of the
+        workspace is gone when this returns, its sessions with it; its stored files are
+        returned as the erasure still to do. The audit log goes with the workspace, so the
+        deletion is logged here instead, with the workspace's id and nothing else.
+        """
+        if (
+            principal.kind != "session"
+            or principal.role != MEMBER
+            or principal.home_tenant_id is not None
+        ):
+            raise PermissionError("not an account's own person")
+        self.limiter.check(client)
+        tenant_id = principal.tenant_id
+        with tenant_scope(tenant_id), self._sessions.begin() as session:
+            kind = session.scalar(select(Tenant.kind).where(Tenant.id == tenant_id))
+            if kind != "personal":
+                raise PermissionError("not a personal workspace")
+            reviewer = session.scalar(
+                select(Reviewer)
+                .where(Reviewer.id == principal.subject_id, Reviewer.deactivated_at.is_(None))
+                .with_for_update(key_share=True)
+            )
+            ok = self._secret_is_right(
+                session, tenant_id, reviewer, password, client, "account deletion"
+            )
+        if not ok:
+            self.limiter.failed(client)
+            raise LoginFailed
+        with tenant_scope(tenant_id), self._sessions.begin() as session:
+            # As the owner, for this workspace only and only if it is personal.
+            erasure_id = session.scalar(select(func.docforge_delete_account()))
+        assert erasure_id is not None  # noqa: S101 - the function returns it or raises
+        logger.info("account.deleted tenant=%s", tenant_id)
+        return Erasure(int(erasure_id), "workspace", tenant_id)
 
     def signups_since(self, since: datetime) -> int:
         with self._sessions() as session:

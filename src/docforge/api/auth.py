@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from docforge.accounts import MAX_NAME, MAX_PASSWORD, AccountTaken, has_control
 from docforge.auth import Authenticator, LoginFailed, NotAWorkspace, Principal, TooManyAttempts
+from docforge.erasure import Erasure
 from docforge.limits import Limits
 
 _UNAUTHENTICATED = HTTPException(
@@ -112,6 +113,12 @@ class AccountIn(BaseModel):
 
     name: str = Field(min_length=1, max_length=MAX_NAME)
     email: str = Field(max_length=320)
+    password: str = Field(max_length=MAX_PASSWORD)
+
+
+class AccountDeletionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     password: str = Field(max_length=MAX_PASSWORD)
 
 
@@ -217,5 +224,41 @@ def accounts_router(
         except ValueError as error:
             raise HTTPException(422, f"{str(error)[0].upper()}{str(error)[1:]}.") from error
         return SessionOut(token=token, expires_in_seconds=session_hours * 3600)
+
+    return router
+
+
+def account_router(
+    authenticator: Authenticator, erase: Callable[[Erasure], object] | None
+) -> APIRouter:
+    """Deleting one's own account: present whether or not sign-up is open, so an account
+    made while it was can always be deleted. `erase` removes the stored files afterwards."""
+    router = APIRouter(prefix="/v1")
+
+    @router.delete("/accounts/current", status_code=204)
+    def delete_account(
+        body: AccountDeletionIn,
+        request: Request,
+        principal: Annotated[Principal, Depends(current_principal)],
+    ) -> Response:
+        """Delete your account and everything in its workspace - documents, their files,
+        questions, knowledge bases, signatures and its audit log - after your password
+        again. It cannot be undone. Only an account's person, in their own workspace."""
+        try:
+            erasure = authenticator.delete_account(
+                principal, body.password, client_address(request)
+            )
+        except PermissionError as error:
+            raise HTTPException(403, NOT_ALLOWED) from error
+        except TooManyAttempts as error:
+            raise HTTPException(
+                429, _TOO_MANY, headers={"Retry-After": str(error.retry_after)}
+            ) from error
+        except LoginFailed as error:
+            # As at sign-in: one answer for a wrong password, whatever else is the case.
+            raise HTTPException(401, "The email or password is not right.") from error
+        if erase is not None:
+            erase(erasure)  # best effort: what is left is finished later
+        return Response(status_code=204)
 
     return router

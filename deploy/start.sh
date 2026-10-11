@@ -41,6 +41,9 @@ case "${DOCFORGE_ROLE:-api}" in
       python -m docforge.review make-platform-admin --tenant "$PLATFORM_ADMIN_TENANT" \
         --email "$PLATFORM_ADMIN_EMAIL" || true
     fi
+    # Stored files of deleted documents and accounts that could not be erased when they were
+    # deleted (storage was down): erased now. What is still left is reported, not fatal.
+    python -m docforge.erasure || true
     echo "admin: done"
     ;;
   *)

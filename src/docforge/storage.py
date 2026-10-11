@@ -35,6 +35,10 @@ class ObjectStore(Protocol):
         """Gone, if it was there."""
         ...
 
+    def delete_prefix(self, prefix: str) -> int:
+        """Every object whose key starts with `prefix` gone; how many there were."""
+        ...
+
 
 def original_key(tenant_id: uuid.UUID, sha256: str, fmt: Format = "pdf") -> str:
     """Where an uploaded file lives. Content-addressed, so the same bytes map to one object."""
@@ -109,6 +113,29 @@ class S3ObjectStore:
         except (BotoCoreError, ClientError) as error:
             raise StorageUnavailable("could not delete the object") from error
 
+    def delete_prefix(self, prefix: str) -> int:
+        if not prefix:
+            raise ValueError("a prefix is needed: this never empties the whole bucket")
+        deleted = 0
+        try:
+            pages = self._client.get_paginator("list_objects_v2").paginate(
+                Bucket=self._bucket, Prefix=prefix
+            )
+            for page in pages:
+                keys = [{"Key": item["Key"]} for item in page.get("Contents", [])]
+                if not keys:
+                    continue
+                # A page holds at most 1,000 keys, as many as one request may delete.
+                answer = self._client.delete_objects(
+                    Bucket=self._bucket, Delete={"Objects": keys, "Quiet": True}
+                )
+                if answer.get("Errors"):
+                    raise StorageUnavailable("some objects could not be deleted")
+                deleted += len(keys)
+        except (BotoCoreError, ClientError) as error:
+            raise StorageUnavailable("could not delete the objects") from error
+        return deleted
+
 
 class MemoryObjectStore:
     """For tests."""
@@ -130,6 +157,14 @@ class MemoryObjectStore:
 
     def delete(self, key: str) -> None:
         self._objects.pop(key, None)
+
+    def delete_prefix(self, prefix: str) -> int:
+        if not prefix:
+            raise ValueError("a prefix is needed: this never empties the whole bucket")
+        gone = [key for key in self._objects if key.startswith(prefix)]
+        for key in gone:
+            del self._objects[key]
+        return len(gone)
 
     def keys(self) -> list[str]:
         return sorted(self._objects)

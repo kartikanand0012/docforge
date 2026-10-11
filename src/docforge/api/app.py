@@ -25,6 +25,7 @@ from docforge.api.auth import (
     NOT_ALLOWED,
     READ_METHODS,
     WORKSPACE_HEADER,
+    account_router,
     accounts_router,
     require,
     sessions_router,
@@ -238,6 +239,9 @@ def create_app(
     limiter = authenticator.limiter if authenticator else FailureLimiter(20, 300)
     if authenticator is not None:
         app.include_router(sessions_router(authenticator))
+        app.include_router(
+            account_router(authenticator, service.eraser.erase_quietly if service else None)
+        )
     if authenticator is not None and signup_enabled:
         # Off unless switched on: without it there is no such route (404).
         app.include_router(

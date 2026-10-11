@@ -42,6 +42,11 @@ class AnchorStore:
         self._store = store
         self._prefix = prefix
 
+    @property
+    def prefix(self) -> str:
+        """Every workspace's anchors are kept under `<prefix>/<tenant id>/`."""
+        return self._prefix
+
     def _latest_key(self, tenant_id: uuid.UUID) -> str:
         return f"{self._prefix}/{tenant_id}/latest.json"
 

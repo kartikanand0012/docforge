@@ -46,6 +46,7 @@ from docforge.db.models import (
 )
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
+from docforge.erasure import ANCHORS_PREFIX, Eraser, Erasure, lock_content
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, PipelineResult
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
@@ -352,6 +353,10 @@ class DocumentService:
         self._events = events
         self._anchors = anchors
         self._store = store
+        # Removes a deleted document's stored files, and a deleted workspace's.
+        self.eraser = Eraser(
+            sessions, store, anchors.prefix if anchors is not None else ANCHORS_PREFIX
+        )
         self._pipelines = pipelines  # one per document type
         self._enqueue = enqueue
         self._max_attempts = max_attempts
@@ -397,6 +402,8 @@ class DocumentService:
         key = original_key(tenant_id, sha256, fmt)
 
         with self._sessions.begin() as session:
+            # Not while these bytes' files are being erased (a document of them deleted).
+            lock_content(session, tenant_id, sha256)
             existing = self._by_hash(session, tenant_id, sha256)
             inserted: uuid.UUID | None = None
             if existing is None:
@@ -514,11 +521,18 @@ class DocumentService:
         with self._sessions.begin() as session:
             document = self._document(session, tenant_id, document_id, lock=True)
             refuse_if_claimed(session, document.id, reviewer_id, _now())
-            # The application cannot mark it itself: once marked it cannot see the row.
-            if not session.scalar(select(func.docforge_delete_document(document.id))):
+            # The application cannot mark it itself: once marked it cannot see the row. The
+            # function also records that its stored files are to be erased.
+            erasure_id = session.scalar(select(func.docforge_delete_document(document.id)))
+            if erasure_id is None:
                 raise DocumentNotFound(f"no document {document_id}")
             # No filename: this log can never be edited, and a filename may be personal data.
             self._audit(session, document, actor, "document.deleted")
+            erasure = Erasure(
+                erasure_id, "document", tenant_id, document.sha256, document.storage_key
+            )
+        # Its file and the PDFs made from it, once the deletion stands (best effort).
+        self.eraser.erase_quietly(erasure)
 
     # --- processing -------------------------------------------------------------------------
 
