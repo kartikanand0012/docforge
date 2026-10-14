@@ -1,0 +1,15 @@
+{
+  "key": "8ae799891f147359e50239866cfa9b48d80f7548cb905602bbf2aeb94937db75",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "invoice-v2",
+  "response": {
+    "text": "{\n  \"invoice_no\": \"NVM/26-27/04010|b2\",\n  \"invoice_date\": \"25/04/2026|b2\",\n  \"po_no\": \"PO-UMS-22010|b3\",\n  \"po_date\": \"19/04/2026|b4\",\n  \"place_of_supply\": \"Gujarat (24)|b5\",\n  \"seller\": {\n    \"name\": \"Navjivan Medical Agencies|b72\",\n    \"address\": \"3 Relief Road, Ahmedabad 380001|b73\",\n    \"gstin\": \"24AABFN7754K1Z0|b74\",\n    \"drug_licence_nos\": [\n      \"GJ-20B-208831|b75\",\n      \"GJ-21B-208832|b75\"\n    ]\n  },\n  \"buyer\": {\n    \"name\": \"Umiya Medical Store|b6\",\n    \"address\": \"9 Station Road, Surat 395003|b7\",\n    \"gstin\": \"24ACDPU8840L1Z3|b8\",\n    \"drug_licence_nos\": [\n      \"GJ-20-634519|b9\",\n      \"GJ-21-634520|b9\"\n    ]\n  },\n  \"lines\": [\n    {\n      \"product_name\": \"Omeprazole Capsules IP 20mg|b24\",\n      \"pack\": \"10x10|b28\",\n      \"hsn\": \"30049099|b23\",\n      \"batch_no\": \"XKZ91109|b25\",\n      \"mfg\": \"06/25|b27\",\n      \"expiry\": \"06/28|b26\",\n      \"qty\": \"50|b30\",\n      \"free_qty\": \"0|b31\",\n      \"mrp\": \"65.59|b29\",\n      \"ptr\": \"44.60|b32\",\n      \"discount_pct\": \"2|b33\",\n      \"taxable_value\": \"2185.40|b34\",\n      \"gst_rate\": \"12|b33\",\n      \"amount\": \"2447.64|b35\"\n    },\n    {\n      \"product_name\": \"Ibuprofen Tablets IP 400mg|b37\",\n      \"pack\": \"10x10|b41\",\n      \"hsn\": \"30049099|b36\",\n      \"batch_no\": \"JZN43739|b38\",\n      \"mfg\": \"06/25|b40\",\n      \"expiry\": \"06/28|b39\",\n      \"qty\": \"20|b43\",\n      \"free_qty\": \"0|b44\",\n      \"mrp\": \"28.89|b42\",\n      \"ptr\": \"19.65|b45\",\n      \"discount_pct\": \"2.5|b46\",\n      \"taxable_value\": \"383.18|b47\",\n      \"gst_rate\": \"12|b46\",\n      \"amount\": \"429.16|b48\"\n    },\n    {\n      \"product_name\": \"Vitamin C Tablets 500mg|b50\",\n      \"pack\": \"1x15|b54\",\n      \"hsn\": \"30045090|b49\",\n      \"batch_no\": \"MTQ471261|b51\",\n      \"mfg\": \"08/25|b53\",\n      \"expiry\": \"08/27|b52\",\n      \"qty\": \"50|b56\",\n      \"free_qty\": \"0|b57\",\n      \"mrp\": \"56.70|b55\",\n      \"ptr\": \"38.56|b58\",\n      \"discount_pct\": \"0|b59\",\n      \"taxable_value\": \"1928.00|b60\",\n      \"gst_rate\": \"18|b59\",\n      \"amount\": \"2275.04|b61\"\n    }\n  ],\n  \"totals\": {\n    \"taxable_value\": \"4496.58|b63\",\n    \"cgst\": \"327.63|b65\",\n    \"sgst\": \"327.63|b67\",\n    \"igst\": null,\n    \"round_off\": \"0.16|b68\",\n    \"grand_total\": \"5152.00|b70\"\n  }\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1431,
+    "output_tokens": 1214,
+    "thinking_tokens": null,
+    "latency_ms": 4138.1,
+    "served_model": null
+  }
+}

@@ -11,6 +11,7 @@ import pytest
 from docforge.extraction.pipeline import ExtractionError, ExtractionPipeline, InvoicePipeline
 from docforge.extraction.prompt import PROMPT_VERSION, SYSTEM_INSTRUCTION, build_prompt
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
+from docforge.extraction.wire import CELL_INSTRUCTION
 from docforge.parsing.base import BBox, Block, Page, ParsedDocument
 from fakes import ScriptedProvider
 
@@ -93,7 +94,7 @@ def test_a_page_request_holds_only_that_pages_blocks_and_says_which_page_it_is(
     assert first.system == second.system
     assert first.system.startswith(SYSTEM_INSTRUCTION)
     assert "one page" in first.system
-    assert first.prompt_version == f"{PROMPT_VERSION}+paged-1"
+    assert first.prompt_version == f"{PROMPT_VERSION}+paged-2"
 
 
 def test_the_result_records_that_the_paged_prompt_was_used(
@@ -103,7 +104,7 @@ def test_the_result_records_that_the_paged_prompt_was_used(
 
     result = InvoicePipeline(parser=None, provider=provider).extract(TWO_PAGES)  # type: ignore[arg-type]
 
-    assert result.prompt_version == f"{PROMPT_VERSION}+paged-1"
+    assert result.prompt_version == f"{PROMPT_VERSION}+paged-2"
 
 
 def test_a_single_page_document_is_sent_exactly_as_before(
@@ -116,7 +117,7 @@ def test_a_single_page_document_is_sent_exactly_as_before(
     result = InvoicePipeline(parser=None, provider=provider).extract(one_page)  # type: ignore[arg-type]
 
     (request,) = provider.requests
-    assert request.system == SYSTEM_INSTRUCTION
+    assert request.system == SYSTEM_INSTRUCTION + CELL_INSTRUCTION
     assert request.prompt == build_prompt(one_page)
     assert request.prompt_version == result.prompt_version == PROMPT_VERSION
 
@@ -179,7 +180,7 @@ def test_purchase_orders_are_paged_the_same_way(raw_order_from_label: RawFromLab
 
     assert result.extraction.po_no.raw == whole["po_no"]["text"]
     assert len(result.extraction.lines) == len(whole["lines"])
-    assert provider.requests[0].prompt_version == "purchase-order-v2+paged-1"
+    assert provider.requests[0].prompt_version == "purchase-order-v3+paged-2"
 
 
 def test_two_pages_that_give_different_values_for_one_field_send_the_document_to_review(

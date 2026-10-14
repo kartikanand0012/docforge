@@ -73,9 +73,9 @@ def test_the_run_records_which_prompt_and_schema_were_used(
 
     result = ExtractionPipeline(FakeParser(), provider, PURCHASE_ORDER_SPEC).run(PDF)
 
-    assert result.prompt_version == "purchase-order-v2"
+    assert result.prompt_version == "purchase-order-v3"
     assert result.schema_version == "purchase-order-2"
-    assert provider.requests[0].schema.__name__ == "RawPurchaseOrder"
+    assert provider.requests[0].schema.__name__ == "WireRawPurchaseOrder"
     assert "purchase order" in provider.requests[0].system.lower()
 
 

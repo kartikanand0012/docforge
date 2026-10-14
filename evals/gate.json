@@ -185,7 +185,7 @@
     "report": "invoice",
     "path": "prompt_version",
     "op": "==",
-    "value": "invoice-v1",
+    "value": "invoice-v2",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
@@ -451,7 +451,7 @@
     "report": "multipage",
     "path": "prompt_version",
     "op": "==",
-    "value": "invoice-v1",
+    "value": "invoice-v2",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
@@ -472,14 +472,14 @@
     "report": "trust",
     "path": "invoice_prompt_version",
     "op": "==",
-    "value": "invoice-v1",
+    "value": "invoice-v2",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
     "report": "trust",
     "path": "order_prompt_version",
     "op": "==",
-    "value": "purchase-order-v2",
+    "value": "purchase-order-v3",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
@@ -500,7 +500,7 @@
     "report": "scans",
     "path": "prompt_version",
     "op": "==",
-    "value": "invoice-v1",
+    "value": "invoice-v2",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
@@ -521,7 +521,7 @@
     "report": "coa",
     "path": "prompt_version",
     "op": "==",
-    "value": "coa-v1",
+    "value": "coa-v2",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
