@@ -483,6 +483,48 @@
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
+    "report": "einvoice",
+    "path": "provider",
+    "op": "==",
+    "value": "gemini",
+    "why": "whose replies these are: another provider is gated under its own name"
+  },
+  {
+    "report": "einvoice",
+    "path": "model",
+    "op": "==",
+    "value": "gemini-3.5-flash-lite",
+    "why": "a model change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "einvoice",
+    "path": "invoice_prompt_version",
+    "op": "==",
+    "value": "invoice-v1",
+    "why": "a prompt change is a deliberate change: update this pin with it"
+  },
+  {
+    "report": "einvoice",
+    "path": "summary.forged_caught",
+    "op": ">=",
+    "value": 40,
+    "why": "every copied or altered e-invoice QR caught"
+  },
+  {
+    "report": "einvoice",
+    "path": "summary.harmless_unchanged",
+    "op": ">=",
+    "value": 40,
+    "why": "a UPI QR or a key we do not hold changes no decision"
+  },
+  {
+    "report": "einvoice",
+    "path": "summary.genuine_unchanged",
+    "op": ">=",
+    "value": 20,
+    "why": "a genuine QR changes no decision on correctly read invoices"
+  },
+  {
     "report": "scans",
     "path": "provider",
     "op": "==",

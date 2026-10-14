@@ -1,0 +1,1087 @@
+{
+  "provider": "gemini",
+  "model": "gemini-3.5-flash-lite",
+  "invoice_prompt_version": "invoice-v1",
+  "summary": {
+    "pairs": 20,
+    "genuine_unchanged": 20,
+    "forged_cases": 40,
+    "forged_caught": 40,
+    "harmless_cases": 40,
+    "harmless_unchanged": 40
+  },
+  "cases": [
+    {
+      "pair_id": "pair_001",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_001",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_001",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_001",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_001",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_002",
+      "kind": "genuine",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_002",
+      "kind": "copied",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_002",
+      "kind": "altered",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_002",
+      "kind": "unknown_key",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_002",
+      "kind": "upi",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_003",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_003",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_003",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_003",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_003",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_004",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_004",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_004",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_004",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_004",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_005",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_005",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_005",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_005",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_005",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_006",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_006",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_006",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_006",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_006",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_007",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_007",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_007",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_007",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_007",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_008",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_008",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_008",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_008",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_008",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_009",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_009",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_009",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_009",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_009",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_010",
+      "kind": "genuine",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_010",
+      "kind": "copied",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_010",
+      "kind": "altered",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_010",
+      "kind": "unknown_key",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_010",
+      "kind": "upi",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_011",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_011",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_011",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_011",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_011",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_012",
+      "kind": "genuine",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_012",
+      "kind": "copied",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_012",
+      "kind": "altered",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_012",
+      "kind": "unknown_key",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_012",
+      "kind": "upi",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_013",
+      "kind": "genuine",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_013",
+      "kind": "copied",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_013",
+      "kind": "altered",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_013",
+      "kind": "unknown_key",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_013",
+      "kind": "upi",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_014",
+      "kind": "genuine",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_014",
+      "kind": "copied",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_014",
+      "kind": "altered",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_014",
+      "kind": "unknown_key",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_014",
+      "kind": "upi",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_015",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_015",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_015",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_015",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_015",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_016",
+      "kind": "genuine",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_016",
+      "kind": "copied",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_016",
+      "kind": "altered",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_016",
+      "kind": "unknown_key",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_016",
+      "kind": "upi",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_017",
+      "kind": "genuine",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_017",
+      "kind": "copied",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_017",
+      "kind": "altered",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_017",
+      "kind": "unknown_key",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_017",
+      "kind": "upi",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_018",
+      "kind": "genuine",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_018",
+      "kind": "copied",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_018",
+      "kind": "altered",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_018",
+      "kind": "unknown_key",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_018",
+      "kind": "upi",
+      "decision_without_qr": "review",
+      "decision": "review",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_019",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_019",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_019",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_019",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_019",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_020",
+      "kind": "genuine",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_020",
+      "kind": "copied",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.seller_gstin (error)",
+        "einvoice.buyer_gstin (error)",
+        "einvoice.invoice_no (error)",
+        "einvoice.invoice_date (error)",
+        "einvoice.grand_total (error)",
+        "einvoice.line_count (warning)",
+        "einvoice.irn_printed (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_020",
+      "kind": "altered",
+      "decision_without_qr": "accept",
+      "decision": "review",
+      "findings": [
+        "einvoice.signature (error)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_020",
+      "kind": "unknown_key",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [
+        "einvoice.signature (warning)"
+      ],
+      "expected_met": true
+    },
+    {
+      "pair_id": "pair_020",
+      "kind": "upi",
+      "decision_without_qr": "accept",
+      "decision": "accept",
+      "findings": [],
+      "expected_met": true
+    }
+  ]
+}

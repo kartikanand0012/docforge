@@ -19,6 +19,7 @@ from docforge.evals.answers import (
     run_answer_eval,
 )
 from docforge.evals.coa import format_coa_report, run_coa_eval
+from docforge.evals.einvoice import format_einvoice_report, run_einvoice_eval
 from docforge.evals.run import format_report, record_pipeline, replay_pipeline, run_eval
 from docforge.evals.scans import format_scan_report, run_scan_eval
 from docforge.evals.scoring import DocumentScore
@@ -72,6 +73,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=(
             "extraction",
             "trust",
+            "einvoice",
             "scans",
             "coa",
             "search",
@@ -120,6 +122,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     names = {
         "extraction": "invoice",
         "trust": "trust",
+        "einvoice": "einvoice",
         "scans": "scans",
         "coa": "coa",
         "search": "search",
@@ -147,6 +150,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.suite == "coa":
         secret = settings.gemini_api_key if args.mode == "record" else None
         return _coa(args, out, secret.get_secret_value() if secret is not None else None)
+    if args.suite == "einvoice":
+        if args.mode == "record":
+            parser.error("the einvoice suite replays the trust suite's recordings; record those")
+        return _einvoice(args, out)
     if args.suite == "trust":
         secret = settings.gemini_api_key if args.mode == "record" else None
         key = secret.get_secret_value() if secret is not None else None
@@ -320,6 +327,21 @@ def _trust(args: argparse.Namespace, out: Path, api_key: str | None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     _write(out, _stamped(report, args.provider))
     print(format_trust_report(report))
+    print(f"Report written to {out}")
+    return 0
+
+
+def _einvoice(args: argparse.Namespace, out: Path) -> int:
+    invoices, _ = trust_pipelines(args.recordings, args.model, provider=args.llm, live=False)
+    try:
+        report = run_einvoice_eval(args.fixtures, invoices)
+    except (ParseError, LLMError) as error:
+        print(f"Eval failed: {error}", file=sys.stderr)
+        print("Recordings are missing or stale; run `make eval-record`.", file=sys.stderr)
+        return 1
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _write(out, _stamped(report, args.provider))
+    print(format_einvoice_report(report))
     print(f"Report written to {out}")
     return 0
 
