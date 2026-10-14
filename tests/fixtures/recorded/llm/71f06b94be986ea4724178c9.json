@@ -1,0 +1,15 @@
+{
+  "key": "71f06b94be986ea4724178c9a89b25df9e85cda8d1131cc7c0e683a84bd20921",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "purchase-order-v3",
+  "response": {
+    "text": "{\"po_no\": \"PO-SWC-50006|b2\", \"po_date\": \"20/06/2026|b47\", \"buyer\": {\"name\": \"Sanjeevani Wellness Chemist|b3\", \"address\": \"112 Linking Road, Mumbai 400050|b4\", \"gstin\": \"27AAVFS2087J1ZF|b4\", \"drug_licence_nos\": [\"MH-20-623377|b4\", \"MH-21-623378|b4\"]}, \"supplier_name\": \"Kaveri Lifecare Pharma|b5\", \"supplier_gstin\": \"29AAGCK3390P1ZS|b6\", \"lines\": [{\"product_name\": \"Atorvastatin Tablets IP 10mg|b11\", \"pack\": \"10x10|b13\", \"hsn\": null, \"qty\": \"100|b12\", \"scheme\": \"10+1|b13\", \"rate\": \"69.20|b14\", \"amount\": null}, {\"product_name\": \"Insulin Injection IP 40IU/ml|b15\", \"pack\": \"1x10ml|b17\", \"hsn\": null, \"qty\": \"100|b16\", \"scheme\": \"10+1|b17\", \"rate\": \"125.49|b18\", \"amount\": null}, {\"product_name\": \"Cetirizine Tablets IP 10mg|b19\", \"pack\": \"10x10|b21\", \"hsn\": null, \"qty\": \"20|b20\", \"scheme\": null, \"rate\": \"15.31|b22\", \"amount\": null}, {\"product_name\": \"Azithromycin Tablets IP 500mg|b23\", \"pack\": \"1x3|b25\", \"hsn\": null, \"qty\": \"24|b24\", \"scheme\": null, \"rate\": \"85.39|b26\", \"amount\": null}, {\"product_name\": \"Vitamin C Tablets 500mg|b27\", \"pack\": \"1x15|b29\", \"hsn\": null, \"qty\": \"200|b28\", \"scheme\": null, \"rate\": \"36.89|b30\", \"amount\": null}, {\"product_name\": \"Prednisolone Tablets IP 5mg|b31\", \"pack\": \"10x10|b33\", \"hsn\": null, \"qty\": \"200|b32\", \"scheme\": \"12+1|b33\", \"rate\": \"12.90|b34\", \"amount\": null}, {\"product_name\": \"Amlodipine Tablets IP 5mg|b35\", \"pack\": \"10x10|b37\", \"hsn\": null, \"qty\": \"24|b36\", \"scheme\": null, \"rate\": \"29.94|b38\", \"amount\": null}, {\"product_name\": \"Amoxicillin Capsules IP 250mg|b39\", \"pack\": \"10x10|b41\", \"hsn\": null, \"qty\": \"20|b40\", \"scheme\": null, \"rate\": \"57.62|b42\", \"amount\": null}, {\"product_name\": \"Metformin Tablets IP 500mg|b43\", \"pack\": \"10x15|b45\", \"hsn\": null, \"qty\": \"100|b44\", \"scheme\": \"12+1|b45\", \"rate\": \"33.61|b46\", \"amount\": null}], \"total\": null}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1196,
+    "output_tokens": 902,
+    "thinking_tokens": null,
+    "latency_ms": 2768.0,
+    "served_model": null
+  }
+}

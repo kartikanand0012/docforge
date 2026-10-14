@@ -26,7 +26,7 @@ its bar and block ids. A field that is not printed is null.
 """
 
 # Repeated on each field of the schema, where the model looks when it writes the field.
-CELL_FORMAT = 'Written as "<value as printed>|<block ids>", or null.'
+CELL_FORMAT = 'As "value|block ids".'
 
 _CELL = re.compile(r"(.*)\|\s*((?:b\d+[\s,]*)*)", re.DOTALL)  # the last bar separates
 _BLOCK_ID = re.compile(r"b\d+")

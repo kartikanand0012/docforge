@@ -78,8 +78,8 @@
     },
     "citations": {
       "checked": 2472,
-      "correct": 2464,
-      "accuracy": 0.9968
+      "correct": 2459,
+      "accuracy": 0.9947
     },
     "null_expected": {
       "total": 26,
@@ -92,8 +92,8 @@
     "output_tokens": 46493,
     "thinking_tokens": 0,
     "pages": 20,
-    "latency_ms_p50": 5192.5,
-    "latency_ms_p95": 6734.0
+    "latency_ms_p50": 5089.0,
+    "latency_ms_p95": 6759.7
   },
   "documents": [
     {
@@ -4368,7 +4368,7 @@
           "expected": "13128.64",
           "actual": "13128.64",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[6].hsn",
@@ -12480,7 +12480,7 @@
           "expected": "-0.08",
           "actual": "-0.08",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "totals.grand_total",
@@ -15548,7 +15548,7 @@
           "expected": "4503.40",
           "actual": "4503.40",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[2].hsn",
@@ -15660,7 +15660,7 @@
           "expected": "1405.99",
           "actual": "1405.99",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[3].hsn",
@@ -15772,7 +15772,7 @@
           "expected": "142.46",
           "actual": "142.46",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[4].hsn",
@@ -15884,7 +15884,7 @@
           "expected": "898.12",
           "actual": "898.12",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[5].hsn",
@@ -15996,7 +15996,7 @@
           "expected": "1881.60",
           "actual": "1881.60",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[6].hsn",
@@ -16108,7 +16108,7 @@
           "expected": "507.01",
           "actual": "507.01",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[7].hsn",
@@ -16220,7 +16220,7 @@
           "expected": "2433.10",
           "actual": "2433.10",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "totals.taxable_value",
@@ -17341,7 +17341,7 @@
           "expected": "26784.00",
           "actual": "26784.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "totals.igst",
@@ -18262,7 +18262,7 @@
           "expected": "12738.00",
           "actual": "12738.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[6].amount",
