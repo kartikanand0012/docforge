@@ -7,7 +7,10 @@ seller's and buyer's GSTIN, the document's number, type and date, its total, how
 has, its main HSN code and its IRN.
 
 Nothing in a QR is believed before its signature verifies with a key we trust; the text is
-from an untrusted page, so every part has a size limit and only RS256 is accepted.
+from an untrusted page, so every part has a size limit and only RS256 is accepted. A verified
+QR proves what the IRP registered, not that it belongs to the page it is printed on: a genuine
+QR copied onto a forged invoice verifies, so its fields must be compared with the page's.
+A key not yet confirmed by a real invoice's QR (`key_confirmed`) is weaker evidence.
 """
 
 import base64
@@ -22,12 +25,14 @@ from typing import Any, Literal
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from docforge.einvoice.keys import KeyRing, TrustedKey
 
 MAX_QR_CHARS = 4096  # a signed QR is about 900
 MAX_DATA_CHARS = 2048
+MAX_TOTAL = Decimal("1e12")  # INR; far above any invoice
+MAX_ISSUER_CHARS = 32
 
 Status = Literal["verified", "bad_signature", "unknown_key", "malformed", "not_einvoice"]
 DocType = Literal["INV", "CRN", "DBN"]
@@ -35,6 +40,8 @@ DocType = Literal["INV", "CRN", "DBN"]
 _SEGMENT = re.compile(r"[A-Za-z0-9_-]+")
 _GSTIN = re.compile(r"[0-9A-Z]{15}")
 _IRN = re.compile(r"[0-9a-fA-F]{64}")
+_DOC_NO = re.compile(r"[A-Za-z0-9/-]{1,16}")  # CGST Rule 46: at most 16, letters, digits, / and -
+_DOC_DATE = re.compile(r"\d{2}/\d{2}/\d{4}")
 
 
 class SignedInvoice(BaseModel):
@@ -61,7 +68,12 @@ class Verification:
     invoice: SignedInvoice | None = None  # only when verified
     key: TrustedKey | None = None  # the key that verified it
     kid: str | None = None  # as the QR names it
-    issuer: str | None = None
+    issuer: str | None = None  # only when verified
+
+    @property
+    def key_confirmed(self) -> bool:
+        """Verified with a key that a real invoice's QR has been seen to verify with."""
+        return self.key is not None and self.key.confirmed_by_real_qr
 
 
 class _Malformed(ValueError):
@@ -84,11 +96,15 @@ def _text(data: dict[str, Any], field: str, pattern: re.Pattern[str] | None = No
     return value.strip()
 
 
-def _number(data: dict[str, Any], field: str) -> int | float:
+def _number(data: dict[str, Any], field: str) -> int | Decimal:
     value = data.get(field)
-    if isinstance(value, bool) or not isinstance(value, int | float):
+    if isinstance(value, bool) or not isinstance(value, int | Decimal):
         raise _Malformed(f"{field} is not a number")
     return value
+
+
+def _refuse_constant(name: str) -> None:
+    raise _Malformed(f"its data holds {name}, not a number")
 
 
 def _optional(value: Any, limit: int) -> str | None:
@@ -101,7 +117,10 @@ def _invoice(raw: Any) -> SignedInvoice:
     if not isinstance(raw, str) or len(raw) > MAX_DATA_CHARS:
         raise _Malformed("its data is missing or too long")
     try:
-        data = json.loads(raw)
+        # Amounts as printed (Decimal, never float); NaN and Infinity refused.
+        data = json.loads(raw, parse_float=Decimal, parse_constant=_refuse_constant)
+    except _Malformed:
+        raise
     except ValueError as error:
         raise _Malformed("its data is not JSON") from error
     if not isinstance(data, dict):
@@ -113,19 +132,22 @@ def _invoice(raw: Any) -> SignedInvoice:
     if doc_type not in ("INV", "CRN", "DBN"):
         raise _Malformed("DocTyp is not INV, CRN or DBN")
     try:
-        doc_date = datetime.strptime(_text(data, "DocDt"), "%d/%m/%Y").date()
+        doc_date = datetime.strptime(_text(data, "DocDt", _DOC_DATE), "%d/%m/%Y").date()
     except ValueError as error:
         raise _Malformed("DocDt is not dd/mm/yyyy") from error
+    total = Decimal(_number(data, "TotInvVal"))
+    if not total.is_finite() or not Decimal(0) <= total < MAX_TOTAL:
+        raise _Malformed("TotInvVal is not an amount")
     item_count = _number(data, "ItemCnt")
     if not isinstance(item_count, int) or item_count < 0:
         raise _Malformed("ItemCnt is not a count")
     return SignedInvoice(
         seller_gstin=_text(data, "SellerGstin", _GSTIN),
         buyer_gstin=buyer,
-        doc_no=_text(data, "DocNo"),
+        doc_no=_text(data, "DocNo", _DOC_NO),
         doc_type=doc_type,
         doc_date=doc_date,
-        total=Decimal(str(_number(data, "TotInvVal"))),
+        total=total,
         item_count=item_count,
         main_hsn=_optional(data.get("MainHsnCode"), 16),
         irn=_text(data, "Irn", _IRN),
@@ -153,7 +175,8 @@ def verify(text: str, keyring: KeyRing) -> Verification:
         signature = base64.urlsafe_b64decode(parts[2] + "=" * (-len(parts[2]) % 4))
     except (_Malformed, binascii.Error, ValueError) as error:
         return Verification("malformed", str(error), kid=kid)
-    issuer = payload.get("iss") if isinstance(payload.get("iss"), str) else None
+    claimed = payload.get("iss")
+    issuer = claimed[:MAX_ISSUER_CHARS] if isinstance(claimed, str) else None
     candidates, held = keyring.candidates(kid)
     signed = f"{parts[0]}.{parts[1]}".encode()
     for key in candidates:
@@ -163,12 +186,13 @@ def verify(text: str, keyring: KeyRing) -> Verification:
             continue
         try:
             invoice = _invoice(payload.get("data"))
-        except _Malformed as error:
+        except (_Malformed, ValidationError) as error:
             reason = f"signed, but {error}"
-            return Verification("malformed", reason, key=key, kid=kid, issuer=issuer)
+            return Verification("malformed", reason, key=key, kid=kid)
         return Verification("verified", f"signed by {key.irp}", invoice, key, kid, issuer)
     if held:
         reason = "the signature does not match: the QR was altered or not issued by this IRP"
-        return Verification("bad_signature", reason, kid=kid, issuer=issuer)
-    reason = "signed with a key DocForge does not hold"
-    return Verification("unknown_key", reason, kid=kid, issuer=issuer)
+        return Verification("bad_signature", reason, kid=kid)
+    # Bare keys were tried and failed too: altered, or signed by an IRP whose key we lack.
+    reason = "signed with a key DocForge does not hold, or altered"
+    return Verification("unknown_key", reason, kid=kid)
