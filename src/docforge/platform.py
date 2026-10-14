@@ -84,6 +84,15 @@ def _cost(usages: list[tuple[str, str, int, int, int]], prices: Prices) -> float
     return document_cost(usages, prices) if usages else (0.0 if prices else None)
 
 
+def _rounded(cost: float | None) -> float | None:
+    return None if cost is None else round(cost, 6)
+
+
+def _per(cost: float | None, count: int) -> float | None:
+    """A cost per reading or page; None when unpriced or nothing was read."""
+    return None if cost is None or count == 0 else round(cost / count, 6)
+
+
 class PlatformService:
     def __init__(
         self,
@@ -91,9 +100,11 @@ class PlatformService:
         prices: Prices | None = None,
         *,
         cache_seconds: float = CACHE_SECONDS,
+        fixed_monthly_usd: float | None = None,
     ) -> None:
         self._sessions = sessions
         self._prices = prices or {}
+        self._fixed_monthly_usd = fixed_monthly_usd
         # The overview reads every workspace: kept for a short while, per page, in this
         # process, so a dashboard left open does not read them all on every refresh.
         self._cache_seconds = cache_seconds
@@ -133,9 +144,12 @@ class PlatformService:
                 "questions",
             ))).one()  # fmt: skip
             usage = session.execute(select(func.docforge_platform_usage().table_valued(
-                "tenant_id", "provider", "model", "input_tokens", "output_tokens",
+                "tenant_id", "kind", "provider", "model", "input_tokens", "output_tokens",
                 "thinking_tokens",
             ))).all()  # fmt: skip
+            readings, pages_read = session.execute(
+                select(func.docforge_platform_reading_volume().table_valued("readings", "pages"))
+            ).one()
             accounts, signups = session.execute(
                 select(
                     func.docforge_platform_accounts().table_valued(
@@ -144,8 +158,10 @@ class PlatformService:
                 )
             ).one()
         spent: dict[uuid.UUID, list[tuple[str, str, int, int, int]]] = defaultdict(list)
-        for tenant, provider, model, i, o, t in usage:
+        by_kind: dict[str, list[tuple[str, str, int, int, int]]] = defaultdict(list)
+        for tenant, kind, provider, model, i, o, t in usage:
             spent[tenant].append((provider, model, int(i), int(o), int(t)))
+            by_kind[kind].append((provider, model, int(i), int(o), int(t)))
         workspaces = [
             Workspace(
                 tenant_id=row.tenant_id,
@@ -166,6 +182,9 @@ class PlatformService:
         ]
         everything = [usage for usages in spent.values() for usage in usages]
         cost = _cost(everything, self._prices)
+        reading = _cost(by_kind["reading"], self._prices)
+        answering = _cost(by_kind["question"], self._prices)
+        readings, pages_read = int(readings), int(pages_read)
         summed = {
             "workspaces": int(totals.workspaces),
             "accounts": int(accounts),
@@ -176,6 +195,13 @@ class PlatformService:
             "model_cost_usd": None if cost is None else round(cost, 6),
             "documents_last_7_days": int(totals.documents_last_7_days),
             "signups_last_7_days": int(signups),
+            "reading_cost_usd": _rounded(reading),
+            "question_cost_usd": _rounded(answering),
+            "readings": readings,
+            "pages_read": pages_read,
+            "cost_per_reading_usd": _per(reading, readings),
+            "cost_per_page_usd": _per(reading, pages_read),
+            "fixed_monthly_usd": self._fixed_monthly_usd,
         }
         return Overview(summed, workspaces, offset + limit if len(rows) > limit else None)
 

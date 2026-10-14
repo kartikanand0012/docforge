@@ -1,0 +1,18 @@
+[
+  {
+    "report": "invoice",
+    "path": "usage.input_tokens",
+    "value": 44327,
+    "why": "V2 0.1 compact replies: the instruction that keeps the model on the compact form adds ~125 input tokens a document, for 55% fewer output tokens (each 8x the price): cost per invoice about halves",
+    "approved_by": "owner",
+    "approved_on": "2026-10-14"
+  },
+  {
+    "report": "scans",
+    "path": "variants.scan_poor.summary.fields.accuracy",
+    "value": 0.9802,
+    "why": "V2 0.1 compact replies: one more OCR misread on poor scans (0.9806 -> 0.9802 of 2,472 values, noise-level); silent errors after order matching stay 0",
+    "approved_by": "owner",
+    "approved_on": "2026-10-14"
+  }
+]

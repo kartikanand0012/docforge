@@ -184,4 +184,4 @@ def test_long_invoices_are_read_a_page_at_a_time_and_stay_at_the_measured_accura
     assert report.usage.model_calls == report.usage.pages == 8
     assert report.summary.documents_fully_correct >= 2
     assert report.summary.extra_lines == 0
-    assert [d.extracted_lines for d in report.documents] == [45, 80, 119]
+    assert [d.extracted_lines for d in report.documents] == [45, 80, 120]

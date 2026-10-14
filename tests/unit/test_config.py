@@ -409,3 +409,14 @@ def test_the_platform_login_must_be_its_own_and_is_never_echoed(url: str) -> Non
 def test_the_platform_login_must_be_postgres_psycopg() -> None:
     with pytest.raises(ValueError, match="postgresql\\+psycopg"):
         make_settings(platform_database_url="mysql://u:p@h/d")
+
+
+def test_the_fixed_monthly_cost_is_read_and_never_negative(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PLATFORM_FIXED_MONTHLY_USD", "45.5")
+    assert Settings(_env_file=None).platform_fixed_monthly_usd == 45.5
+
+    monkeypatch.setenv("PLATFORM_FIXED_MONTHLY_USD", "-1")
+    with pytest.raises(ValueError, match="platform_fixed_monthly_usd"):
+        Settings(_env_file=None)

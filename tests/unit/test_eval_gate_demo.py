@@ -39,7 +39,7 @@ def test_each_variant_is_its_own_prompt_version() -> None:
 def test_the_gate_lets_a_shortened_prompt_that_measures_as_well_through(tmp_path: Path) -> None:
     # Every quality floor holds; only the prompt pin asks for the change to be declared.
     failed = gate_with(replay("shortened"), tmp_path)
-    assert [r.label for r in failed] == ["invoice prompt_version == invoice-v1"]
+    assert [r.label for r in failed] == ["invoice prompt_version == invoice-v2"]
 
 
 def test_the_gate_blocks_a_prompt_that_tidies_values(tmp_path: Path) -> None:

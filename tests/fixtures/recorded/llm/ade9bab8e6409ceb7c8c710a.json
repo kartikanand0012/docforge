@@ -1,0 +1,15 @@
+{
+  "key": "ade9bab8e6409ceb7c8c710a34875bb683b66fc0128bb1b5658bb46e40211aaf",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "coa-v2",
+  "response": {
+    "text": "{\n  \"coa_no\": \"COA/KTP/26/284|b3\",\n  \"manufacturer\": \"Kaveri Therapeutics Pvt. Ltd.|b2\",\n  \"product_name\": \"Omeprazole Capsules IP 20mg|b4\",\n  \"batch_no\": \"VJV3873|b5\",\n  \"mfg\": \"01/26|b6\",\n  \"expiry\": \"01/29|b7\",\n  \"analysis_date\": \"06-Jan-2026|b8\",\n  \"tests\": [\n    {\n      \"name\": \"Description|b12\",\n      \"specification\": \"Complies|b13\",\n      \"result\": \"Complies|b14\"\n    },\n    {\n      \"name\": \"Identification|b15\",\n      \"specification\": \"Positive|b16\",\n      \"result\": \"Positive|b17\"\n    },\n    {\n      \"name\": \"Dissolution|b18\",\n      \"specification\": \"NLT 80 %|b19\",\n      \"result\": \"93 %|b20\"\n    },\n    {\n      \"name\": \"Assay|b21\",\n      \"specification\": \"95.0 - 105.0 %|b22\",\n      \"result\": \"102.1 %|b23\"\n    },\n    {\n      \"name\": \"Related substances|b24\",\n      \"specification\": \"NMT 1.0 %|b25\",\n      \"result\": \"0.15 %|b26\"\n    },\n    {\n      \"name\": \"Water|b27\",\n      \"specification\": \"NMT 5.0 % w/w|b28\",\n      \"result\": \"1.2 % w/w|b29\"\n    }\n  ],\n  \"conclusion\": \"The batch complies with the specification.|b30\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 729,
+    "output_tokens": 466,
+    "thinking_tokens": null,
+    "latency_ms": 2303.2,
+    "served_model": null
+  }
+}

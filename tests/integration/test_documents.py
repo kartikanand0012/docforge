@@ -236,7 +236,7 @@ def test_processing_records_the_extraction_and_how_it_was_made(
     version = harness.version(ingested.version.id)
     assert (version.status, version.attempts, version.error) == ("succeeded", 1, None)
     assert (version.parser_version, version.model_id) == ("fake 0", "fake-1")
-    assert (version.schema_version, version.prompt_version) == ("invoice-1", "invoice-v1")
+    assert (version.schema_version, version.prompt_version) == ("invoice-1", "invoice-v2")
     assert version.started_at is not None
     assert version.finished_at is not None
     document = harness.document(ingested.document.id)
