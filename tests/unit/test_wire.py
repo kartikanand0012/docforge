@@ -107,6 +107,8 @@ def test_the_wire_model_is_made_once_per_raw_model() -> None:
         ("10|1 scheme|b7", "10|1 scheme", ["b7"]),  # only the last bar separates
         ("Dolo 650|", "Dolo 650", []),  # a value without a citation, as the old form allowed
         ("|b3", None, []),  # nothing printed before the bar is no value
+        ("", None, []),  # some models write "" for a field that is not printed
+        ("  ", None, []),
         (None, None, []),
     ],
 )
@@ -213,3 +215,32 @@ def test_the_strict_providers_accept_the_wire_schema(raw_model: Any) -> None:
 
     assert "block_ids" not in json.dumps(strict)
     assert strict["additionalProperties"] is False
+
+
+def test_a_long_hostile_cell_is_read_in_linear_time() -> None:
+    import time
+
+    started = time.perf_counter()
+    for cell in ["|b1 " * 30_000, "x|" + " " * 60_000, "| " * 60_000]:
+        try:
+            coa_with(cell)
+        except ValidationError:
+            pass
+    assert time.perf_counter() - started < 1
+
+
+def test_a_value_without_block_ids_is_kept_and_sent_to_a_person(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = raw_invoice_from_label(LABEL)
+    for field in fields(raw):
+        field["block_ids"] = []  # the fake parser's blocks are not the label's; none cite
+    wire = as_wire(raw)
+
+    result = InvoicePipeline(FakeParser(), ScriptedProvider([json.dumps(wire)])).run(PDF)
+
+    assert result.extraction.invoice_no.value == LABEL["invoice"]["invoice_no"]
+    assert result.assessment.decision == "review"
+    assert any(
+        "no source cited" in reason or "not found" in reason for reason in result.assessment.reasons
+    )

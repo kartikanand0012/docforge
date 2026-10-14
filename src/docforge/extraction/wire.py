@@ -14,6 +14,7 @@ from functools import cache
 from typing import Annotated, Any, get_args, get_origin
 
 from pydantic import BaseModel, BeforeValidator, Field, WithJsonSchema, create_model
+from pydantic.fields import FieldInfo
 
 from docforge.extraction.schema import RawField
 
@@ -37,8 +38,8 @@ def _not_printed() -> RawField:
 
 def _read_cell(value: Any) -> Any:
     """A cell to the `RawField` it stands for. A field in the old form is passed through."""
-    if value is None:
-        return _not_printed()
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return _not_printed()  # models sometimes write "" for a field that is not printed
     if not isinstance(value, str):
         return value  # the old form, {text, block_ids}: validated as a RawField
     match = _CELL.fullmatch(value)
@@ -47,6 +48,8 @@ def _read_cell(value: Any) -> Any:
     text = match[1].strip()
     if not text:
         return _not_printed()
+    # A value without ids ("Dolo 650|") is kept, as the old form allowed: the trust layer
+    # finds no citation and sends the document to a person, so nothing is accepted unseen.
     return RawField(text=text, block_ids=_BLOCK_ID.findall(match[2]))
 
 
@@ -74,9 +77,9 @@ def _holds_cells(annotation: Any) -> bool:
     )
 
 
-def _description(info: Any) -> str | None:
+def _description(info: FieldInfo) -> str | None:
     if not _holds_cells(info.annotation):
-        return info.description  # type: ignore[no-any-return]
+        return info.description
     return f"{info.description} {CELL_FORMAT}" if info.description else CELL_FORMAT
 
 
