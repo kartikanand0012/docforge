@@ -4,6 +4,7 @@ import io
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode.qr import QrCodeWidget
 from reportlab.graphics.shapes import Drawing
@@ -11,7 +12,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 
 from docforge.einvoice.scan import QrScan, QrScanner, isolated_scanner, looks_signed
-from docforge.parsing.base import DocumentTooLarge, ParserLimitExceeded
+from docforge.parsing.base import ParserLimitExceeded
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "einvoice"
 JWS = (FIXTURES / "nic_sandbox_qr.txt").read_text().strip()
@@ -75,9 +76,41 @@ def test_a_small_signed_qr_is_read_at_a_higher_resolution() -> None:
     assert [found.text for found in scan.found] == [JWS]
 
 
-def test_a_page_too_large_to_render_is_refused() -> None:
-    with pytest.raises(DocumentTooLarge):
-        QrScanner().parse(pdf([[JWS]], page_size=(14400, 14400)))
+def test_a_page_too_large_to_render_is_skipped_not_a_failure() -> None:
+    scan = QrScanner().parse(pdf([[JWS]], page_size=(14400, 14400)))
+
+    assert scan.found == ()
+    assert scan.pages_scanned == 1
+
+
+def test_a_page_too_large_only_at_the_higher_resolution_keeps_what_was_read() -> None:
+    # 1800 x 1800 pt: 56 MP at 300 dpi (under the cap), 127 MP at 450 dpi (over it).
+    scan = QrScanner().parse(pdf([[UPI]], page_size=(1800, 1800)))
+
+    assert [found.text for found in scan.found] == [UPI]
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"found": [{"page": 1, "text": "x"}] * 65, "pages_scanned": 1, "decoder": "z"},
+        {"found": [{"page": 1, "text": "x" * 4097}], "pages_scanned": 1, "decoder": "z"},
+        {"found": [{"page": 0, "text": "x"}], "pages_scanned": 1, "decoder": "z"},
+        {"found": [], "pages_scanned": 11, "decoder": "z"},
+        {"found": [], "pages_scanned": 1, "decoder": "z" * 65},
+    ],
+)
+def test_a_reply_out_of_bounds_from_the_child_is_refused(reply: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        QrScan.model_validate(reply)
+
+
+def test_the_scanner_has_limits_of_its_own_by_default() -> None:
+    scanner = isolated_scanner()
+
+    assert scanner.timeout_seconds == 60
+    assert scanner.max_rss_bytes == 2048 * 1024 * 1024
+    assert scanner.max_reply_bytes == 1024 * 1024
 
 
 def test_only_a_signed_looking_text_stops_the_search() -> None:
