@@ -1,7 +1,7 @@
 {
   "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
-  "invoice_prompt_version": "invoice-v1",
+  "invoice_prompt_version": "invoice-v2",
   "summary": {
     "pairs": 20,
     "genuine_unchanged": 20,
@@ -68,8 +68,8 @@
     {
       "pair_id": "pair_002",
       "kind": "genuine",
-      "decision_without_qr": "review",
-      "decision": "review",
+      "decision_without_qr": "accept",
+      "decision": "accept",
       "findings": [
         "einvoice.irn_printed (warning)"
       ],
@@ -78,7 +78,7 @@
     {
       "pair_id": "pair_002",
       "kind": "copied",
-      "decision_without_qr": "review",
+      "decision_without_qr": "accept",
       "decision": "review",
       "findings": [
         "einvoice.seller_gstin (error)",
@@ -94,7 +94,7 @@
     {
       "pair_id": "pair_002",
       "kind": "altered",
-      "decision_without_qr": "review",
+      "decision_without_qr": "accept",
       "decision": "review",
       "findings": [
         "einvoice.signature (error)"
@@ -104,8 +104,8 @@
     {
       "pair_id": "pair_002",
       "kind": "unknown_key",
-      "decision_without_qr": "review",
-      "decision": "review",
+      "decision_without_qr": "accept",
+      "decision": "accept",
       "findings": [
         "einvoice.signature (warning)"
       ],
@@ -114,8 +114,8 @@
     {
       "pair_id": "pair_002",
       "kind": "upi",
-      "decision_without_qr": "review",
-      "decision": "review",
+      "decision_without_qr": "accept",
+      "decision": "accept",
       "findings": [],
       "expected_met": true
     },
@@ -870,8 +870,8 @@
     {
       "pair_id": "pair_017",
       "kind": "genuine",
-      "decision_without_qr": "review",
-      "decision": "review",
+      "decision_without_qr": "accept",
+      "decision": "accept",
       "findings": [
         "einvoice.irn_printed (warning)"
       ],
@@ -880,7 +880,7 @@
     {
       "pair_id": "pair_017",
       "kind": "copied",
-      "decision_without_qr": "review",
+      "decision_without_qr": "accept",
       "decision": "review",
       "findings": [
         "einvoice.seller_gstin (error)",
@@ -896,7 +896,7 @@
     {
       "pair_id": "pair_017",
       "kind": "altered",
-      "decision_without_qr": "review",
+      "decision_without_qr": "accept",
       "decision": "review",
       "findings": [
         "einvoice.signature (error)"
@@ -906,8 +906,8 @@
     {
       "pair_id": "pair_017",
       "kind": "unknown_key",
-      "decision_without_qr": "review",
-      "decision": "review",
+      "decision_without_qr": "accept",
+      "decision": "accept",
       "findings": [
         "einvoice.signature (warning)"
       ],
@@ -916,16 +916,16 @@
     {
       "pair_id": "pair_017",
       "kind": "upi",
-      "decision_without_qr": "review",
-      "decision": "review",
+      "decision_without_qr": "accept",
+      "decision": "accept",
       "findings": [],
       "expected_met": true
     },
     {
       "pair_id": "pair_018",
       "kind": "genuine",
-      "decision_without_qr": "review",
-      "decision": "review",
+      "decision_without_qr": "accept",
+      "decision": "accept",
       "findings": [
         "einvoice.irn_printed (warning)"
       ],
@@ -934,7 +934,7 @@
     {
       "pair_id": "pair_018",
       "kind": "copied",
-      "decision_without_qr": "review",
+      "decision_without_qr": "accept",
       "decision": "review",
       "findings": [
         "einvoice.seller_gstin (error)",
@@ -950,7 +950,7 @@
     {
       "pair_id": "pair_018",
       "kind": "altered",
-      "decision_without_qr": "review",
+      "decision_without_qr": "accept",
       "decision": "review",
       "findings": [
         "einvoice.signature (error)"
@@ -960,8 +960,8 @@
     {
       "pair_id": "pair_018",
       "kind": "unknown_key",
-      "decision_without_qr": "review",
-      "decision": "review",
+      "decision_without_qr": "accept",
+      "decision": "accept",
       "findings": [
         "einvoice.signature (warning)"
       ],
@@ -970,8 +970,8 @@
     {
       "pair_id": "pair_018",
       "kind": "upi",
-      "decision_without_qr": "review",
-      "decision": "review",
+      "decision_without_qr": "accept",
+      "decision": "accept",
       "findings": [],
       "expected_met": true
     },

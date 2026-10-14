@@ -500,7 +500,7 @@
     "report": "einvoice",
     "path": "invoice_prompt_version",
     "op": "==",
-    "value": "invoice-v1",
+    "value": "invoice-v2",
     "why": "a prompt change is a deliberate change: update this pin with it"
   },
   {
