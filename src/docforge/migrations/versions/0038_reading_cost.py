@@ -9,7 +9,14 @@
 
 Both stay the platform's alone: SECURITY DEFINER with a pinned search_path, no rights for
 PUBLIC, run by the platform login only, and nothing returned unless the platform service said
-it checked the caller.
+it checked the caller (the volume, a single aggregate row, is then (0, 0): no figure leaks).
+
+Pages are known for PDFs only (`documents.page_count` is null for other uploads), so a
+reading of another format counts as a reading with no pages and the cost per page reads a
+little high where many are not PDFs.
+
+Deploy: the migration runs before the API that reads `kind` starts (the admin service first);
+an API started earlier fails only the platform overview until it has run.
 
 Revision ID: 0038
 Revises: 0037
