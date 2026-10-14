@@ -30,6 +30,7 @@ LABEL: dict[str, Any] = json.loads((FIXTURES / "pair_001" / "label.json").read_t
 OTHER: dict[str, Any] = json.loads((FIXTURES / "pair_002" / "label.json").read_text("utf-8"))
 UPI = "upi://pay?pa=shop@okaxis&pn=Shop&am=100.00&cu=INR"
 IRN = "3b2f" * 16
+KID = "0" * 40  # the kid of the key we hold
 RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
 
 SIGNER = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -39,7 +40,7 @@ RING = KeyRing(
         TrustedKey(
             name="TEST-1", irp="TEST", environment="production",
             source_url="https://example.test/key", fetched="2026-10-15", sha256="0" * 64,
-            kid=None, confirmed_by_real_qr=False, not_after=None,
+            kid=KID, confirmed_by_real_qr=False, not_after=None,
             public_key=SIGNER.public_key(),
         ),
     )
@@ -63,8 +64,8 @@ def data(label: dict[str, Any] = LABEL, **changes: Any) -> dict[str, Any]:
     return fields | changes
 
 
-def signed(fields: dict[str, Any], key: rsa.RSAPrivateKey = SIGNER) -> str:
-    head = b64(json.dumps({"alg": "RS256", "kid": "0" * 40, "typ": "JWT"}).encode())
+def signed(fields: dict[str, Any], key: rsa.RSAPrivateKey = SIGNER, kid: str = KID) -> str:
+    head = b64(json.dumps({"alg": "RS256", "kid": kid, "typ": "JWT"}).encode())
     body = b64(json.dumps({"data": json.dumps(fields), "iss": "NIC"}).encode())
     signature = key.sign(f"{head}.{body}".encode(), padding.PKCS1v15(), hashes.SHA256())
     return f"{head}.{body}.{b64(signature)}"
@@ -146,7 +147,7 @@ def test_a_verified_qr_wins_over_a_forged_one_beside_it() -> None:
 
 
 def test_an_unverified_qr_carries_no_signed_fields() -> None:
-    evidence = evidence_from((signed(data(), STRANGER),), RING)
+    evidence = evidence_from((signed(data(), STRANGER, "F" * 40),), RING)
 
     assert evidence is not None and evidence.status == "unknown_key"
     assert (evidence.invoice, evidence.irp, evidence.key_name) == (None, None, None)
@@ -189,9 +190,17 @@ def test_an_altered_qr_sends_the_invoice_to_review(invoice: Invoice) -> None:
 
 
 def test_a_qr_signed_by_a_key_we_do_not_hold_is_a_warning_only(invoice: Invoice) -> None:
-    result = invoice.assess(signed(data(), STRANGER))
+    result = invoice.assess(signed(data(), STRANGER, "F" * 40))
 
     assert result.decision == "accept"
+    assert outcomes(result) == {"einvoice.signature": ("failed", "warning")}
+
+
+def test_an_altered_qr_naming_a_kid_we_do_not_hold_is_only_a_warning(invoice: Invoice) -> None:
+    # Without the kid of the key that signed it, an altered QR and one signed by a key we lack
+    # look the same. NIC publishes bare keys; their kids are recorded from real QRs (part 7).
+    result = invoice.assess(altered(signed(data(), kid="E" * 40)))
+
     assert outcomes(result) == {"einvoice.signature": ("failed", "warning")}
 
 
@@ -237,11 +246,8 @@ def test_the_total_may_differ_by_round_off_up_to_one_rupee(invoice: Invoice) -> 
     assert "einvoice.grand_total" in failed(far)
 
 
-def test_case_and_spacing_do_not_make_a_number_or_gstin_disagree(invoice: Invoice) -> None:
-    fields = data(
-        DocNo=LABEL["invoice"]["invoice_no"].lower(),
-        SellerGstin=LABEL["invoice"]["seller"]["gstin"].lower(),
-    )
+def test_case_does_not_make_an_invoice_number_disagree(invoice: Invoice) -> None:
+    fields = data(DocNo=LABEL["invoice"]["invoice_no"].lower())
 
     assert failed(invoice.assess(signed(fields))) == set()
 

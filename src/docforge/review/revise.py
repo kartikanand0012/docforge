@@ -7,7 +7,7 @@ longer needs to be found in the text it cites.
 """
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.parsing.base import ParsedDocument
 from docforge.trust.assess import Assessment, assess
+from docforge.trust.rules import RuleResult
 
 _SEGMENT = re.compile(r"([A-Za-z_]\w*)(?:\[(\d+)\])?")
 # Fields read from another field's text: confirming the one confirms the other.
@@ -89,11 +90,12 @@ def reassess(
     raw: BaseModel,
     parsed: ParsedDocument,
     corrections: Sequence[Correction],
+    extra_rules: Sequence[Callable[[Any], Iterable[RuleResult]]] = (),
 ) -> Reassessed:
-    """The record and its assessment after `corrections`."""
+    """The record and its assessment after `corrections`; `extra_rules` as when it was read."""
     corrected = apply_corrections(raw, corrections)
     extraction = spec.normalize(corrected, parsed)
     confirmed = {c.path for c in corrections}
     confirmed |= {derived for path in confirmed for derived in _DERIVED.get(path, ())}
-    assessment = assess(extraction, parsed, spec.rules, frozenset(confirmed))
+    assessment = assess(extraction, parsed, (*spec.rules, *extra_rules), frozenset(confirmed))
     return Reassessed(raw=corrected, extraction=extraction, assessment=assessment)
