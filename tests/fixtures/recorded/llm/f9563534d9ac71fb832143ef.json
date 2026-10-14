@@ -1,0 +1,15 @@
+{
+  "key": "f9563534d9ac71fb832143ef1317c539bc0e67c12a4cfd0b29c16248a87cd5b2",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "purchase-order-v3",
+  "response": {
+    "text": "{\n  \"po_no\": \"PO-BLP-94020|b2\",\n  \"po_date\": \"23/07/2026|b32\",\n  \"buyer\": {\n    \"name\": \"Basava Lifeline Pharmacy|b3\",\n    \"address\": \"18 Jayanagar 4th Block, Bengaluru 560011|b4\",\n    \"gstin\": \"29AANFB4458E1Z8|b4\",\n    \"drug_licence_nos\": [\n      \"KA-20-667925|b5\",\n      \"KA-21-667926|b5\"\n    ]\n  },\n  \"supplier_name\": \"Kaveri Lifecare Pharma|b6\",\n  \"supplier_gstin\": \"29AAGCK3390P1ZS|b7\",\n  \"lines\": [\n    {\n      \"product_name\": \"Amoxicillin Capsules IP 250mg|b12\",\n      \"pack\": \"10x10|b14\",\n      \"hsn\": null,\n      \"qty\": \"200|b13\",\n      \"scheme\": \"12+1|b14\",\n      \"rate\": \"60.92|b15\",\n      \"amount\": null\n    },\n    {\n      \"product_name\": \"Insulin Injection IP 40IU/ml|b16\",\n      \"pack\": \"1x10ml|b18\",\n      \"hsn\": null,\n      \"qty\": \"10|b17\",\n      \"scheme\": null,\n      \"rate\": \"114.11|b19\",\n      \"amount\": null\n    },\n    {\n      \"product_name\": \"Amlodipine Tablets IP 5mg|b20\",\n      \"pack\": \"10x10|b22\",\n      \"hsn\": null,\n      \"qty\": \"30|b21\",\n      \"scheme\": null,\n      \"rate\": \"28.68|b23\",\n      \"amount\": null\n    },\n    {\n      \"product_name\": \"Ibuprofen Tablets IP 400mg|b24\",\n      \"pack\": \"10x10|b26\",\n      \"hsn\": null,\n      \"qty\": \"120|b25\",\n      \"scheme\": null,\n      \"rate\": \"21.11|b27\",\n      \"amount\": null\n    },\n    {\n      \"product_name\": \"Prednisolone Tablets IP 5mg|b28\",\n      \"pack\": \"10x10|b30\",\n      \"hsn\": null,\n      \"qty\": \"30|b29\",\n      \"scheme\": null,\n      \"rate\": \"12.86|b31\",\n      \"amount\": null\n    }\n  ],\n  \"total\": null\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 961,
+    "output_tokens": 716,
+    "thinking_tokens": null,
+    "latency_ms": 2165.4,
+    "served_model": null
+  }
+}

@@ -1,22 +1,22 @@
 {
   "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
-  "invoice_prompt_version": "invoice-v1",
-  "order_prompt_version": "purchase-order-v2",
+  "invoice_prompt_version": "invoice-v2",
+  "order_prompt_version": "purchase-order-v3",
   "summary": {
     "clean_pairs": 20,
-    "clean_pairs_accepted": 12,
-    "clean_values_flagged": 21,
+    "clean_pairs_accepted": 13,
+    "clean_values_flagged": 8,
     "seeded_cases": 9,
     "seeded_cases_caught": 9,
     "seeded_findings_expected": 12,
     "seeded_findings_caught": 12,
-    "seeded_unexpected_findings": 4
+    "seeded_unexpected_findings": 5
   },
   "usage": {
     "model_calls": 58,
-    "input_tokens": 86446,
-    "output_tokens": 205211
+    "input_tokens": 93696,
+    "output_tokens": 90615
   },
   "clean": [
     {
@@ -30,14 +30,12 @@
     },
     {
       "pair_id": "pair_002",
-      "invoice_decision": "review",
-      "invoice_reasons": [
-        "1 value was not found in the source text it cites"
-      ],
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
       "order_decision": "accept",
       "order_reasons": [],
       "discrepancies": [],
-      "accepted": false
+      "accepted": true
     },
     {
       "pair_id": "pair_003",
@@ -50,12 +48,14 @@
     },
     {
       "pair_id": "pair_004",
-      "invoice_decision": "accept",
-      "invoice_reasons": [],
+      "invoice_decision": "review",
+      "invoice_reasons": [
+        "1 value was not found in the source text it cites"
+      ],
       "order_decision": "accept",
       "order_reasons": [],
       "discrepancies": [],
-      "accepted": true
+      "accepted": false
     },
     {
       "pair_id": "pair_005",
@@ -106,7 +106,7 @@
       "pair_id": "pair_010",
       "invoice_decision": "review",
       "invoice_reasons": [
-        "2 values were not found in the source text they cite"
+        "1 value was not found in the source text it cites"
       ],
       "order_decision": "accept",
       "order_reasons": [],
@@ -126,7 +126,7 @@
       "pair_id": "pair_012",
       "invoice_decision": "review",
       "invoice_reasons": [
-        "2 values were not found in the source text they cite"
+        "1 value was not found in the source text it cites"
       ],
       "order_decision": "accept",
       "order_reasons": [],
@@ -137,7 +137,7 @@
       "pair_id": "pair_013",
       "invoice_decision": "review",
       "invoice_reasons": [
-        "2 values were not found in the source text they cite"
+        "1 value was not found in the source text it cites"
       ],
       "order_decision": "accept",
       "order_reasons": [],
@@ -148,7 +148,7 @@
       "pair_id": "pair_014",
       "invoice_decision": "review",
       "invoice_reasons": [
-        "1 value was not found in the source text it cites"
+        "2 values were not found in the source text they cite"
       ],
       "order_decision": "accept",
       "order_reasons": [],
@@ -166,14 +166,12 @@
     },
     {
       "pair_id": "pair_016",
-      "invoice_decision": "review",
-      "invoice_reasons": [
-        "1 value was not found in the source text it cites"
-      ],
+      "invoice_decision": "accept",
+      "invoice_reasons": [],
       "order_decision": "accept",
       "order_reasons": [],
       "discrepancies": [],
-      "accepted": false
+      "accepted": true
     },
     {
       "pair_id": "pair_017",
@@ -190,7 +188,7 @@
       "pair_id": "pair_018",
       "invoice_decision": "review",
       "invoice_reasons": [
-        "11 values were not found in the source text they cite"
+        "1 value was not found in the source text it cites"
       ],
       "order_decision": "accept",
       "order_reasons": [],
@@ -242,6 +240,10 @@
         [
           "verification",
           "totals.grand_total"
+        ],
+        [
+          "verification",
+          "totals.round_off"
         ]
       ],
       "caught": true,
@@ -249,6 +251,10 @@
         [
           "verification",
           "totals.grand_total"
+        ],
+        [
+          "verification",
+          "totals.round_off"
         ]
       ]
     },
@@ -353,19 +359,10 @@
         [
           "discrepancy",
           "line.qty"
-        ],
-        [
-          "verification",
-          "totals.grand_total"
         ]
       ],
       "caught": true,
-      "unexpected": [
-        [
-          "verification",
-          "totals.grand_total"
-        ]
-      ]
+      "unexpected": []
     },
     {
       "case_id": "case_007",
@@ -380,10 +377,19 @@
         [
           "discrepancy",
           "line.rate"
+        ],
+        [
+          "verification",
+          "totals.grand_total"
         ]
       ],
       "caught": true,
-      "unexpected": []
+      "unexpected": [
+        [
+          "verification",
+          "totals.grand_total"
+        ]
+      ]
     },
     {
       "case_id": "case_008",

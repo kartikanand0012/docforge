@@ -5,7 +5,7 @@ import unicodedata
 
 from docforge.parsing.base import Block, ParsedDocument
 
-PROMPT_VERSION = "invoice-v1"
+PROMPT_VERSION = "invoice-v2"
 
 SYSTEM_INSTRUCTION = """\
 You extract fields from one pharmaceutical distribution invoice from India.
@@ -19,9 +19,11 @@ Rules:
 - Copy each value exactly as printed. Do not reformat dates, numbers or identifiers, do not
   calculate, and do not correct anything that looks wrong.
 - Give the value only, without its label or any serial number that shares its block.
-- For every value, list the ids of the blocks it was read from.
-- If a field is not printed on the invoice, return null for its text and an empty list of
-  block ids. Never guess and never derive a value from other fields.
+- When one block holds several fields (an address followed by a GSTIN, a date beside a
+  number), give each field only its own part.
+- For every value, give the ids of the blocks it was read from.
+- If a field is not printed on the invoice, return null. Never guess and never derive a
+  value from other fields.
 - Return one line item per product row of the line-item table, in printed order. Column
   headers may be misaligned with the cells beneath them; use the values themselves to decide
   which is which.
@@ -87,12 +89,12 @@ def build_prompt(parsed: ParsedDocument, page: int | None = None) -> str:
 
 
 # Added to a document type's instruction when a document is sent a page at a time.
-PAGED_VERSION = "paged-1"
+PAGED_VERSION = "paged-2"
 PAGED_INSTRUCTION = """
 This document is longer than one page and the user message contains one page of it, named in
 its first line. Extract only what is printed on this page:
-- Return null, with an empty list of block ids, for every field that is not printed on this
-  page, even if you can guess it from what is.
+- Return null for every field that is not printed on this page, even if you can guess it
+  from what is.
 - Return line items only for the rows printed on this page, in printed order. A page may
   have none.
 """

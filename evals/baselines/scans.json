@@ -1,7 +1,7 @@
 {
   "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
-  "prompt_version": "invoice-v1",
+  "prompt_version": "invoice-v2",
   "variants": {
     "clean": {
       "parser": "docling 2.132.0",
@@ -73,8 +73,8 @@
         },
         "citations": {
           "checked": 2472,
-          "correct": 2451,
-          "accuracy": 0.9915
+          "correct": 2464,
+          "accuracy": 0.9968
         },
         "null_expected": {
           "total": 26,
@@ -83,15 +83,15 @@
       },
       "usage": {
         "model_calls": 20,
-        "input_tokens": 41827,
-        "output_tokens": 103333,
+        "input_tokens": 44327,
+        "output_tokens": 46493,
         "thinking_tokens": 0,
         "pages": 20,
-        "latency_ms_p50": 14417.3,
-        "latency_ms_p95": 26647.0
+        "latency_ms_p50": 5192.5,
+        "latency_ms_p95": 6734.0
       },
       "extraction_failures": 0,
-      "sent_to_review": 8,
+      "sent_to_review": 7,
       "documents_with_errors": 0,
       "errors_sent_to_review": 0,
       "silent_errors": 0,
@@ -168,8 +168,8 @@
         },
         "citations": {
           "checked": 2472,
-          "correct": 2456,
-          "accuracy": 0.9935
+          "correct": 2447,
+          "accuracy": 0.9899
         },
         "null_expected": {
           "total": 26,
@@ -178,15 +178,15 @@
       },
       "usage": {
         "model_calls": 20,
-        "input_tokens": 41779,
-        "output_tokens": 103275,
+        "input_tokens": 44279,
+        "output_tokens": 46435,
         "thinking_tokens": 0,
         "pages": 20,
-        "latency_ms_p50": 13050.7,
-        "latency_ms_p95": 17933.0
+        "latency_ms_p50": 5276.4,
+        "latency_ms_p95": 6613.7
       },
       "extraction_failures": 0,
-      "sent_to_review": 11,
+      "sent_to_review": 15,
       "documents_with_errors": 1,
       "errors_sent_to_review": 1,
       "silent_errors": 0,
@@ -211,10 +211,10 @@
         "extra_lines": 0,
         "fields": {
           "total": 2472,
-          "correct": 2424,
+          "correct": 2422,
           "wrong": 40,
-          "missing": 8,
-          "accuracy": 0.9806
+          "missing": 10,
+          "accuracy": 0.9798
         },
         "by_class": {
           "amount": {
@@ -240,10 +240,10 @@
           },
           "quantity": {
             "total": 588,
-            "correct": 578,
+            "correct": 576,
             "wrong": 3,
-            "missing": 7,
-            "accuracy": 0.983
+            "missing": 9,
+            "accuracy": 0.9796
           },
           "text": {
             "total": 394,
@@ -263,16 +263,16 @@
           },
           "B": {
             "total": 1117,
-            "correct": 1075,
+            "correct": 1073,
             "wrong": 34,
-            "missing": 8,
-            "accuracy": 0.9624
+            "missing": 10,
+            "accuracy": 0.9606
           }
         },
         "citations": {
-          "checked": 2464,
-          "correct": 2444,
-          "accuracy": 0.9919
+          "checked": 2462,
+          "correct": 2439,
+          "accuracy": 0.9907
         },
         "null_expected": {
           "total": 26,
@@ -281,18 +281,18 @@
       },
       "usage": {
         "model_calls": 20,
-        "input_tokens": 41515,
-        "output_tokens": 103208,
+        "input_tokens": 44015,
+        "output_tokens": 46383,
         "thinking_tokens": 0,
         "pages": 20,
-        "latency_ms_p50": 12702.4,
-        "latency_ms_p95": 17773.7
+        "latency_ms_p50": 5129.0,
+        "latency_ms_p95": 6691.3
       },
       "extraction_failures": 0,
-      "sent_to_review": 12,
+      "sent_to_review": 13,
       "documents_with_errors": 16,
-      "errors_sent_to_review": 11,
-      "silent_errors": 5,
+      "errors_sent_to_review": 10,
+      "silent_errors": 6,
       "silent_errors_after_order_match": 0,
       "misreads": [
         {
@@ -325,6 +325,13 @@
         },
         {
           "pair_id": "pair_002",
+          "path": "lines[1].free_qty",
+          "expected": "0",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_002",
           "path": "lines[2].free_qty",
           "expected": "0",
           "actual": null,
@@ -341,6 +348,13 @@
           "pair_id": "pair_002",
           "path": "lines[4].free_qty",
           "expected": "16",
+          "actual": null,
+          "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_002",
+          "path": "lines[5].free_qty",
+          "expected": "0",
           "actual": null,
           "outcome": "missing"
         },

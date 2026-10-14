@@ -20,6 +20,7 @@ from docforge.extraction.prompt import (
     build_prompt,
 )
 from docforge.extraction.schema import InvoiceExtraction, Issue, RawInvoice
+from docforge.extraction.wire import CELL_INSTRUCTION, to_raw, wire_model
 from docforge.llm.base import LLMProvider, LLMRequest, LLMResponse
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, Parser
 from docforge.parsing.pdf import pdf_page_count
@@ -53,6 +54,9 @@ class DocumentSpec[E: BaseModel]:
     schema_version: str
     normalize: Callable[[Any, ParsedDocument], E]  # printed strings to typed values, in code
     rules: tuple[Callable[[E], Iterable[RuleResult]], ...] = ()  # deterministic checks
+    # The compact form the model replies in (`wire.py`), turned back into `raw_schema`;
+    # None asks for `raw_schema` itself.
+    wire_schema: type[BaseModel] | None = None
 
 
 @dataclass(frozen=True)
@@ -124,7 +128,7 @@ class ExtractionPipeline[E: BaseModel]:
             request = LLMRequest(
                 system=spec.system_instruction,
                 prompt=prompt,
-                schema=spec.raw_schema,
+                schema=spec.wire_schema or spec.raw_schema,
                 prompt_version=spec.prompt_version,
             )
             raw, responses = self._ask(request, ())
@@ -177,10 +181,9 @@ class ExtractionPipeline[E: BaseModel]:
 
         Returns the reply and every call made so far, `earlier` included.
         """
-        schema = self.spec.raw_schema
         first = self._generate(request)
         try:
-            return schema.model_validate_json(first.text), (*earlier, first)
+            return self._read(first), (*earlier, first)
         except ValidationError as error:
             if not may_retry:
                 raise ExtractionError(
@@ -194,11 +197,18 @@ class ExtractionPipeline[E: BaseModel]:
         second = self._generate(retry)
         responses = (*earlier, first, second)
         try:
-            return schema.model_validate_json(second.text), responses
+            return self._read(second), responses
         except ValidationError as second_error:
             raise ExtractionError(
                 "model reply did not fit the schema after one retry", responses
             ) from second_error
+
+    def _read(self, response: LLMResponse) -> BaseModel:
+        """The reply as the raw schema. Raises `ValidationError` if it does not fit."""
+        spec = self.spec
+        if spec.wire_schema is None:
+            return spec.raw_schema.model_validate_json(response.text)
+        return to_raw(spec.raw_schema, spec.wire_schema.model_validate_json(response.text))
 
     def _ask_by_page(
         self, parsed: ParsedDocument
@@ -216,7 +226,7 @@ class ExtractionPipeline[E: BaseModel]:
             request = LLMRequest(
                 system=spec.system_instruction + PAGED_INSTRUCTION,
                 prompt=build_prompt(parsed, page),
-                schema=spec.raw_schema,
+                schema=spec.wire_schema or spec.raw_schema,
                 prompt_version=prompt_version,
             )
             reply, responses = self._ask(request, responses, retried < _MAX_PAGE_RETRIES)
@@ -270,11 +280,12 @@ def merge_pages(
 INVOICE_SPEC = DocumentSpec(
     doc_type="invoice",
     raw_schema=RawInvoice,
-    system_instruction=SYSTEM_INSTRUCTION,
+    system_instruction=SYSTEM_INSTRUCTION + CELL_INSTRUCTION,
     prompt_version=PROMPT_VERSION,
     schema_version="invoice-1",
     normalize=normalize_invoice,
     rules=INVOICE_RULES,
+    wire_schema=wire_model(RawInvoice),
 )
 
 

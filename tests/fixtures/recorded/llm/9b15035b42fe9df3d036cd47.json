@@ -1,0 +1,15 @@
+{
+  "key": "9b15035b42fe9df3d036cd47c2e8269b8364122a74c1aa8e29b1e2af4c8bccab",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "coa-v2",
+  "response": {
+    "text": "{\n  \"coa_no\": \"COA/ALS/25/354|b3\",\n  \"manufacturer\": \"Aravali Life Sciences Ltd.|b2\",\n  \"product_name\": \"Atorvastatin Tablets IP 10mg|b4\",\n  \"batch_no\": \"RW0227|b5\",\n  \"mfg\": \"10/25|b6\",\n  \"expiry\": \"10/28|b7\",\n  \"analysis_date\": \"16-Oct-2025|b8\",\n  \"tests\": [\n    {\n      \"name\": \"Description|b12\",\n      \"specification\": \"Complies|b13\",\n      \"result\": \"Complies|b14\"\n    },\n    {\n      \"name\": \"Identification|b15\",\n      \"specification\": \"Positive|b16\",\n      \"result\": \"Positive|b17\"\n    },\n    {\n      \"name\": \"Dissolution|b18\",\n      \"specification\": \"NLT 80 %|b19\",\n      \"result\": \"92 %|b20\"\n    },\n    {\n      \"name\": \"Assay|b21\",\n      \"specification\": \"95.0 - 105.0 %|b22\",\n      \"result\": \"98.0 %|b23\"\n    },\n    {\n      \"name\": \"Related substances|b24\",\n      \"specification\": \"NMT 1.0 %|b25\",\n      \"result\": \"0.52 %|b26\"\n    },\n    {\n      \"name\": \"Water|b27\",\n      \"specification\": \"NMT 5.0 % w/w|b28\",\n      \"result\": \"3.3 % w/w|b29\"\n    }\n  ],\n  \"conclusion\": \"The batch complies with the specification.|b30\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 725,
+    "output_tokens": 461,
+    "thinking_tokens": null,
+    "latency_ms": 1666.3,
+    "served_model": null
+  }
+}

@@ -1,4 +1,4 @@
-"""The compact reply format: each field one string, `"<block ids>|<printed text>"`.
+"""The compact reply format: each field one string, `"<printed text>|<block ids>"`.
 
 The model is held to the wire model; code turns its reply back into the `Raw*` model, so
 everything after the reply (normalising, rules, merging pages, corrections) is unchanged.
@@ -18,7 +18,8 @@ from docforge.extraction.pipeline import INVOICE_SPEC, ExtractionPipeline, Invoi
 from docforge.extraction.prompt import PAGED_INSTRUCTION
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, RawPurchaseOrder
 from docforge.extraction.schema import RawInvoice, RawLine
-from docforge.extraction.wire import CELL_INSTRUCTION, to_raw, wire_model
+from docforge.extraction.wire import CELL_FORMAT, CELL_INSTRUCTION, to_raw, wire_model
+from docforge.llm.schema import strict_json_schema
 from fakes import FakeParser, ScriptedProvider
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
@@ -38,7 +39,7 @@ def as_wire(raw: Any) -> Any:
     if isinstance(raw, dict) and set(raw) == {"text", "block_ids"}:
         if raw["text"] is None:
             return None
-        return f"{' '.join(raw['block_ids'])}|{raw['text']}"
+        return f"{raw['text']}|{' '.join(raw['block_ids'])}"
     if isinstance(raw, dict):
         return {key: as_wire(value) for key, value in raw.items()}
     if isinstance(raw, list):
@@ -72,7 +73,24 @@ def test_every_field_is_one_string_in_the_schema_sent_to_the_model() -> None:
 def test_descriptions_are_kept_so_the_model_still_knows_each_field() -> None:
     line = wire_model(RawInvoice).model_json_schema()["$defs"]["WireRawLine"]["properties"]
 
-    assert line["ptr"]["description"] == "Price to retailer; may be labelled Rate."
+    assert line["ptr"]["description"] == f"Price to retailer; may be labelled Rate. {CELL_FORMAT}"
+
+
+def test_every_field_says_how_it_is_written_so_long_tables_keep_the_format() -> None:
+    schema = wire_model(RawInvoice).model_json_schema()
+    models = [schema, *schema["$defs"].values()]
+    found = [
+        prop
+        for model in models
+        for prop in model["properties"].values()
+        if prop.get("anyOf") == [{"type": "string"}, {"type": "null"}]
+        or (
+            "items" in prop and prop["items"].get("anyOf") == [{"type": "string"}, {"type": "null"}]
+        )
+    ]
+
+    assert len(found) == 5 + 4 + 14 + 6  # header, party (licences too), line, totals
+    assert all(prop["description"].endswith(CELL_FORMAT) for prop in found)
 
 
 def test_the_wire_model_is_made_once_per_raw_model() -> None:
@@ -82,13 +100,13 @@ def test_the_wire_model_is_made_once_per_raw_model() -> None:
 @pytest.mark.parametrize(
     ("cell", "text", "block_ids"),
     [
-        ("b3|Dolo 650", "Dolo 650", ["b3"]),
-        ("b3 b4|Dolo 650", "Dolo 650", ["b3", "b4"]),
-        ("b3, b4|Dolo 650", "Dolo 650", ["b3", "b4"]),
-        (" b12 | 1,234.00 ", "1,234.00", ["b12"]),
-        ("b7|10|1 scheme", "10|1 scheme", ["b7"]),  # only the first bar separates
-        ("|Dolo 650", "Dolo 650", []),  # a value without a citation, as the old form allowed
-        ("b3|", None, []),  # nothing printed after the bar is no value
+        ("Dolo 650|b3", "Dolo 650", ["b3"]),
+        ("Dolo 650|b3 b4", "Dolo 650", ["b3", "b4"]),
+        ("Dolo 650|b3, b4", "Dolo 650", ["b3", "b4"]),
+        (" 1,234.00 | b12 ", "1,234.00", ["b12"]),
+        ("10|1 scheme|b7", "10|1 scheme", ["b7"]),  # only the last bar separates
+        ("Dolo 650|", "Dolo 650", []),  # a value without a citation, as the old form allowed
+        ("|b3", None, []),  # nothing printed before the bar is no value
         (None, None, []),
     ],
 )
@@ -101,7 +119,7 @@ def test_a_cell_becomes_the_printed_text_and_its_blocks(
     assert raw.batch_no.block_ids == block_ids
 
 
-@pytest.mark.parametrize("cell", ["Dolo 650", "b3 Dolo 650", "x3|Dolo", "b3;b4|Dolo"])
+@pytest.mark.parametrize("cell", ["Dolo 650", "Dolo 650 b3", "Dolo|x3", "Dolo|b3;b4", "Dolo|b3 x"])
 def test_a_cell_without_its_bar_or_with_a_bad_block_id_is_refused(cell: str) -> None:
     with pytest.raises(ValidationError, match="batch_no"):
         coa_with(cell)
@@ -187,3 +205,11 @@ def test_a_document_type_without_a_wire_schema_is_asked_in_its_raw_form(
     ExtractionPipeline(FakeParser(), provider, spec).run(PDF)
 
     assert provider.requests[0].schema is RawInvoice
+
+
+@pytest.mark.parametrize("raw_model", [RawInvoice, RawPurchaseOrder, RawCoa])
+def test_the_strict_providers_accept_the_wire_schema(raw_model: Any) -> None:
+    strict = strict_json_schema(wire_model(raw_model))
+
+    assert "block_ids" not in json.dumps(strict)
+    assert strict["additionalProperties"] is False

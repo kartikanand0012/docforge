@@ -51,7 +51,7 @@ def test_a_certificate_becomes_a_typed_record(raw_coa_from_label: RawFromLabel) 
     assert coa.analysis_date.value == date.fromisoformat(truth["analysis_date"])
     assert [t.result.value for t in coa.tests] == [t["result"] for t in truth["tests"]]
     assert coa.issues == ()
-    assert COA_SPEC.doc_type == "coa" and COA_SPEC.prompt_version == "coa-v1"
+    assert COA_SPEC.doc_type == "coa" and COA_SPEC.prompt_version == "coa-v2"
 
 
 @pytest.mark.parametrize("case", CASES)

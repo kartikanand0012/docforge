@@ -1,0 +1,15 @@
+{
+  "key": "c24bf45acb722d6c40691e981e27b9cf30e3ff9de523f840dcafa6fd2a635b55",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "invoice-v2",
+  "response": {
+    "text": "{\n  \"invoice_no\": \"SRP/26-27/22012|b2\",\n  \"invoice_date\": \"15/07/2026|b3\",\n  \"po_no\": \"PO-YMH-19012|b4\",\n  \"po_date\": \"07/07/2026|b5\",\n  \"place_of_supply\": \"Delhi (07)|b6\",\n  \"seller\": {\n    \"name\": \"Shreeram Pharma Distributors|b71\",\n    \"address\": \"14 Market Yard Road, Pune 411037|b72\",\n    \"gstin\": \"27AAKCS4821M1ZW|b72\",\n    \"drug_licence_nos\": [\n      \"MH-20B-104512|b73\",\n      \"MH-21B-104513|b73\"\n    ]\n  },\n  \"buyer\": {\n    \"name\": \"Yamuna Medicine House|b7\",\n    \"address\": \"64 Lajpat Nagar II, Delhi 110024|b8\",\n    \"gstin\": \"07ACFPY6639G1Z3|b9\",\n    \"drug_licence_nos\": [\n      \"DL-20-678310|b10\",\n      \"DL-21-678311|b10\"\n    ]\n  },\n  \"lines\": [\n    {\n      \"product_name\": \"ORS Powder WHO Formula 21g|b25\",\n      \"pack\": \"1x25|b29\",\n      \"hsn\": \"30049099|b24\",\n      \"batch_no\": \"QA3733|b26\",\n      \"mfg\": \"11/25|b28\",\n      \"expiry\": \"11/27|b27\",\n      \"qty\": \"60|b31\",\n      \"free_qty\": \"0|b32\",\n      \"mrp\": \"24.95|b30\",\n      \"ptr\": \"16.97|b33\",\n      \"discount_pct\": \"5|b34\",\n      \"taxable_value\": \"967.29|b35\",\n      \"gst_rate\": \"5|b34\",\n      \"amount\": \"1015.65|b36\"\n    },\n    {\n      \"product_name\": \"Insulin Injection IP 40IU/ml|b38\",\n      \"pack\": \"1x10ml|b42\",\n      \"hsn\": \"30043110|b37\",\n      \"batch_no\": \"GB58027|b39\",\n      \"mfg\": \"04/26|b41\",\n      \"expiry\": \"04/28|b40\",\n      \"qty\": \"30|b44\",\n      \"free_qty\": \"0|b45\",\n      \"mrp\": \"175.03|b43\",\n      \"ptr\": \"131.27|b46\",\n      \"discount_pct\": \"0|b47\",\n      \"taxable_value\": \"3938.10|b48\",\n      \"gst_rate\": \"5|b47\",\n      \"amount\": \"4135.01|b49\"\n    },\n    {\n      \"product_name\": \"Amlodipine Tablets IP 5mg|b51\",\n      \"pack\": \"10x10|b55\",\n      \"hsn\": \"30049099|b50\",\n      \"batch_no\": \"CR2565|b52\",\n      \"mfg\": \"03/26|b54\",\n      \"expiry\": \"09/27|b53\",\n      \"qty\": \"120|b57\",\n      \"free_qty\": \"0|b58\",\n      \"mrp\": \"39.68|b56\",\n      \"ptr\": \"28.17|b59\",\n      \"discount_pct\": \"0|b60\",\n      \"taxable_value\": \"3380.40|b61\",\n      \"gst_rate\": \"5|b60\",\n      \"amount\": \"3549.42|b62\"\n    }\n  ],\n  \"totals\": {\n    \"taxable_value\": \"8285.79|b64\",\n    \"cgst\": null,\n    \"sgst\": null,\n    \"igst\": \"414.29|b66\",\n    \"round_off\": \"-0.08|b68\",\n    \"grand_total\": \"8700.00|b69\"\n  }\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 1400,
+    "output_tokens": 1202,
+    "thinking_tokens": null,
+    "latency_ms": 3128.8,
+    "served_model": null
+  }
+}

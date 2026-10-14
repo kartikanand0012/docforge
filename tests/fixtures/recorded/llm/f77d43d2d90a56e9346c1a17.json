@@ -1,0 +1,15 @@
+{
+  "key": "f77d43d2d90a56e9346c1a17bb2047c8575c6978e0911b4458210248f788666c",
+  "model": "gemini-3.5-flash-lite",
+  "prompt_version": "coa-v2",
+  "response": {
+    "text": "{\n  \"coa_no\": \"COA/ALS/26/938|b3\",\n  \"manufacturer\": \"Aravali Life Sciences Ltd.|b2\",\n  \"product_name\": \"Salbutamol Inhaler 100mcg|b4\",\n  \"batch_no\": \"MV57818|b5\",\n  \"mfg\": \"04/26|b6\",\n  \"expiry\": \"10/27|b7\",\n  \"analysis_date\": \"16-Apr-2026|b8\",\n  \"tests\": [\n    {\n      \"name\": \"Description|b12\",\n      \"specification\": \"Complies|b13\",\n      \"result\": \"Complies|b14\"\n    },\n    {\n      \"name\": \"Identification|b15\",\n      \"specification\": \"Positive|b16\",\n      \"result\": \"Positive|b17\"\n    },\n    {\n      \"name\": \"Assay|b18\",\n      \"specification\": \"90.0 - 110.0 %|b19\",\n      \"result\": \"103.5 %|b20\"\n    },\n    {\n      \"name\": \"Related substances|b21\",\n      \"specification\": \"NMT 2.0 %|b22\",\n      \"result\": \"0.09 %|b23\"\n    },\n    {\n      \"name\": \"Microbial limits|b24\",\n      \"specification\": \"Complies|b25\",\n      \"result\": \"Complies|b26\"\n    }\n  ],\n  \"conclusion\": \"The batch complies with the specification.|b27\"\n}",
+    "provider": "gemini",
+    "model": "gemini-3.5-flash-lite",
+    "input_tokens": 680,
+    "output_tokens": 405,
+    "thinking_tokens": null,
+    "latency_ms": 1954.4,
+    "served_model": null
+  }
+}

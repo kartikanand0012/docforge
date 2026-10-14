@@ -106,7 +106,7 @@ def test_a_boolean_is_not_a_number_to_the_gate(reports: Path) -> None:
 
 def test_the_dataset_model_and_prompt_are_pinned(reports: Path) -> None:
     worsen(reports, "invoice", ["summary", "documents"], 10)
-    worsen(reports, "invoice", ["prompt_version"], "invoice-v2")
+    worsen(reports, "invoice", ["prompt_version"], "invoice-v0-unpinned")
 
     failed = {r.label.split(" ")[1] for r in check_gate(reports, load_gate(GATE)) if not r.passed}
 

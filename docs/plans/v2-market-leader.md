@@ -57,7 +57,7 @@ What we will not claim: certifications (SOC 2, ISO 27001) or enterprise scale. T
 
 | Id | Step | Done when | Status |
 |---|---|---|---|
-| 0.1 | **Compact model output**: the model replies in a short wire format (each field one string `"<block ids>\|<printed text>"`); code decodes it into the existing `Raw*` models, so normalising, rules, corrections, merge and storage do not change. Invoice first, then purchase order and CoA. | Eval gate passes on re-recorded live runs; output tokens per invoice down at least 2x; old readings still open and re-read | in progress |
+| 0.1 | **Compact model output**: the model replies in a short wire format (each field one string `"<printed text>\|<block ids>"`, value first); code decodes it into the existing `Raw*` models, so normalising, rules, corrections, merge and storage do not change. Invoice first, then purchase order and CoA. | Eval gate passes on re-recorded live runs; output tokens per invoice down at least 2x; old readings still open and re-read | in progress |
 | 0.2 | **Multi-page reading**: why 140 s and 2/3; fix (smaller paged replies come with 0.1, then the merge and the failing document) | multipage eval 3/3, p50 latency at least halved | |
 | 0.3 | **Cost view from production**: real cost per page and per document type in the admin dashboard, plus fixed monthly infrastructure entered by hand | admin page shows it; numbers match `model_runs` | |
 | 0.4 | **Real-invoice test set harness**: `data/real/` (ignored by git), a labelling format and a scorer per field (exact match for GSTIN, HSN, batch, expiry, MRP, PTR, totals; row accuracy for lines), report kept outside the repo; only aggregate numbers are committed | harness runs on any folder of labelled PDFs; ready for the owner's invoices | |
