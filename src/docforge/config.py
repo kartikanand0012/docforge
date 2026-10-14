@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     # their own (a member of `docforge_platform`), held by the API only. Unset, those screens
     # answer 503: the application's login is never used for them.
     platform_database_url: SecretStr | None = None
+    # Hosting and other fixed costs a month, entered by the owner: shown beside model costs.
+    platform_fixed_monthly_usd: float | None = Field(default=None, ge=0)
 
     # Unset (or blank) means AWS S3 itself, with the instance's role for credentials.
     s3_endpoint_url: str | None = "http://127.0.0.1:9000"

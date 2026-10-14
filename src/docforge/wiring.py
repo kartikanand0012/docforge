@@ -203,7 +203,11 @@ def build_platform(settings: Settings) -> PlatformService | None:
     if settings.platform_database_url is None:
         return None
     engine = make_engine(settings.platform_database_url.get_secret_value())
-    return PlatformService(make_session_factory(engine), settings.prices())
+    return PlatformService(
+        make_session_factory(engine),
+        settings.prices(),
+        fixed_monthly_usd=settings.platform_fixed_monthly_usd,
+    )
 
 
 def embedder_for(settings: Settings) -> Embedder:

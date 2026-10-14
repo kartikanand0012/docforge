@@ -415,8 +415,8 @@ def test_the_fixed_monthly_cost_is_read_and_never_negative(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("PLATFORM_FIXED_MONTHLY_USD", "45.5")
-    assert Settings(_env_file=None).platform_fixed_monthly_usd == 45.5  # type: ignore[call-arg]
+    assert Settings(_env_file=None).platform_fixed_monthly_usd == 45.5
 
     monkeypatch.setenv("PLATFORM_FIXED_MONTHLY_USD", "-1")
     with pytest.raises(ValueError, match="platform_fixed_monthly_usd"):
-        Settings(_env_file=None)  # type: ignore[call-arg]
+        Settings(_env_file=None)
