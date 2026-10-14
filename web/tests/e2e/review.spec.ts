@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
-const FIXTURES = path.resolve(__dirname, "../../../tests/fixtures/synthetic/pair_004");
+const FIXTURES = path.resolve(__dirname, "../../../tests/fixtures/synthetic/pair_013");
 const GENERAL = path.resolve(__dirname, "../../../tests/fixtures/general");
 const API = process.env.E2E_API_URL ?? "http://127.0.0.1:8011";
 const EMAIL = "e2e@example.com";

@@ -1,5 +1,6 @@
 """The C3 gate in CI: the trust report replays from recordings and every seeded defect is caught."""
 
+import json
 from pathlib import Path
 
 from docforge.evals.trust import TrustReport, format_trust_report, run_trust_eval, trust_pipelines
@@ -49,3 +50,20 @@ def test_the_text_report_names_every_case_that_went_to_review() -> None:
     assert f"{report.summary.seeded_cases_caught} of 9 cases caught" in text
     for result in report.clean:
         assert (f"review {result.pair_id}" in text) == (not result.accepted)
+
+
+def test_the_browser_e2e_reviews_an_invoice_with_exactly_one_doubtful_value() -> None:
+    """The e2e confirms one doubtful value and then approves; a re-recording that changes
+    its invoice's outcome must fail here, by name, not as a timeout in a browser."""
+    import re
+
+    spec = Path("web/tests/e2e/review.spec.ts").read_text(encoding="utf-8")
+    match = re.search(r"tests/fixtures/synthetic/(pair_\d+)", spec)
+    assert match is not None
+    report = json.loads(Path("evals/baselines/trust.json").read_text(encoding="utf-8"))
+    (pair,) = [p for p in report["clean"] if p["pair_id"] == match[1]]
+
+    assert pair["invoice_reasons"] == ["1 value was not found in the source text it cites"], (
+        f"{match[1]} no longer has exactly one doubtful value: pick another for the e2e"
+    )
+    assert pair["order_decision"] == "accept"

@@ -18,10 +18,10 @@
     "extra_lines": 0,
     "fields": {
       "total": 3492,
-      "correct": 3471,
-      "wrong": 3,
+      "correct": 3470,
+      "wrong": 4,
       "missing": 18,
-      "accuracy": 0.994
+      "accuracy": 0.9937
     },
     "by_class": {
       "amount": {
@@ -47,10 +47,10 @@
       },
       "quantity": {
         "total": 980,
-        "correct": 974,
-        "wrong": 0,
+        "correct": 973,
+        "wrong": 1,
         "missing": 6,
-        "accuracy": 0.9939
+        "accuracy": 0.9929
       },
       "text": {
         "total": 505,
@@ -63,10 +63,10 @@
     "by_layout": {
       "A": {
         "total": 2352,
-        "correct": 2331,
-        "wrong": 3,
+        "correct": 2330,
+        "wrong": 4,
         "missing": 18,
-        "accuracy": 0.9911
+        "accuracy": 0.9906
       },
       "B": {
         "total": 1140,
@@ -78,8 +78,8 @@
     },
     "citations": {
       "checked": 3474,
-      "correct": 3441,
-      "accuracy": 0.9905
+      "correct": 3459,
+      "accuracy": 0.9957
     },
     "null_expected": {
       "total": 4,
@@ -92,8 +92,8 @@
     "output_tokens": 66453,
     "thinking_tokens": 0,
     "pages": 8,
-    "latency_ms_p50": 40133.0,
-    "latency_ms_p95": 61533.299999999996
+    "latency_ms_p50": 41333.8,
+    "latency_ms_p95": 63351.5
   },
   "documents": [
     {
@@ -8198,7 +8198,7 @@
           "expected": "40.07",
           "actual": "40.07",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[24].qty",
@@ -9022,7 +9022,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[31].taxable_value",
@@ -9030,7 +9030,7 @@
           "expected": "4721.64",
           "actual": "4721.64",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[31].amount",
@@ -9358,7 +9358,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[34].taxable_value",
@@ -9366,7 +9366,7 @@
           "expected": "2496.00",
           "actual": "2496.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[34].amount",
@@ -10030,7 +10030,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[40].taxable_value",
@@ -10038,7 +10038,7 @@
           "expected": "2781.60",
           "actual": "2781.60",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[40].amount",
@@ -10782,7 +10782,7 @@
           "expected": "10",
           "actual": "10",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[47].free_qty",
@@ -10790,7 +10790,7 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[47].ptr",
@@ -11710,7 +11710,7 @@
           "expected": "5",
           "actual": "5",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[55].taxable_value",
@@ -11718,7 +11718,7 @@
           "expected": "3608.00",
           "actual": "3608.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[55].amount",
@@ -12046,7 +12046,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[58].taxable_value",
@@ -12054,7 +12054,7 @@
           "expected": "1000.80",
           "actual": "1000.80",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[58].amount",
@@ -12270,7 +12270,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[60].taxable_value",
@@ -12278,7 +12278,7 @@
           "expected": "2875.08",
           "actual": "2875.08",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[60].amount",
@@ -13502,7 +13502,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[71].taxable_value",
@@ -13510,7 +13510,7 @@
           "expected": "5308.98",
           "actual": "5308.98",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[71].amount",
@@ -13614,7 +13614,7 @@
           "expected": "5",
           "actual": "5",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[72].taxable_value",
@@ -13622,7 +13622,7 @@
           "expected": "811.78",
           "actual": "811.78",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[72].amount",
@@ -13726,7 +13726,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[73].taxable_value",
@@ -13734,7 +13734,7 @@
           "expected": "1574.47",
           "actual": "1574.47",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[73].amount",
@@ -13838,7 +13838,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[74].taxable_value",
@@ -13846,7 +13846,7 @@
           "expected": "2476.00",
           "actual": "2476.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[74].amount",
@@ -13950,7 +13950,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[75].taxable_value",
@@ -13958,7 +13958,7 @@
           "expected": "843.00",
           "actual": "843.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[75].amount",
@@ -14062,7 +14062,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[76].taxable_value",
@@ -14070,7 +14070,7 @@
           "expected": "2839.00",
           "actual": "2839.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[76].amount",
@@ -14398,7 +14398,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[79].taxable_value",
@@ -14406,7 +14406,7 @@
           "expected": "160.23",
           "actual": "160.23",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[79].amount",
@@ -25413,9 +25413,9 @@
           "path": "lines[96].free_qty",
           "field_class": "quantity",
           "expected": "16",
-          "actual": "16",
-          "outcome": "correct",
-          "cited": true
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[96].mrp",
@@ -25437,9 +25437,9 @@
           "path": "lines[96].discount_pct",
           "field_class": "quantity",
           "expected": "2",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "16",
+          "outcome": "wrong",
+          "cited": false
         },
         {
           "path": "lines[96].taxable_value",

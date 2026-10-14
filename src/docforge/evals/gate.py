@@ -4,6 +4,10 @@ CI replays every eval offline, then this checks the reports against the floors c
 `evals/gate.json`. A prompt, model or code change that reads worse, misses a defect, leaks
 across organisations or costs noticeably more fails the build. A floor that cannot be found
 fails too: a renamed metric must not pass by disappearing.
+
+A metric worse than on the base branch fails even above its floor, unless the owner accepted
+that trade-off in `evals/accepted.json` - the metric, the value accepted, why, who and when.
+It then passes at that value, printed as ACCEPTED; a drop beyond it still fails.
 """
 
 import argparse
@@ -11,6 +15,7 @@ import json
 import operator
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +45,46 @@ class Result:
     label: str
     passed: bool
     detail: str
+    accepted: bool = False  # passed only because the owner accepted the trade-off
+
+
+@dataclass(frozen=True)
+class Accepted:
+    """A metric the owner accepted being worse than on the base branch, down to `value`."""
+
+    report: str
+    path: str
+    value: float
+    why: str
+    approved_by: str
+    approved_on: str  # YYYY-MM-DD
+
+
+def load_accepted(path: Path, checks: Sequence[Check]) -> list[Accepted]:
+    """The accepted trade-offs; none when the file does not exist. Each must name a gated
+    metric that is compared with the base branch, and say why, who and when."""
+    if not path.exists():
+        return []
+    try:
+        entries = [Accepted(**item) for item in json.loads(path.read_text(encoding="utf-8"))]
+    except (OSError, json.JSONDecodeError, TypeError) as error:
+        raise GateError(f"{path} is not a list of accepted trade-offs: {error}") from error
+    compared = {
+        (c.report, c.path) for c in checks if c.op in (">=", "<=") and not isinstance(c.value, str)
+    }
+    for entry in entries:
+        name = f"{entry.report} {entry.path}"
+        if (entry.report, entry.path) not in compared:
+            raise GateError(f"{name}: not a gated metric compared with the base branch")
+        if not _comparable(entry.value, 0.0):
+            raise GateError(f"{name}: the accepted value must be a number")
+        if not entry.why.strip() or not entry.approved_by.strip():
+            raise GateError(f"{name}: say why and who accepted it")
+        try:
+            date.fromisoformat(entry.approved_on)
+        except ValueError as error:
+            raise GateError(f"{name}: approved_on must be YYYY-MM-DD") from error
+    return entries
 
 
 def load_gate(path: Path) -> list[Check]:
@@ -133,7 +178,9 @@ def _load_reports(directory: Path, names: set[str]) -> dict[str, Any]:
     return out
 
 
-def compare_with_base(reports: Path, base: Path, checks: Sequence[Check]) -> list[Result]:
+def compare_with_base(
+    reports: Path, base: Path, checks: Sequence[Check], accepted: Sequence[Accepted] = ()
+) -> list[Result]:
     """Each floor's metric must be no worse than on the base branch, not just above the floor:
     a change that loses ground passes floors set with room to spare. Metrics new on this
     branch, and pinned (==) values, are not compared."""
@@ -153,6 +200,20 @@ def compare_with_base(reports: Path, base: Path, checks: Sequence[Check]) -> lis
             results.append(Result(check.report, label, False, "metric missing"))
             continue
         passed = _comparable(now, 0.0) and _OPS[check.op](now, before)
+        trade = next(
+            (a for a in accepted if (a.report, a.path) == (check.report, check.path)), None
+        )
+        if (
+            not passed
+            and trade is not None
+            and _comparable(now, 0.0)
+            and _OPS[check.op](now, trade.value)
+        ):
+            detail = (
+                f"is {now}; accepted by {trade.approved_by} on {trade.approved_on}: {trade.why}"
+            )
+            results.append(Result(check.report, label, True, detail, accepted=True))
+            continue
         results.append(Result(check.report, label, passed, f"is {now}"))
     return results
 
@@ -180,7 +241,8 @@ def loosened(checks: Sequence[Check], base: Sequence[Check]) -> list[str]:
 
 def format_gate(results: Sequence[Result]) -> str:
     lines = [
-        f"{'PASS' if result.passed else 'FAIL'}  {result.label}  ({result.detail})"
+        f"{'ACCEPTED' if result.accepted else 'PASS' if result.passed else 'FAIL'}  "
+        f"{result.label}  ({result.detail})"
         for result in results
     ]
     failed = sum(not result.passed for result in results)
@@ -194,11 +256,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--gate", type=Path, default=Path("evals/gate.json"))
     parser.add_argument("--base-reports", type=Path, help="the base branch's evals/baselines")
     parser.add_argument("--base-gate", type=Path, help="the base branch's evals/gate.json")
+    parser.add_argument(
+        "--accepted", type=Path, default=Path("evals/accepted.json"),
+        help="trade-offs the owner accepted against the base branch",
+    )  # fmt: skip
     args = parser.parse_args(argv)
     checks = load_gate(args.gate)
     results = check_gate(args.reports, for_providers(checks, args.reports))
     if args.base_reports is not None:
-        results += compare_with_base(args.reports, args.base_reports, checks)
+        accepted = load_accepted(args.accepted, checks)
+        results += compare_with_base(args.reports, args.base_reports, checks, accepted)
     print(format_gate(results))
     relaxed = loosened(checks, load_gate(args.base_gate)) if args.base_gate else []
     for line in relaxed:

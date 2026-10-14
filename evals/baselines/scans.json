@@ -73,8 +73,8 @@
         },
         "citations": {
           "checked": 2472,
-          "correct": 2464,
-          "accuracy": 0.9968
+          "correct": 2459,
+          "accuracy": 0.9947
         },
         "null_expected": {
           "total": 26,
@@ -87,11 +87,11 @@
         "output_tokens": 46493,
         "thinking_tokens": 0,
         "pages": 20,
-        "latency_ms_p50": 5192.5,
-        "latency_ms_p95": 6734.0
+        "latency_ms_p50": 5089.0,
+        "latency_ms_p95": 6759.7
       },
       "extraction_failures": 0,
-      "sent_to_review": 7,
+      "sent_to_review": 5,
       "documents_with_errors": 0,
       "errors_sent_to_review": 0,
       "silent_errors": 0,
@@ -168,8 +168,8 @@
         },
         "citations": {
           "checked": 2472,
-          "correct": 2447,
-          "accuracy": 0.9899
+          "correct": 2457,
+          "accuracy": 0.9939
         },
         "null_expected": {
           "total": 26,
@@ -182,11 +182,11 @@
         "output_tokens": 46435,
         "thinking_tokens": 0,
         "pages": 20,
-        "latency_ms_p50": 5276.4,
-        "latency_ms_p95": 6613.7
+        "latency_ms_p50": 5242.8,
+        "latency_ms_p95": 6937.6
       },
       "extraction_failures": 0,
-      "sent_to_review": 15,
+      "sent_to_review": 12,
       "documents_with_errors": 1,
       "errors_sent_to_review": 1,
       "silent_errors": 0,
@@ -211,10 +211,10 @@
         "extra_lines": 0,
         "fields": {
           "total": 2472,
-          "correct": 2422,
-          "wrong": 40,
-          "missing": 10,
-          "accuracy": 0.9798
+          "correct": 2423,
+          "wrong": 41,
+          "missing": 8,
+          "accuracy": 0.9802
         },
         "by_class": {
           "amount": {
@@ -240,10 +240,10 @@
           },
           "quantity": {
             "total": 588,
-            "correct": 576,
-            "wrong": 3,
-            "missing": 9,
-            "accuracy": 0.9796
+            "correct": 577,
+            "wrong": 4,
+            "missing": 7,
+            "accuracy": 0.9813
           },
           "text": {
             "total": 394,
@@ -263,16 +263,16 @@
           },
           "B": {
             "total": 1117,
-            "correct": 1073,
-            "wrong": 34,
-            "missing": 10,
-            "accuracy": 0.9606
+            "correct": 1074,
+            "wrong": 35,
+            "missing": 8,
+            "accuracy": 0.9615
           }
         },
         "citations": {
-          "checked": 2462,
-          "correct": 2439,
-          "accuracy": 0.9907
+          "checked": 2464,
+          "correct": 2437,
+          "accuracy": 0.989
         },
         "null_expected": {
           "total": 26,
@@ -282,17 +282,17 @@
       "usage": {
         "model_calls": 20,
         "input_tokens": 44015,
-        "output_tokens": 46383,
+        "output_tokens": 46394,
         "thinking_tokens": 0,
         "pages": 20,
-        "latency_ms_p50": 5129.0,
-        "latency_ms_p95": 6691.3
+        "latency_ms_p50": 5542.3,
+        "latency_ms_p95": 7328.1
       },
       "extraction_failures": 0,
-      "sent_to_review": 13,
+      "sent_to_review": 14,
       "documents_with_errors": 16,
-      "errors_sent_to_review": 10,
-      "silent_errors": 6,
+      "errors_sent_to_review": 11,
+      "silent_errors": 5,
       "silent_errors_after_order_match": 0,
       "misreads": [
         {
@@ -325,13 +325,6 @@
         },
         {
           "pair_id": "pair_002",
-          "path": "lines[1].free_qty",
-          "expected": "0",
-          "actual": null,
-          "outcome": "missing"
-        },
-        {
-          "pair_id": "pair_002",
           "path": "lines[2].free_qty",
           "expected": "0",
           "actual": null,
@@ -353,10 +346,10 @@
         },
         {
           "pair_id": "pair_002",
-          "path": "lines[5].free_qty",
+          "path": "lines[4].discount_pct",
           "expected": "0",
-          "actual": null,
-          "outcome": "missing"
+          "actual": "16",
+          "outcome": "wrong"
         },
         {
           "pair_id": "pair_003",
