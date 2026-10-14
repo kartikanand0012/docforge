@@ -218,14 +218,13 @@ def test_the_strict_providers_accept_the_wire_schema(raw_model: Any) -> None:
 
 
 def test_a_long_hostile_cell_is_read_in_linear_time() -> None:
+    import contextlib
     import time
 
     started = time.perf_counter()
     for cell in ["|b1 " * 30_000, "x|" + " " * 60_000, "| " * 60_000]:
-        try:
+        with contextlib.suppress(ValidationError):
             coa_with(cell)
-        except ValidationError:
-            pass
     assert time.perf_counter() - started < 1
 
 
