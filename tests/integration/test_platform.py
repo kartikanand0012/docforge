@@ -13,6 +13,7 @@ from test_accounts import filled, routes
 
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
+from docforge.platform import PlatformService
 from docforge.review.__main__ import make_platform_admin
 from docforge.review.service import ReviewService
 from full_stack import FullStack
@@ -110,6 +111,8 @@ def test_the_overview_counts_every_workspace(platform: Platform) -> None:
     assert set(totals) == {
         "workspaces", "accounts", "documents", "pages", "signed", "questions",
         "model_cost_usd", "documents_last_7_days", "signups_last_7_days",
+        "reading_cost_usd", "question_cost_usd", "readings", "pages_read",
+        "cost_per_reading_usd", "cost_per_page_usd", "fixed_monthly_usd",
     }  # fmt: skip
     rows = {row["tenant_id"]: row for row in body["workspaces"]}
     asha = rows[str(platform.asha_ws)]
@@ -202,7 +205,7 @@ def test_the_platform_functions_are_for_the_platform_login_alone(owner_engine: E
                 "FROM pg_proc p WHERE p.proname LIKE 'docforge\\_platform\\_%'"
             )
         ).all()
-    assert len(rows) == 5
+    assert len(rows) == 6
     for name, definer, config, public, app, platform in rows:
         assert definer and not public and not app and platform, name
         assert config == ["search_path=pg_catalog, public, pg_temp"], name
@@ -213,7 +216,7 @@ def test_the_application_login_cannot_call_the_platform_functions(engine: Engine
     for call in (
         "docforge_platform_workspaces(100, 0)", "docforge_platform_totals()",
         "docforge_platform_usage()", "docforge_platform_accounts()",
-        "docforge_platform_activity(NULL, 10, NULL)",
+        "docforge_platform_activity(NULL, 10, NULL)", "docforge_platform_reading_volume()",
     ):  # fmt: skip
         with engine.connect() as conn:
             conn.execute(text("SELECT set_config('docforge.platform_admin', 'checked', true)"))
@@ -410,6 +413,41 @@ def test_questions_and_their_cost_stay_in_the_overview_when_a_conversation_is_de
     assert before["questions"] == after["questions"] == 1
     # Tokens spent on a document since deleted, and on questions since deleted, stay spent.
     assert after["model_cost_usd"] == before["model_cost_usd"]
+
+
+def test_the_overview_says_what_reading_and_answering_cost_and_prices_a_page(
+    platform: Platform,
+) -> None:
+    platform.stack.model.reply = lambda passages: {"statements": [], "unanswerable": True}
+    platform.api.post("/v1/chat", headers=platform.asha, json={"question": "Total?"})
+    platform.api.delete(f"/v1/documents/{platform.asha_doc}", headers=platform.asha)
+    assert platform.stack.platform is not None
+    platform.stack.platform.clear_cache()
+
+    totals = platform.api.get("/v1/platform/overview", headers=platform.admin).json()["totals"]
+
+    # Two documents read once each, one since deleted: what was spent on it stays spent.
+    assert totals["readings"] == 2 and totals["pages_read"] >= 2
+    assert totals["reading_cost_usd"] > 0 and totals["question_cost_usd"] > 0
+    assert totals["reading_cost_usd"] + totals["question_cost_usd"] == pytest.approx(
+        totals["model_cost_usd"]
+    )
+    assert totals["cost_per_reading_usd"] == round(totals["reading_cost_usd"] / 2, 6)
+    assert totals["cost_per_page_usd"] == round(
+        totals["reading_cost_usd"] / totals["pages_read"], 6
+    )
+    assert totals["fixed_monthly_usd"] is None  # not set
+
+
+def test_the_fixed_monthly_cost_set_by_the_owner_is_shown_beside_what_models_cost(
+    platform_sessions: SessionFactory,
+) -> None:
+    service = PlatformService(platform_sessions, PRICES, fixed_monthly_usd=42.5)
+
+    totals = service.overview().totals
+
+    assert totals["fixed_monthly_usd"] == 42.5
+    assert totals["readings"] == 0 and totals["cost_per_page_usd"] is None
 
 
 # Paging and a short cache

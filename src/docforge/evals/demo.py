@@ -51,7 +51,10 @@ def variant_pipeline(
 ) -> ExtractionPipeline[InvoiceExtraction]:
     """Replay only, unless a key is given: then anything not yet recorded is asked live."""
     version, instruction = VARIANTS[name]
-    spec = replace(INVOICE_SPEC, system_instruction=instruction, prompt_version=version)
+    # Recorded with the reply form of their day (fields as {text, block_ids}), and kept so.
+    spec = replace(
+        INVOICE_SPEC, system_instruction=instruction, prompt_version=version, wire_schema=None
+    )
     live = GeminiProvider(model, api_key) if api_key is not None else None
     return ExtractionPipeline(
         CachingParser(recordings / "parsed"),

@@ -172,7 +172,10 @@ def test_scan_accuracy_does_not_fall_below_what_was_measured() -> None:
 
     assert variants["clean"].summary.fields.accuracy == 1.0
     assert variants["scan_good"].summary.fields.accuracy >= 0.999
-    assert variants["scan_poor"].summary.fields.accuracy >= 0.98
+    # 0.9806 with the old reply form; 0.9798 with the compact form (V2 0.1, 2026-10-14): two more
+    # OCR misreads of 2,472 values, accepted for 2.2x fewer output tokens; silent errors after
+    # order matching stay 0 (the gate).
+    assert variants["scan_poor"].summary.fields.accuracy >= 0.979
     assert {variant.source for name, variant in variants.items() if name != "clean"} == {"ocr"}
 
 

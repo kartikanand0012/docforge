@@ -2,6 +2,52 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## V2 0.1 Compact model replies (2026-10-14)
+
+Branch `v2-phase0`. Plan: `docs/plans/v2-market-leader.md`. Production before the change (73
+readings, 2026-10-09..11): 1,273 input and 2,679 output tokens per call, about $0.007 a reading,
+~95% of it output, because every field came back as `{"text": ..., "block_ids": [...]}`.
+
+### What changed
+
+- **The model replies in a compact form** (`extraction/wire.py`): every field one string, the
+  value as printed, a bar, the ids of the blocks it was read from (`"445.20|b53"`). A wire model is
+  made from each `Raw*` model, and validating the reply turns it back into that `Raw*` model, so
+  normalising, rules, page merging, corrections and storage are unchanged; old readings open and
+  re-read as before. Invoice, purchase order and CoA (prompts `invoice-v2`, `purchase-order-v3`,
+  `coa-v2`, paged `paged-2`). The old form of a field is still read; a cell without its bar, or
+  with a bad block id, is refused and retried with its path.
+- **Value first**: with the block ids first, the model often cited the cell beside the value
+  (trust: 7 correct amounts on one invoice flagged); with the value first, as `text` came before
+  `block_ids`, false flags fell below the old form's.
+- **The format is restated on every field of the schema**: without it, the model dropped the
+  ids on long pages (a 120-line invoice failed after its retry).
+- **New rule** for invoices and orders: when one block holds several fields (an address then a
+  GSTIN), each field gets only its own part.
+- The gate demo keeps its recordings in the old form (`wire_schema=None`).
+
+### Measured (all recorded live, Gemini 3.5 Flash-Lite; gate 76/76)
+
+| Suite | Before | After |
+|---|---|---|
+| Invoice, output tokens per document | 5,167 | 2,324 (2.2x fewer) |
+| Invoice, latency p50 / p95 | 14.4 s / 26.6 s | 5.2 s / 6.7 s |
+| Invoice, fully correct / citations | 20 of 20 / 99.15% | 20 of 20 / 99.68% |
+| Multi-page, field accuracy | 91.67% (268 wrong, 23 missing) | 99.40% |
+| Multi-page, latency p50 / output tokens | 140 s / 147,777 | 40 s / 66,453 |
+| Scans clean / good / poor, field accuracy | 100% / 99.96% / 98.06% | 100% / 99.96% / 97.98% |
+| Scans poor, silent errors after order match | 0 | 0 |
+| Trust, clean pairs accepted / values flagged | 12 / 21 | 13 / 8 |
+| CoA fields | 511 of 511 | 511 of 511 |
+
+### Honest limits
+
+- Poor scans: silent errors before order matching 5 -> 6 (one more OCR-noise value, a shifted
+  column); after matching still 0, which the gate holds.
+- One of three multi-page documents is still not fully correct (a few rows of a 120-line
+  invoice where the OCR merged two rows' cells) - step 0.2.
+- Accuracy is still measured on generated invoices; the real set (0.4, 0.5) is next.
+
 ## C16 Audit log and webhook screens (2026-10-08)
 
 Branch `c16-audit-webhooks`. Plan: `docs/plans/c16-audit-webhooks.md` (ECC planner); built with the plan's default decisions, as the owner asked. Evidence: `docs/tdd/c16-audit-webhooks.tdd.md`. No eval or gate change (nothing here calls a model): gate 76/76 unchanged. Tests: 1,963 Python (one MinIO bucket check failed once in the full run and passes alone: local storage, untouched here); web 86; e2e 12/12.

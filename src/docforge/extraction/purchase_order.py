@@ -18,11 +18,12 @@ from docforge.extraction.normalize import (
 )
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.schema import Extracted, Issue, PartyExtraction, RawField, RawParty, _Model
+from docforge.extraction.wire import CELL_INSTRUCTION, wire_model
 from docforge.gstin import is_valid_gstin
 from docforge.parsing.base import ParsedDocument
 from docforge.trust.rules import RuleResult
 
-PROMPT_VERSION = "purchase-order-v2"
+PROMPT_VERSION = "purchase-order-v3"
 
 SYSTEM_INSTRUCTION = """\
 You extract fields from one purchase order for pharmaceutical goods from India.
@@ -36,9 +37,11 @@ Rules:
 - Copy each value exactly as printed. Do not reformat dates, numbers or identifiers, do not
   calculate, and do not correct anything that looks wrong.
 - Give the value only, without its label or any serial number that shares its block.
-- For every value, list the ids of the blocks it was read from.
-- If a field is not printed, return null for its text and an empty list of block ids.
-  Never guess and never derive a value from other fields.
+- When one block holds several fields (an address followed by a GSTIN, a date beside a
+  number), give each field only its own part.
+- For every value, give the ids of the blocks it was read from.
+- If a field is not printed, return null. Never guess and never derive a value from other
+  fields.
 - Return one line per product row of the order table, in printed order. Column headers may
   be misaligned with the cells beneath them; use the values themselves to decide which is
   which.
@@ -213,9 +216,10 @@ def order_total(order: PurchaseOrderExtraction) -> RuleResult:
 PURCHASE_ORDER_SPEC = DocumentSpec(
     doc_type="purchase_order",
     raw_schema=RawPurchaseOrder,
-    system_instruction=SYSTEM_INSTRUCTION,
+    system_instruction=SYSTEM_INSTRUCTION + CELL_INSTRUCTION,
     prompt_version=PROMPT_VERSION,
     schema_version="purchase-order-2",
     normalize=normalize_purchase_order,
     rules=(order_rules,),
+    wire_schema=wire_model(RawPurchaseOrder),
 )

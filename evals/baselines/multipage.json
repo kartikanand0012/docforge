@@ -9,64 +9,64 @@
   },
   "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
-  "prompt_version": "invoice-v1",
+  "prompt_version": "invoice-v2",
   "schema_version": "invoice-1",
   "summary": {
     "documents": 3,
     "documents_fully_correct": 2,
-    "line_count_matches": 2,
+    "line_count_matches": 3,
     "extra_lines": 0,
     "fields": {
       "total": 3492,
-      "correct": 3201,
-      "wrong": 268,
-      "missing": 23,
-      "accuracy": 0.9167
+      "correct": 3470,
+      "wrong": 4,
+      "missing": 18,
+      "accuracy": 0.9937
     },
     "by_class": {
       "amount": {
         "total": 994,
-        "correct": 895,
-        "wrong": 92,
-        "missing": 7,
-        "accuracy": 0.9004
+        "correct": 987,
+        "wrong": 1,
+        "missing": 6,
+        "accuracy": 0.993
       },
       "date": {
         "total": 496,
-        "correct": 449,
-        "wrong": 43,
+        "correct": 492,
+        "wrong": 0,
         "missing": 4,
-        "accuracy": 0.9052
+        "accuracy": 0.9919
       },
       "identifier": {
         "total": 517,
-        "correct": 484,
-        "wrong": 30,
-        "missing": 3,
-        "accuracy": 0.9362
+        "correct": 513,
+        "wrong": 2,
+        "missing": 2,
+        "accuracy": 0.9923
       },
       "quantity": {
         "total": 980,
-        "correct": 906,
-        "wrong": 67,
-        "missing": 7,
-        "accuracy": 0.9245
+        "correct": 973,
+        "wrong": 1,
+        "missing": 6,
+        "accuracy": 0.9929
       },
       "text": {
         "total": 505,
-        "correct": 467,
-        "wrong": 36,
-        "missing": 2,
-        "accuracy": 0.9248
+        "correct": 505,
+        "wrong": 0,
+        "missing": 0,
+        "accuracy": 1.0
       }
     },
     "by_layout": {
       "A": {
         "total": 2352,
-        "correct": 2061,
-        "wrong": 268,
-        "missing": 23,
-        "accuracy": 0.8763
+        "correct": 2330,
+        "wrong": 4,
+        "missing": 18,
+        "accuracy": 0.9906
       },
       "B": {
         "total": 1140,
@@ -77,9 +77,9 @@
       }
     },
     "citations": {
-      "checked": 3469,
-      "correct": 3132,
-      "accuracy": 0.9029
+      "checked": 3474,
+      "correct": 3459,
+      "accuracy": 0.9957
     },
     "null_expected": {
       "total": 4,
@@ -88,12 +88,12 @@
   },
   "usage": {
     "model_calls": 8,
-    "input_tokens": 51716,
-    "output_tokens": 147777,
+    "input_tokens": 52644,
+    "output_tokens": 66453,
     "thinking_tokens": 0,
     "pages": 8,
-    "latency_ms_p50": 140007.09999999998,
-    "latency_ms_p95": 228467.4
+    "latency_ms_p50": 41333.8,
+    "latency_ms_p95": 63351.5
   },
   "documents": [
     {
@@ -8198,7 +8198,7 @@
           "expected": "40.07",
           "actual": "40.07",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[24].qty",
@@ -10030,7 +10030,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[40].taxable_value",
@@ -10046,7 +10046,7 @@
           "expected": "3115.39",
           "actual": "3115.39",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[41].hsn",
@@ -10782,7 +10782,7 @@
           "expected": "10",
           "actual": "10",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[47].free_qty",
@@ -10790,7 +10790,7 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[47].ptr",
@@ -12270,7 +12270,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[60].taxable_value",
@@ -12278,7 +12278,7 @@
           "expected": "2875.08",
           "actual": "2875.08",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[60].amount",
@@ -12494,7 +12494,7 @@
           "expected": "18",
           "actual": "18",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[62].taxable_value",
@@ -12502,7 +12502,7 @@
           "expected": "8618.00",
           "actual": "8618.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[62].amount",
@@ -12830,7 +12830,7 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[65].taxable_value",
@@ -12838,7 +12838,7 @@
           "expected": "477.09",
           "actual": "477.09",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[65].amount",
@@ -14470,7 +14470,7 @@
       "pair_id": "pair_103",
       "layout": "A",
       "expected_lines": 120,
-      "extracted_lines": 119,
+      "extracted_lines": 120,
       "error": null,
       "fields": [
         {
@@ -25359,7 +25359,7 @@
           "expected": "Ibuprofen Tablets IP 400mg",
           "actual": "Ibuprofen Tablets IP 400mg",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[96].pack",
@@ -25373,71 +25373,71 @@
           "path": "lines[96].hsn",
           "field_class": "identifier",
           "expected": "30049099",
-          "actual": "30049099",
-          "outcome": "correct",
-          "cited": false
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[96].batch_no",
           "field_class": "identifier",
           "expected": "XD41199",
-          "actual": "KXD0968",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "XD41199",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[96].mfg",
           "field_class": "date",
           "expected": "2025-07",
-          "actual": "2025-07",
-          "outcome": "correct",
-          "cited": false
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[96].expiry",
           "field_class": "date",
           "expected": "2028-07",
-          "actual": "2028-07",
-          "outcome": "correct",
-          "cited": false
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[96].qty",
           "field_class": "quantity",
           "expected": "200",
-          "actual": "100",
-          "outcome": "wrong",
-          "cited": false
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[96].free_qty",
           "field_class": "quantity",
           "expected": "16",
-          "actual": "8",
-          "outcome": "wrong",
-          "cited": false
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[96].mrp",
           "field_class": "amount",
           "expected": "28.03",
-          "actual": "27.46",
-          "outcome": "wrong",
-          "cited": false
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[96].ptr",
           "field_class": "amount",
           "expected": "21.30",
-          "actual": "18.67",
-          "outcome": "wrong",
-          "cited": false
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[96].discount_pct",
           "field_class": "quantity",
           "expected": "2",
-          "actual": "5",
+          "actual": "16",
           "outcome": "wrong",
           "cited": false
         },
@@ -25445,7 +25445,7 @@
           "path": "lines[96].taxable_value",
           "field_class": "amount",
           "expected": "4174.80",
-          "actual": "1773.65",
+          "actual": "28.03",
           "outcome": "wrong",
           "cited": false
         },
@@ -25453,25 +25453,25 @@
           "path": "lines[96].gst_rate",
           "field_class": "quantity",
           "expected": "12",
-          "actual": "12",
-          "outcome": "correct",
-          "cited": false
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[96].amount",
           "field_class": "amount",
           "expected": "4675.78",
-          "actual": "1986.49",
-          "outcome": "wrong",
-          "cited": false
+          "actual": null,
+          "outcome": "missing",
+          "cited": null
         },
         {
           "path": "lines[97].product_name",
           "field_class": "text",
           "expected": "Ibuprofen Tablets IP 400mg",
-          "actual": "99 Omeprazole Capsules IP 20mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Ibuprofen Tablets IP 400mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].pack",
@@ -25479,7 +25479,7 @@
           "expected": "10x10",
           "actual": "10x10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[97].hsn",
@@ -25487,79 +25487,79 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[97].batch_no",
           "field_class": "identifier",
           "expected": "KXD0968",
-          "actual": "OH91930",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "KXD0968",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].mfg",
           "field_class": "date",
           "expected": "2025-07",
-          "actual": "2025-06",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-07",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].expiry",
           "field_class": "date",
           "expected": "2028-07",
-          "actual": "2026-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-07",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].qty",
           "field_class": "quantity",
           "expected": "100",
-          "actual": "30",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "100",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].free_qty",
           "field_class": "quantity",
           "expected": "8",
-          "actual": "3",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "8",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].mrp",
           "field_class": "amount",
           "expected": "27.46",
-          "actual": "68.80",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "27.46",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].ptr",
           "field_class": "amount",
           "expected": "18.67",
-          "actual": "52.29",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "18.67",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].discount_pct",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "2.5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].taxable_value",
           "field_class": "amount",
           "expected": "1773.65",
-          "actual": "1529.48",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1773.65",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[97].gst_rate",
@@ -25567,31 +25567,31 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[97].amount",
           "field_class": "amount",
           "expected": "1986.49",
-          "actual": "1713.02",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1986.49",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].product_name",
           "field_class": "text",
           "expected": "Omeprazole Capsules IP 20mg",
-          "actual": "100 ORS Powder WHO Formula 21g",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Omeprazole Capsules IP 20mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].pack",
           "field_class": "text",
           "expected": "10x10",
-          "actual": "1x25",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10x10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].hsn",
@@ -25599,111 +25599,111 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[98].batch_no",
           "field_class": "identifier",
           "expected": "OH91930",
-          "actual": "HXQ7285",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "OH91930",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].mfg",
           "field_class": "date",
           "expected": "2025-06",
-          "actual": "2026-03",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-06",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].expiry",
           "field_class": "date",
           "expected": "2026-12",
-          "actual": "2027-09",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2026-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].qty",
           "field_class": "quantity",
           "expected": "30",
-          "actual": "50",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "30",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].free_qty",
           "field_class": "quantity",
           "expected": "3",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "3",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].mrp",
           "field_class": "amount",
           "expected": "68.80",
-          "actual": "23.56",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "68.80",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].ptr",
           "field_class": "amount",
           "expected": "52.29",
-          "actual": "16.26",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "52.29",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].discount_pct",
           "field_class": "quantity",
           "expected": "2.5",
-          "actual": "2",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2.5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].taxable_value",
           "field_class": "amount",
           "expected": "1529.48",
-          "actual": "796.74",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1529.48",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].gst_rate",
           "field_class": "quantity",
           "expected": "12",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[98].amount",
           "field_class": "amount",
           "expected": "1713.02",
-          "actual": "836.58",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1713.02",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].product_name",
           "field_class": "text",
           "expected": "ORS Powder WHO Formula 21g",
-          "actual": "101 Amlodipine Tablets IP 5mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "ORS Powder WHO Formula 21g",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].pack",
           "field_class": "text",
           "expected": "1x25",
-          "actual": "10x10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1x25",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].hsn",
@@ -25711,39 +25711,39 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[99].batch_no",
           "field_class": "identifier",
           "expected": "HXQ7285",
-          "actual": "IJ515638",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "HXQ7285",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].mfg",
           "field_class": "date",
           "expected": "2026-03",
-          "actual": "2026-04",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2026-03",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].expiry",
           "field_class": "date",
           "expected": "2027-09",
-          "actual": "2029-04",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2027-09",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].qty",
           "field_class": "quantity",
           "expected": "50",
-          "actual": "60",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "50",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].free_qty",
@@ -25751,39 +25751,39 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[99].mrp",
           "field_class": "amount",
           "expected": "23.56",
-          "actual": "42.79",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "23.56",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].ptr",
           "field_class": "amount",
           "expected": "16.26",
-          "actual": "29.95",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "16.26",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].discount_pct",
           "field_class": "quantity",
           "expected": "2",
-          "actual": "2.5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].taxable_value",
           "field_class": "amount",
           "expected": "796.74",
-          "actual": "1752.08",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "796.74",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[99].gst_rate",
@@ -25791,23 +25791,23 @@
           "expected": "5",
           "actual": "5",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[99].amount",
           "field_class": "amount",
           "expected": "836.58",
-          "actual": "1839.68",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "836.58",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].product_name",
           "field_class": "text",
           "expected": "Amlodipine Tablets IP 5mg",
-          "actual": "102 Ibuprofen Tablets IP 400mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Amlodipine Tablets IP 5mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].pack",
@@ -25815,7 +25815,7 @@
           "expected": "10x10",
           "actual": "10x10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[100].hsn",
@@ -25823,103 +25823,103 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[100].batch_no",
           "field_class": "identifier",
           "expected": "IJ515638",
-          "actual": "JF24065",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "IJ515638",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].mfg",
           "field_class": "date",
           "expected": "2026-04",
-          "actual": "2025-11",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2026-04",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].expiry",
           "field_class": "date",
           "expected": "2029-04",
-          "actual": "2027-11",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2029-04",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].qty",
           "field_class": "quantity",
           "expected": "60",
-          "actual": "100",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "60",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].free_qty",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].mrp",
           "field_class": "amount",
           "expected": "42.79",
-          "actual": "27.46",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "42.79",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].ptr",
           "field_class": "amount",
           "expected": "29.95",
-          "actual": "18.95",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "29.95",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].discount_pct",
           "field_class": "quantity",
           "expected": "2.5",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2.5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].taxable_value",
           "field_class": "amount",
           "expected": "1752.08",
-          "actual": "1895.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1752.08",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].gst_rate",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[100].amount",
           "field_class": "amount",
           "expected": "1839.68",
-          "actual": "2122.40",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1839.68",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].product_name",
           "field_class": "text",
           "expected": "Ibuprofen Tablets IP 400mg",
-          "actual": "103 Pantoprazole Tablets IP 40mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Ibuprofen Tablets IP 400mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].pack",
@@ -25927,7 +25927,7 @@
           "expected": "10x10",
           "actual": "10x10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[101].hsn",
@@ -25935,79 +25935,79 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[101].batch_no",
           "field_class": "identifier",
           "expected": "JF24065",
-          "actual": "RF6025",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "JF24065",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].mfg",
           "field_class": "date",
           "expected": "2025-11",
-          "actual": "2025-05",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-11",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].expiry",
           "field_class": "date",
           "expected": "2027-11",
-          "actual": "2027-05",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2027-11",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].qty",
           "field_class": "quantity",
           "expected": "100",
-          "actual": "10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "100",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].free_qty",
           "field_class": "quantity",
           "expected": "10",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].mrp",
           "field_class": "amount",
           "expected": "27.46",
-          "actual": "119.25",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "27.46",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].ptr",
           "field_class": "amount",
           "expected": "18.95",
-          "actual": "87.05",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "18.95",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].discount_pct",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].taxable_value",
           "field_class": "amount",
           "expected": "1895.00",
-          "actual": "826.98",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1895.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[101].gst_rate",
@@ -26015,31 +26015,31 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[101].amount",
           "field_class": "amount",
           "expected": "2122.40",
-          "actual": "926.22",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2122.40",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].product_name",
           "field_class": "text",
           "expected": "Pantoprazole Tablets IP 40mg",
-          "actual": "104 ORS Powder WHO Formula 21g",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Pantoprazole Tablets IP 40mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].pack",
           "field_class": "text",
           "expected": "10x10",
-          "actual": "1x25",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10x10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].hsn",
@@ -26047,39 +26047,39 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[102].batch_no",
           "field_class": "identifier",
           "expected": "RF6025",
-          "actual": "TDL3828",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "RF6025",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].mfg",
           "field_class": "date",
           "expected": "2025-05",
-          "actual": "2025-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-05",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].expiry",
           "field_class": "date",
           "expected": "2027-05",
-          "actual": "2028-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2027-05",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].qty",
           "field_class": "quantity",
           "expected": "10",
-          "actual": "100",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].free_qty",
@@ -26087,71 +26087,71 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[102].mrp",
           "field_class": "amount",
           "expected": "119.25",
-          "actual": "23.56",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "119.25",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].ptr",
           "field_class": "amount",
           "expected": "87.05",
-          "actual": "16.49",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "87.05",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].discount_pct",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].taxable_value",
           "field_class": "amount",
           "expected": "826.98",
-          "actual": "1649.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "826.98",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].gst_rate",
           "field_class": "quantity",
           "expected": "12",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[102].amount",
           "field_class": "amount",
           "expected": "926.22",
-          "actual": "1731.46",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "926.22",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].product_name",
           "field_class": "text",
           "expected": "ORS Powder WHO Formula 21g",
-          "actual": "105 Metformin Tablets IP 500mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "ORS Powder WHO Formula 21g",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].pack",
           "field_class": "text",
           "expected": "1x25",
-          "actual": "10x15",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1x25",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].hsn",
@@ -26159,63 +26159,63 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[103].batch_no",
           "field_class": "identifier",
           "expected": "TDL3828",
-          "actual": "RP4013",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "TDL3828",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].mfg",
           "field_class": "date",
           "expected": "2025-12",
-          "actual": "2026-04",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].expiry",
           "field_class": "date",
           "expected": "2028-12",
-          "actual": "2028-04",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].qty",
           "field_class": "quantity",
           "expected": "100",
-          "actual": "60",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "100",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].free_qty",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].mrp",
           "field_class": "amount",
           "expected": "23.56",
-          "actual": "46.66",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "23.56",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].ptr",
           "field_class": "amount",
           "expected": "16.49",
-          "actual": "32.20",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "16.49",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].discount_pct",
@@ -26223,15 +26223,15 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[103].taxable_value",
           "field_class": "amount",
           "expected": "1649.00",
-          "actual": "1932.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1649.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[103].gst_rate",
@@ -26239,31 +26239,31 @@
           "expected": "5",
           "actual": "5",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[103].amount",
           "field_class": "amount",
           "expected": "1731.46",
-          "actual": "2028.60",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1731.46",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].product_name",
           "field_class": "text",
           "expected": "Metformin Tablets IP 500mg",
-          "actual": "106 Ibuprofen Tablets IP 400mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Metformin Tablets IP 500mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].pack",
           "field_class": "text",
           "expected": "10x15",
-          "actual": "10x10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10x15",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].hsn",
@@ -26271,63 +26271,63 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[104].batch_no",
           "field_class": "identifier",
           "expected": "RP4013",
-          "actual": "XCD123319",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "RP4013",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].mfg",
           "field_class": "date",
           "expected": "2026-04",
-          "actual": "2026-03",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2026-04",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].expiry",
           "field_class": "date",
           "expected": "2028-04",
-          "actual": "2028-03",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-04",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].qty",
           "field_class": "quantity",
           "expected": "60",
-          "actual": "100",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "60",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].free_qty",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].mrp",
           "field_class": "amount",
           "expected": "46.66",
-          "actual": "27.17",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "46.66",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].ptr",
           "field_class": "amount",
           "expected": "32.20",
-          "actual": "18.48",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "32.20",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].discount_pct",
@@ -26335,191 +26335,191 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[104].taxable_value",
           "field_class": "amount",
           "expected": "1932.00",
-          "actual": "1848.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1932.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].gst_rate",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[104].amount",
           "field_class": "amount",
           "expected": "2028.60",
-          "actual": "2069.76",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028.60",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].product_name",
           "field_class": "text",
           "expected": "Ibuprofen Tablets IP 400mg",
-          "actual": "107 Vitamin C Tablets 500mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Ibuprofen Tablets IP 400mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].pack",
           "field_class": "text",
           "expected": "10x10",
-          "actual": "1x15",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10x10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].hsn",
           "field_class": "identifier",
           "expected": "30049099",
-          "actual": "30045090",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "30049099",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].batch_no",
           "field_class": "identifier",
           "expected": "XCD123319",
-          "actual": "TJ7515",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "XCD123319",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].mfg",
           "field_class": "date",
           "expected": "2026-03",
-          "actual": "2025-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2026-03",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].expiry",
           "field_class": "date",
           "expected": "2028-03",
-          "actual": "2027-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-03",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].qty",
           "field_class": "quantity",
           "expected": "100",
-          "actual": "20",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "100",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].free_qty",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "2",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].mrp",
           "field_class": "amount",
           "expected": "27.17",
-          "actual": "54.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "27.17",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].ptr",
           "field_class": "amount",
           "expected": "18.48",
-          "actual": "39.96",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "18.48",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].discount_pct",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].taxable_value",
           "field_class": "amount",
           "expected": "1848.00",
-          "actual": "759.24",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1848.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].gst_rate",
           "field_class": "quantity",
           "expected": "12",
-          "actual": "18",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[105].amount",
           "field_class": "amount",
           "expected": "2069.76",
-          "actual": "895.90",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2069.76",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].product_name",
           "field_class": "text",
           "expected": "Vitamin C Tablets 500mg",
-          "actual": "108 Ibuprofen Tablets IP 400mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Vitamin C Tablets 500mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].pack",
           "field_class": "text",
           "expected": "1x15",
-          "actual": "10x10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1x15",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].hsn",
           "field_class": "identifier",
           "expected": "30045090",
-          "actual": "30049099",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "30045090",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].batch_no",
           "field_class": "identifier",
           "expected": "TJ7515",
-          "actual": "GG19892",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "TJ7515",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].mfg",
           "field_class": "date",
           "expected": "2025-12",
-          "actual": "2025-06",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].expiry",
           "field_class": "date",
           "expected": "2027-12",
-          "actual": "2027-06",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2027-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].qty",
@@ -26527,71 +26527,71 @@
           "expected": "20",
           "actual": "20",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[106].free_qty",
           "field_class": "quantity",
           "expected": "2",
-          "actual": "1",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].mrp",
           "field_class": "amount",
           "expected": "54.00",
-          "actual": "27.17",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "54.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].ptr",
           "field_class": "amount",
           "expected": "39.96",
-          "actual": "19.83",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "39.96",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].discount_pct",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "2.5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].taxable_value",
           "field_class": "amount",
           "expected": "759.24",
-          "actual": "386.69",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "759.24",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].gst_rate",
           "field_class": "quantity",
           "expected": "18",
-          "actual": "12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "18",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[106].amount",
           "field_class": "amount",
           "expected": "895.90",
-          "actual": "433.09",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "895.90",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].product_name",
           "field_class": "text",
           "expected": "Ibuprofen Tablets IP 400mg",
-          "actual": "109 Cetirizine Tablets IP 10mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Ibuprofen Tablets IP 400mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].pack",
@@ -26599,7 +26599,7 @@
           "expected": "10x10",
           "actual": "10x10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[107].hsn",
@@ -26607,31 +26607,31 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[107].batch_no",
           "field_class": "identifier",
           "expected": "GG19892",
-          "actual": "FHH999200",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "GG19892",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].mfg",
           "field_class": "date",
           "expected": "2025-06",
-          "actual": "2025-07",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-06",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].expiry",
           "field_class": "date",
           "expected": "2027-06",
-          "actual": "2027-01",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2027-06",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].qty",
@@ -26639,47 +26639,47 @@
           "expected": "20",
           "actual": "20",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[107].free_qty",
           "field_class": "quantity",
           "expected": "1",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].mrp",
           "field_class": "amount",
           "expected": "27.17",
-          "actual": "20.66",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "27.17",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].ptr",
           "field_class": "amount",
           "expected": "19.83",
-          "actual": "15.50",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "19.83",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].discount_pct",
           "field_class": "quantity",
           "expected": "2.5",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2.5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].taxable_value",
           "field_class": "amount",
           "expected": "386.69",
-          "actual": "294.50",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "386.69",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[107].gst_rate",
@@ -26687,23 +26687,23 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[107].amount",
           "field_class": "amount",
           "expected": "433.09",
-          "actual": "329.84",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "433.09",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].product_name",
           "field_class": "text",
           "expected": "Cetirizine Tablets IP 10mg",
-          "actual": "110 Pantoprazole Tablets IP 40mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Cetirizine Tablets IP 10mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].pack",
@@ -26711,7 +26711,7 @@
           "expected": "10x10",
           "actual": "10x10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[108].hsn",
@@ -26719,39 +26719,39 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[108].batch_no",
           "field_class": "identifier",
           "expected": "FHH999200",
-          "actual": "LE54577",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "FHH999200",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].mfg",
           "field_class": "date",
           "expected": "2025-07",
-          "actual": "2026-01",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-07",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].expiry",
           "field_class": "date",
           "expected": "2027-01",
-          "actual": "2029-01",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2027-01",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].qty",
           "field_class": "quantity",
           "expected": "20",
-          "actual": "200",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "20",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].free_qty",
@@ -26759,39 +26759,39 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[108].mrp",
           "field_class": "amount",
           "expected": "20.66",
-          "actual": "120.38",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "20.66",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].ptr",
           "field_class": "amount",
           "expected": "15.50",
-          "actual": "83.06",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "15.50",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].discount_pct",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "2.5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].taxable_value",
           "field_class": "amount",
           "expected": "294.50",
-          "actual": "16196.70",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "294.50",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[108].gst_rate",
@@ -26799,31 +26799,31 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[108].amount",
           "field_class": "amount",
           "expected": "329.84",
-          "actual": "18140.30",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "329.84",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].product_name",
           "field_class": "text",
           "expected": "Pantoprazole Tablets IP 40mg",
-          "actual": "111 ORS Powder WHO Formula 21g",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Pantoprazole Tablets IP 40mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].pack",
           "field_class": "text",
           "expected": "10x10",
-          "actual": "1x25",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10x10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].hsn",
@@ -26831,31 +26831,31 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[109].batch_no",
           "field_class": "identifier",
           "expected": "LE54577",
-          "actual": "DC472521",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "LE54577",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].mfg",
           "field_class": "date",
           "expected": "2026-01",
-          "actual": "2025-05",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2026-01",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].expiry",
           "field_class": "date",
           "expected": "2029-01",
-          "actual": "2027-05",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2029-01",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].qty",
@@ -26863,7 +26863,7 @@
           "expected": "200",
           "actual": "200",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[109].free_qty",
@@ -26871,71 +26871,71 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[109].mrp",
           "field_class": "amount",
           "expected": "120.38",
-          "actual": "21.95",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "120.38",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].ptr",
           "field_class": "amount",
           "expected": "83.06",
-          "actual": "15.80",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "83.06",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].discount_pct",
           "field_class": "quantity",
           "expected": "2.5",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2.5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].taxable_value",
           "field_class": "amount",
           "expected": "16196.70",
-          "actual": "3160.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "16196.70",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].gst_rate",
           "field_class": "quantity",
           "expected": "12",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[109].amount",
           "field_class": "amount",
           "expected": "18140.30",
-          "actual": "3318.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "18140.30",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].product_name",
           "field_class": "text",
           "expected": "ORS Powder WHO Formula 21g",
-          "actual": "112 Amlodipine Tablets IP 5mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "ORS Powder WHO Formula 21g",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].pack",
           "field_class": "text",
           "expected": "1x25",
-          "actual": "10x10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1x25",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].hsn",
@@ -26943,79 +26943,79 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[110].batch_no",
           "field_class": "identifier",
           "expected": "DC472521",
-          "actual": "DQ73865",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "DC472521",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].mfg",
           "field_class": "date",
           "expected": "2025-05",
-          "actual": "2025-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-05",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].expiry",
           "field_class": "date",
           "expected": "2027-05",
-          "actual": "2028-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2027-05",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].qty",
           "field_class": "quantity",
           "expected": "200",
-          "actual": "60",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "200",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].free_qty",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "6",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].mrp",
           "field_class": "amount",
           "expected": "21.95",
-          "actual": "38.90",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "21.95",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].ptr",
           "field_class": "amount",
           "expected": "15.80",
-          "actual": "28.01",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "15.80",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].discount_pct",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].taxable_value",
           "field_class": "amount",
           "expected": "3160.00",
-          "actual": "1596.57",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "3160.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[110].gst_rate",
@@ -27023,23 +27023,23 @@
           "expected": "5",
           "actual": "5",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[110].amount",
           "field_class": "amount",
           "expected": "3318.00",
-          "actual": "1676.39",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "3318.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].product_name",
           "field_class": "text",
           "expected": "Amlodipine Tablets IP 5mg",
-          "actual": "113 Atorvastatin Tablets IP 10mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Amlodipine Tablets IP 5mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].pack",
@@ -27047,7 +27047,7 @@
           "expected": "10x10",
           "actual": "10x10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[111].hsn",
@@ -27055,79 +27055,79 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[111].batch_no",
           "field_class": "identifier",
           "expected": "DQ73865",
-          "actual": "SK1385",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "DQ73865",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].mfg",
           "field_class": "date",
           "expected": "2025-12",
-          "actual": "2025-06",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].expiry",
           "field_class": "date",
           "expected": "2028-12",
-          "actual": "2027-06",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].qty",
           "field_class": "quantity",
           "expected": "60",
-          "actual": "10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "60",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].free_qty",
           "field_class": "quantity",
           "expected": "6",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "6",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].mrp",
           "field_class": "amount",
           "expected": "38.90",
-          "actual": "92.16",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "38.90",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].ptr",
           "field_class": "amount",
           "expected": "28.01",
-          "actual": "69.12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "28.01",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].discount_pct",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "2",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].taxable_value",
           "field_class": "amount",
           "expected": "1596.57",
-          "actual": "677.38",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1596.57",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[111].gst_rate",
@@ -27135,23 +27135,23 @@
           "expected": "5",
           "actual": "5",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[111].amount",
           "field_class": "amount",
           "expected": "1676.39",
-          "actual": "711.24",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1676.39",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].product_name",
           "field_class": "text",
           "expected": "Atorvastatin Tablets IP 10mg",
-          "actual": "114 Paracetamol Tablets IP 500mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Atorvastatin Tablets IP 10mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].pack",
@@ -27159,7 +27159,7 @@
           "expected": "10x10",
           "actual": "10x10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[112].hsn",
@@ -27167,15 +27167,15 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[112].batch_no",
           "field_class": "identifier",
           "expected": "SK1385",
-          "actual": "RKL689601",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "SK1385",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].mfg",
@@ -27183,95 +27183,95 @@
           "expected": "2025-06",
           "actual": "2025-06",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[112].expiry",
           "field_class": "date",
           "expected": "2027-06",
-          "actual": "2028-06",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2027-06",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].qty",
           "field_class": "quantity",
           "expected": "10",
-          "actual": "60",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].free_qty",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "6",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].mrp",
           "field_class": "amount",
           "expected": "92.16",
-          "actual": "32.18",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "92.16",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].ptr",
           "field_class": "amount",
           "expected": "69.12",
-          "actual": "24.14",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "69.12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].discount_pct",
           "field_class": "quantity",
           "expected": "2",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].taxable_value",
           "field_class": "amount",
           "expected": "677.38",
-          "actual": "1375.98",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "677.38",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].gst_rate",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[112].amount",
           "field_class": "amount",
           "expected": "711.24",
-          "actual": "1541.10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "711.24",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].product_name",
           "field_class": "text",
           "expected": "Paracetamol Tablets IP 500mg",
-          "actual": "115 Salbutamol Inhaler 100mcg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Paracetamol Tablets IP 500mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].pack",
           "field_class": "text",
           "expected": "10x10",
-          "actual": "1x1",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10x10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].hsn",
@@ -27279,79 +27279,79 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[113].batch_no",
           "field_class": "identifier",
           "expected": "RKL689601",
-          "actual": "SKU097675",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "RKL689601",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].mfg",
           "field_class": "date",
           "expected": "2025-06",
-          "actual": "2026-01",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-06",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].expiry",
           "field_class": "date",
           "expected": "2028-06",
-          "actual": "2027-07",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-06",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].qty",
           "field_class": "quantity",
           "expected": "60",
-          "actual": "200",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "60",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].free_qty",
           "field_class": "quantity",
           "expected": "6",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "6",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].mrp",
           "field_class": "amount",
           "expected": "32.18",
-          "actual": "156.88",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "32.18",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].ptr",
           "field_class": "amount",
           "expected": "24.14",
-          "actual": "117.66",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "24.14",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].discount_pct",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "2.5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].taxable_value",
           "field_class": "amount",
           "expected": "1375.98",
-          "actual": "22943.70",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1375.98",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[113].gst_rate",
@@ -27359,31 +27359,31 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[113].amount",
           "field_class": "amount",
           "expected": "1541.10",
-          "actual": "25696.94",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1541.10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].product_name",
           "field_class": "text",
           "expected": "Salbutamol Inhaler 100mcg",
-          "actual": "116 Pantoprazole Tablets IP 40mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Salbutamol Inhaler 100mcg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].pack",
           "field_class": "text",
           "expected": "1x1",
-          "actual": "10x10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1x1",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].hsn",
@@ -27391,31 +27391,31 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[114].batch_no",
           "field_class": "identifier",
           "expected": "SKU097675",
-          "actual": "JR499005",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "SKU097675",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].mfg",
           "field_class": "date",
           "expected": "2026-01",
-          "actual": "2025-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2026-01",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].expiry",
           "field_class": "date",
           "expected": "2027-07",
-          "actual": "2028-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2027-07",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].qty",
@@ -27423,7 +27423,7 @@
           "expected": "200",
           "actual": "200",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[114].free_qty",
@@ -27431,39 +27431,39 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[114].mrp",
           "field_class": "amount",
           "expected": "156.88",
-          "actual": "108.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "156.88",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].ptr",
           "field_class": "amount",
           "expected": "117.66",
-          "actual": "79.92",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "117.66",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].discount_pct",
           "field_class": "quantity",
           "expected": "2.5",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2.5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].taxable_value",
           "field_class": "amount",
           "expected": "22943.70",
-          "actual": "15984.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "22943.70",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[114].gst_rate",
@@ -27471,71 +27471,71 @@
           "expected": "12",
           "actual": "12",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[114].amount",
           "field_class": "amount",
           "expected": "25696.94",
-          "actual": "17902.08",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "25696.94",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].product_name",
           "field_class": "text",
           "expected": "Pantoprazole Tablets IP 40mg",
-          "actual": "117 Insulin Injection IP 40IU/ml",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Pantoprazole Tablets IP 40mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].pack",
           "field_class": "text",
           "expected": "10x10",
-          "actual": "1x10ml",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10x10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].hsn",
           "field_class": "identifier",
           "expected": "30049099",
-          "actual": "30043110",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "30049099",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].batch_no",
           "field_class": "identifier",
           "expected": "JR499005",
-          "actual": "APM1024",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "JR499005",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].mfg",
           "field_class": "date",
           "expected": "2025-12",
-          "actual": "2026-03",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].expiry",
           "field_class": "date",
           "expected": "2028-12",
-          "actual": "2028-03",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].qty",
           "field_class": "quantity",
           "expected": "200",
-          "actual": "10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "200",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].free_qty",
@@ -27543,103 +27543,103 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[115].mrp",
           "field_class": "amount",
           "expected": "108.00",
-          "actual": "171.60",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "108.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].ptr",
           "field_class": "amount",
           "expected": "79.92",
-          "actual": "128.70",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "79.92",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].discount_pct",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].taxable_value",
           "field_class": "amount",
           "expected": "15984.00",
-          "actual": "1222.65",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "15984.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].gst_rate",
           "field_class": "quantity",
           "expected": "12",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[115].amount",
           "field_class": "amount",
           "expected": "17902.08",
-          "actual": "1283.79",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "17902.08",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].product_name",
           "field_class": "text",
           "expected": "Insulin Injection IP 40IU/ml",
-          "actual": "118 Vitamin C Tablets 500mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Insulin Injection IP 40IU/ml",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].pack",
           "field_class": "text",
           "expected": "1x10ml",
-          "actual": "1x15",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1x10ml",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].hsn",
           "field_class": "identifier",
           "expected": "30043110",
-          "actual": "30045090",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "30043110",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].batch_no",
           "field_class": "identifier",
           "expected": "APM1024",
-          "actual": "OZ7425",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "APM1024",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].mfg",
           "field_class": "date",
           "expected": "2026-03",
-          "actual": "2025-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2026-03",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].expiry",
           "field_class": "date",
           "expected": "2028-03",
-          "actual": "2028-12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-03",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].qty",
@@ -27647,183 +27647,183 @@
           "expected": "10",
           "actual": "10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[116].free_qty",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "1",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].mrp",
           "field_class": "amount",
           "expected": "171.60",
-          "actual": "55.62",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "171.60",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].ptr",
           "field_class": "amount",
           "expected": "128.70",
-          "actual": "42.27",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "128.70",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].discount_pct",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "2",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].taxable_value",
           "field_class": "amount",
           "expected": "1222.65",
-          "actual": "414.25",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1222.65",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].gst_rate",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "18",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[116].amount",
           "field_class": "amount",
           "expected": "1283.79",
-          "actual": "488.81",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1283.79",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].product_name",
           "field_class": "text",
           "expected": "Vitamin C Tablets 500mg",
-          "actual": "119 Amlodipine Tablets IP 5mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Vitamin C Tablets 500mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].pack",
           "field_class": "text",
           "expected": "1x15",
-          "actual": "10x10",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1x15",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].hsn",
           "field_class": "identifier",
           "expected": "30045090",
-          "actual": "30049099",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "30045090",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].batch_no",
           "field_class": "identifier",
           "expected": "OZ7425",
-          "actual": "TK61557",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "OZ7425",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].mfg",
           "field_class": "date",
           "expected": "2025-12",
-          "actual": "2025-07",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].expiry",
           "field_class": "date",
           "expected": "2028-12",
-          "actual": "2028-07",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].qty",
           "field_class": "quantity",
           "expected": "10",
-          "actual": "100",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].free_qty",
           "field_class": "quantity",
           "expected": "1",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "1",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].mrp",
           "field_class": "amount",
           "expected": "55.62",
-          "actual": "36.96",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "55.62",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].ptr",
           "field_class": "amount",
           "expected": "42.27",
-          "actual": "27.35",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "42.27",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].discount_pct",
           "field_class": "quantity",
           "expected": "2",
-          "actual": "0",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].taxable_value",
           "field_class": "amount",
           "expected": "414.25",
-          "actual": "2735.00",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "414.25",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].gst_rate",
           "field_class": "quantity",
           "expected": "18",
-          "actual": "5",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "18",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[117].amount",
           "field_class": "amount",
           "expected": "488.81",
-          "actual": "2871.76",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "488.81",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].product_name",
           "field_class": "text",
           "expected": "Amlodipine Tablets IP 5mg",
-          "actual": "120 Cetirizine Tablets IP 10mg",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "Amlodipine Tablets IP 5mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].pack",
@@ -27831,7 +27831,7 @@
           "expected": "10x10",
           "actual": "10x10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[118].hsn",
@@ -27839,63 +27839,63 @@
           "expected": "30049099",
           "actual": "30049099",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[118].batch_no",
           "field_class": "identifier",
           "expected": "TK61557",
-          "actual": "DNO354079",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "TK61557",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].mfg",
           "field_class": "date",
           "expected": "2025-07",
-          "actual": "2026-05",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2025-07",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].expiry",
           "field_class": "date",
           "expected": "2028-07",
-          "actual": "2029-05",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2028-07",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].qty",
           "field_class": "quantity",
           "expected": "100",
-          "actual": "24",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "100",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].free_qty",
           "field_class": "quantity",
           "expected": "0",
-          "actual": "2",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].mrp",
           "field_class": "amount",
           "expected": "36.96",
-          "actual": "21.97",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "36.96",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].ptr",
           "field_class": "amount",
           "expected": "27.35",
-          "actual": "16.70",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "27.35",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].discount_pct",
@@ -27903,143 +27903,143 @@
           "expected": "0",
           "actual": "0",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[118].taxable_value",
           "field_class": "amount",
           "expected": "2735.00",
-          "actual": "400.80",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2735.00",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].gst_rate",
           "field_class": "quantity",
           "expected": "5",
-          "actual": "12",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "5",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[118].amount",
           "field_class": "amount",
           "expected": "2871.76",
-          "actual": "448.90",
-          "outcome": "wrong",
-          "cited": false
+          "actual": "2871.76",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].product_name",
           "field_class": "text",
           "expected": "Cetirizine Tablets IP 10mg",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "Cetirizine Tablets IP 10mg",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].pack",
           "field_class": "text",
           "expected": "10x10",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "10x10",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].hsn",
           "field_class": "identifier",
           "expected": "30049099",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "30049099",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].batch_no",
           "field_class": "identifier",
           "expected": "DNO354079",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "DNO354079",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].mfg",
           "field_class": "date",
           "expected": "2026-05",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "2026-05",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].expiry",
           "field_class": "date",
           "expected": "2029-05",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "2029-05",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].qty",
           "field_class": "quantity",
           "expected": "24",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "24",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].free_qty",
           "field_class": "quantity",
           "expected": "2",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "2",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].mrp",
           "field_class": "amount",
           "expected": "21.97",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "21.97",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].ptr",
           "field_class": "amount",
           "expected": "16.70",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "16.70",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].discount_pct",
           "field_class": "quantity",
           "expected": "0",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "0",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].taxable_value",
           "field_class": "amount",
           "expected": "400.80",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "400.80",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].gst_rate",
           "field_class": "quantity",
           "expected": "12",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "12",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "lines[119].amount",
           "field_class": "amount",
           "expected": "448.90",
-          "actual": null,
-          "outcome": "missing",
-          "cited": null
+          "actual": "448.90",
+          "outcome": "correct",
+          "cited": true
         },
         {
           "path": "totals.taxable_value",

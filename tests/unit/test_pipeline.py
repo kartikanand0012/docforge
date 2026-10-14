@@ -55,7 +55,7 @@ def test_sends_the_versioned_prompt_and_raw_schema(raw_invoice_from_label: RawFr
     (request,) = provider.requests
     assert request.prompt_version == PROMPT_VERSION
     assert "[b1] text 1" in request.prompt
-    assert request.schema.__name__ == "RawInvoice"
+    assert request.schema.__name__ == "WireRawInvoice"
 
 
 def test_keeps_the_printed_string_beside_the_typed_value(

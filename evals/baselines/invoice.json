@@ -9,7 +9,7 @@
   },
   "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
-  "prompt_version": "invoice-v1",
+  "prompt_version": "invoice-v2",
   "schema_version": "invoice-1",
   "summary": {
     "documents": 20,
@@ -78,8 +78,8 @@
     },
     "citations": {
       "checked": 2472,
-      "correct": 2451,
-      "accuracy": 0.9915
+      "correct": 2459,
+      "accuracy": 0.9947
     },
     "null_expected": {
       "total": 26,
@@ -88,12 +88,12 @@
   },
   "usage": {
     "model_calls": 20,
-    "input_tokens": 41827,
-    "output_tokens": 103333,
+    "input_tokens": 44327,
+    "output_tokens": 46493,
     "thinking_tokens": 0,
     "pages": 20,
-    "latency_ms_p50": 14417.3,
-    "latency_ms_p95": 26647.0
+    "latency_ms_p50": 5089.0,
+    "latency_ms_p95": 6759.7
   },
   "documents": [
     {
@@ -2198,7 +2198,7 @@
           "expected": "3452.00",
           "actual": "3452.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[5].amount",
@@ -11118,7 +11118,7 @@
           "expected": "5152.00",
           "actual": "5152.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "totals.igst",
@@ -13689,7 +13689,7 @@
           "expected": "45578.00",
           "actual": "45578.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "totals.igst",
@@ -14322,7 +14322,7 @@
           "expected": "11005.00",
           "actual": "11005.00",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "totals.igst",
@@ -15548,7 +15548,7 @@
           "expected": "4503.40",
           "actual": "4503.40",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[2].hsn",
@@ -15660,7 +15660,7 @@
           "expected": "1405.99",
           "actual": "1405.99",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[3].hsn",
@@ -15772,7 +15772,7 @@
           "expected": "142.46",
           "actual": "142.46",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[4].hsn",
@@ -15884,7 +15884,7 @@
           "expected": "898.12",
           "actual": "898.12",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[5].hsn",
@@ -15996,7 +15996,7 @@
           "expected": "1881.60",
           "actual": "1881.60",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[6].hsn",
@@ -16052,7 +16052,7 @@
           "expected": "61.09",
           "actual": "61.09",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[6].qty",
@@ -16108,7 +16108,7 @@
           "expected": "507.01",
           "actual": "507.01",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "lines[7].hsn",
@@ -16220,7 +16220,7 @@
           "expected": "2433.10",
           "actual": "2433.10",
           "outcome": "correct",
-          "cited": true
+          "cited": false
         },
         {
           "path": "totals.taxable_value",
@@ -17341,7 +17341,7 @@
           "expected": "26784.00",
           "actual": "26784.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "totals.igst",
@@ -18142,7 +18142,7 @@
           "expected": "5",
           "actual": "5",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[5].taxable_value",
@@ -18150,7 +18150,7 @@
           "expected": "24302.00",
           "actual": "24302.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[5].amount",
@@ -18158,7 +18158,7 @@
           "expected": "25517.10",
           "actual": "25517.10",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[6].hsn",
@@ -18262,7 +18262,7 @@
           "expected": "12738.00",
           "actual": "12738.00",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[6].amount",
@@ -18270,7 +18270,7 @@
           "expected": "14266.56",
           "actual": "14266.56",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[7].hsn",
@@ -18374,7 +18374,7 @@
           "expected": "690.50",
           "actual": "690.50",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[7].amount",
@@ -18382,7 +18382,7 @@
           "expected": "725.03",
           "actual": "725.03",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[8].hsn",
@@ -18486,7 +18486,7 @@
           "expected": "3547.30",
           "actual": "3547.30",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[8].amount",
@@ -18494,7 +18494,7 @@
           "expected": "3972.98",
           "actual": "3972.98",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[9].hsn",
@@ -18598,7 +18598,7 @@
           "expected": "377.04",
           "actual": "377.04",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "lines[9].amount",
@@ -18606,7 +18606,7 @@
           "expected": "395.89",
           "actual": "395.89",
           "outcome": "correct",
-          "cited": false
+          "cited": true
         },
         {
           "path": "totals.taxable_value",
