@@ -277,3 +277,56 @@ def test_the_bundled_production_keys_load_and_none_is_a_sandbox_or_test_key() ->
     assert all(key.environment == "production" for key in ring.keys)
     assert all(key.source_url.startswith("https://") for key in ring.keys)
     assert all(key.public_key.key_size >= 2048 for key in ring.keys)
+
+
+# --- security review -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("total", ["NaN", "Infinity", "-Infinity", "-1", "1E+308", "1e13"])
+def test_a_signed_total_that_is_not_a_real_amount_is_malformed_not_a_crash(total: str) -> None:
+    data = json.dumps(DATA).replace("112345.5", total)
+
+    result = verify(signed(data), KeyRing((trusted(),)))
+
+    assert result.status == "malformed"
+
+
+def test_the_signed_total_is_read_exactly_as_printed() -> None:
+    data = json.dumps(DATA).replace("112345.5", "112345.50")
+
+    result = verify(signed(data), KeyRing((trusted(),)))
+
+    assert result.invoice is not None and str(result.invoice.total) == "112345.50"
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"DocNo": "INV\u0007042"},  # a control character
+        {"DocNo": "INV-2026-0000000042"},  # more than 16 characters
+        {"DocNo": "INV 42"},
+        {"DocDt": "2/9/2026"},  # not dd/mm/yyyy
+    ],
+)
+def test_the_invoice_number_and_date_are_held_to_the_gst_format(changed: dict[str, str]) -> None:
+    assert verify(signed({**DATA, **changed}), KeyRing((trusted(),))).status == "malformed"
+
+
+def test_the_issuer_is_given_only_when_verified_and_kept_short() -> None:
+    forged = verify(
+        signed(key=OTHER, kid="A" * 40, iss="<script>"), KeyRing((trusted(kid="A" * 40),))
+    )
+    long = verify(signed(iss="N" * 500), KeyRing((trusted(),)))
+
+    assert forged.status == "bad_signature" and forged.issuer is None
+    assert long.issuer is not None and len(long.issuer) <= 32
+
+
+def test_the_result_says_whether_the_key_was_confirmed_by_a_real_qr() -> None:
+    unconfirmed = verify(signed(), KeyRing((trusted(),)))
+    confirmed_key = TrustedKey(**{**trusted().__dict__, "confirmed_by_real_qr": True})
+    confirmed = verify(signed(), KeyRing((confirmed_key,)))
+
+    assert unconfirmed.status == confirmed.status == "verified"
+    assert unconfirmed.key_confirmed is False and confirmed.key_confirmed is True
+    assert verify("upi://pay", KeyRing((trusted(),))).key_confirmed is False
