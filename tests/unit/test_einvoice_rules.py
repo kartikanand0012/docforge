@@ -79,7 +79,15 @@ def altered(qr: str) -> str:
     return f"{head}.{b64(json.dumps(payload).encode())}.{signature}"
 
 
-def page_with(parsed: ParsedDocument, *texts: str) -> ParsedDocument:
+def page_with(parsed: ParsedDocument, *texts: str, title: str | None = None) -> ParsedDocument:
+    """`texts` low on page one; `title` at its top, where a document's title is printed."""
+    top = parsed.pages[0].height
+    heading = (
+        Block(
+            id="t0", kind="text", text=title, page=1,
+            bbox=BBox(x0=200, y0=top - 40, x1=400, y1=top - 25),
+        ),
+    ) if title else ()  # fmt: skip
     extra = tuple(
         Block(
             id=f"q{index}", kind="text", text=text, page=1,
@@ -87,15 +95,15 @@ def page_with(parsed: ParsedDocument, *texts: str) -> ParsedDocument:
         )
         for index, text in enumerate(texts)
     )  # fmt: skip
-    return parsed.model_copy(update={"blocks": (*parsed.blocks, *extra)})
+    return parsed.model_copy(update={"blocks": (*heading, *parsed.blocks, *extra)})
 
 
 class Invoice:
     """pair_001 read perfectly, its page optionally carrying more text (an IRN, a title)."""
 
-    def __init__(self, build: RawFromLabel, *page_text: str) -> None:
+    def __init__(self, build: RawFromLabel, *page_text: str, title: str | None = None) -> None:
         self.raw = build(LABEL)
-        self.parsed = page_with(cited(LABEL, "invoice", self.raw), *page_text)
+        self.parsed = page_with(cited(LABEL, "invoice", self.raw), *page_text, title=title)
         self.extraction = normalize_invoice(RawInvoice.model_validate(self.raw), self.parsed)
 
     def assess(self, *qrs: str) -> Assessment:
@@ -204,6 +212,28 @@ def test_an_altered_qr_naming_a_kid_we_do_not_hold_is_only_a_warning(invoice: In
     assert outcomes(result) == {"einvoice.signature": ("failed", "warning")}
 
 
+def test_an_altered_qr_beside_a_verified_one_is_still_an_error(invoice: Invoice) -> None:
+    result = invoice.assess(signed(data()), altered(signed(data(OTHER))))
+
+    assert outcomes(result)["einvoice.signature"] == ("failed", "error")
+    assert result.decision == "review"
+    assert failed(result) == {"einvoice.signature"}  # the verified QR's fields still compared
+
+
+def test_a_missing_signed_field_on_the_page_forces_review(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    def without_total(label: dict[str, Any]) -> dict[str, Any]:
+        raw = raw_invoice_from_label(label)
+        raw["totals"]["grand_total"] = {"text": None, "block_ids": []}
+        return raw
+
+    result = Invoice(without_total, f"IRN: {IRN}").assess(signed(data()))
+
+    assert outcomes(result)["einvoice.grand_total"] == ("not_evaluated", "error")
+    assert result.decision == "review"
+
+
 def test_a_genuine_qr_copied_from_another_invoice_is_caught(invoice: Invoice) -> None:
     result = invoice.assess(signed(data(OTHER)))
 
@@ -239,7 +269,7 @@ def test_each_signed_field_that_disagrees_is_an_error_on_its_field(
 def test_the_total_may_differ_by_round_off_up_to_one_rupee(invoice: Invoice) -> None:
     grand = Decimal(LABEL["invoice"]["totals"]["grand_total"])
 
-    near = invoice.assess(signed(data(TotInvVal=float(grand + Decimal("0.99")))))
+    near = invoice.assess(signed(data(TotInvVal=float(grand + Decimal("1.00")))))
     far = invoice.assess(signed(data(TotInvVal=float(grand + Decimal("1.01")))))
 
     assert "einvoice.grand_total" not in failed(near)
@@ -252,11 +282,27 @@ def test_case_does_not_make_an_invoice_number_disagree(invoice: Invoice) -> None
     assert failed(invoice.assess(signed(fields))) == set()
 
 
-def test_an_unregistered_buyer_is_not_compared(invoice: Invoice) -> None:
-    result = invoice.assess(signed(data(BuyerGstin="URP")))
+def test_a_hyphen_or_slash_makes_an_invoice_number_different(invoice: Invoice) -> None:
+    number = LABEL["invoice"]["invoice_no"]  # NVM/26-27/32001
 
-    assert "einvoice.buyer_gstin" not in outcomes(result)
-    assert result.decision == "accept"
+    for other in (number.replace("-", ""), number.replace("/", "-")):
+        assert failed(invoice.assess(signed(data(DocNo=other)))) == {"einvoice.invoice_no"}
+
+
+def test_an_unregistered_buyer_beside_a_printed_buyer_gstin_is_a_warning(
+    invoice: Invoice, raw_invoice_from_label: RawFromLabel
+) -> None:
+    def no_buyer_gstin(label: dict[str, Any]) -> dict[str, Any]:
+        raw = raw_invoice_from_label(label)
+        raw["buyer"]["gstin"] = {"text": None, "block_ids": []}
+        return raw
+
+    printed = invoice.assess(signed(data(BuyerGstin="URP")))
+    unprinted = Invoice(no_buyer_gstin, f"IRN: {IRN}").assess(signed(data(BuyerGstin="URP")))
+
+    assert outcomes(printed)["einvoice.buyer_gstin"] == ("failed", "warning")
+    assert printed.decision == "accept"
+    assert outcomes(unprinted)["einvoice.buyer_gstin"] == ("passed", "warning")
 
 
 @pytest.mark.parametrize(
@@ -277,9 +323,27 @@ def test_line_count_document_type_and_irn_are_warnings(
 
 
 def test_a_credit_note_whose_page_says_so_passes(raw_invoice_from_label: RawFromLabel) -> None:
-    note = Invoice(raw_invoice_from_label, "CREDIT NOTE", f"IRN: {IRN}")
+    note = Invoice(raw_invoice_from_label, f"IRN: {IRN}", title="CREDIT NOTE")
 
     assert failed(note.assess(signed(data(DocTyp="CRN")))) == set()
+
+
+def test_credit_note_only_in_the_terms_is_not_a_title(raw_invoice_from_label: RawFromLabel) -> None:
+    terms = "Any credit note against this bill will be issued within 7 days."
+    invoice = Invoice(raw_invoice_from_label, terms, f"IRN: {IRN}", title="TAX INVOICE")
+
+    assert failed(invoice.assess(signed(data(DocTyp="CRN")))) == {"einvoice.document_type"}
+    assert failed(invoice.assess(signed(data()))) == set()
+
+
+def test_an_invoice_qr_on_a_page_titled_credit_note_is_a_warning(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    note = Invoice(raw_invoice_from_label, f"IRN: {IRN}", title="Credit Note")
+
+    result = note.assess(signed(data()))
+
+    assert outcomes(result)["einvoice.document_type"] == ("failed", "warning")
 
 
 def test_an_irn_split_over_lines_on_the_page_is_found(raw_invoice_from_label: RawFromLabel) -> None:
@@ -348,6 +412,8 @@ def test_review_reassesses_with_the_same_extra_rules(raw_invoice_from_label: Raw
 
     plain = reassess(INVOICE_SPEC, raw, parsed, [])
     extra = reassess(INVOICE_SPEC, raw, parsed, [], extra_rules=(_extra("einvoice.test"),))
+    with pytest.raises(TypeError):
+        reassess(INVOICE_SPEC, raw, parsed, [], (_extra("einvoice.test"),))  # type: ignore[misc]
 
     assert plain.assessment.decision == "accept"
     assert extra.assessment.decision == "review"
