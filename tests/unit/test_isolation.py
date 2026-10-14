@@ -203,9 +203,7 @@ def test_the_parser_process_can_be_given_settings_of_its_own() -> None:
 
 
 def test_a_reply_longer_than_the_limit_is_refused_and_the_process_replaced() -> None:
-    parser = IsolatedParser(
-        CommandParser, name="command", version="0", max_reply_bytes=1024 * 1024
-    )
+    parser = IsolatedParser(CommandParser, name="command", version="0", max_reply_bytes=1024 * 1024)
     try:
         with pytest.raises(ParserLimitExceeded):
             parser.parse(b"x" * (2 * 1024 * 1024))

@@ -13,8 +13,9 @@ apart from it, so that cached and replayed parses are not changed by it.
 from importlib.metadata import version
 
 import zxingcpp
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
+from docforge.parsing.base import DocumentTooLarge
 from docforge.parsing.isolation import IsolatedParser
 from docforge.parsing.pdf import pdf_page_count
 from docforge.parsing.raster import render_pages
@@ -30,15 +31,16 @@ class _Model(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+# Bounds checked again in the parent: the child reads untrusted pixels with native code.
 class FoundQr(_Model):
-    page: int
-    text: str
+    page: int = Field(ge=1, le=100_000)
+    text: str = Field(max_length=MAX_TEXT_CHARS)
 
 
 class QrScan(_Model):
-    found: tuple[FoundQr, ...]
-    pages_scanned: int
-    decoder: str
+    found: tuple[FoundQr, ...] = Field(max_length=64)
+    pages_scanned: int = Field(ge=0, le=MAX_PAGES + 1)
+    decoder: str = Field(max_length=64)
 
 
 def looks_signed(text: str) -> bool:
@@ -53,7 +55,11 @@ def _order(pages: int) -> list[int]:
 
 
 def _read(pdf: bytes, page: int, dpi: int) -> list[str]:
-    (image,) = render_pages(pdf, dpi, page, page)
+    """The QR texts on one page; none when the page is too large to render at `dpi`."""
+    try:
+        (image,) = render_pages(pdf, dpi, page, page)
+    except DocumentTooLarge:
+        return []
     codes = zxingcpp.read_barcodes(
         image, formats=zxingcpp.BarcodeFormats(zxingcpp.BarcodeFormat.QRCode)
     )
@@ -67,7 +73,7 @@ class QrScanner:
     version = version("zxing-cpp")
 
     def parse(self, pdf: bytes) -> QrScan:
-        """Raises `ParseError` (e.g. `DocumentTooLarge`) when a page cannot be rendered."""
+        """Raises `ParseError` when the PDF cannot be read; a page too large is skipped."""
         found: list[FoundQr] = []
         scanned = 0
         for page in _order(pdf_page_count(pdf)):
@@ -94,7 +100,10 @@ class IsolatedScanner(IsolatedParser):
 
 
 def isolated_scanner(
-    *, timeout_seconds: float, max_rss_mb: int, max_documents: int = 200
+    *,
+    timeout_seconds: float = 60,
+    max_rss_mb: int = 2048,  # a page near the pixel cap at 450 dpi peaked near 850 MB
+    max_documents: int = 200,
 ) -> IsolatedScanner:
     return IsolatedScanner(
         QrScanner,  # type: ignore[arg-type]
@@ -103,4 +112,5 @@ def isolated_scanner(
         max_documents=max_documents,
         timeout_seconds=timeout_seconds,
         max_rss_bytes=max_rss_mb * 1024 * 1024,
+        max_reply_bytes=1024 * 1024,  # 64 codes of 4096 characters fit many times over
     )
