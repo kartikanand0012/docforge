@@ -107,6 +107,10 @@ class IsolatedParser:
         self.spawned = 0  # processes started, for measurement and tests
 
     def parse(self, pdf: bytes) -> ParsedDocument:
+        return ParsedDocument.model_validate_json(self._run(pdf))
+
+    def _run(self, pdf: bytes) -> str:
+        """The child's JSON reply for `pdf`, or the error it raised."""
         with self._lock:
             try:
                 kind, payload = self._exchange(pdf)
@@ -119,7 +123,7 @@ class IsolatedParser:
                 kind, payload = self._exchange(pdf)
         if kind != "ok":
             raise _ERRORS.get(kind, ParseError)(payload)
-        return ParsedDocument.model_validate_json(payload)
+        return payload
 
     def _exchange(self, pdf: bytes) -> tuple[str, str]:
         """Send one document to the child and wait for its reply, within the limits."""

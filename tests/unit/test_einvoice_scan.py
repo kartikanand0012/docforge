@@ -102,6 +102,6 @@ def test_a_scan_over_its_time_limit_is_stopped() -> None:
     scanner = isolated_scanner(timeout_seconds=0.01, max_rss_mb=1024)
     try:
         with pytest.raises(ParserLimitExceeded):
-            scanner.parse(pdf([[JWS]] * 3))
+            scanner.parse(pdf([[]] * 9))  # no QR: every page it reads is rendered and searched
     finally:
         scanner.close()
