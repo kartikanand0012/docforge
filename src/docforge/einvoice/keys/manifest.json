@@ -1,0 +1,50 @@
+[
+  {
+    "name": "NIC IRP-1 production",
+    "irp": "NIC1",
+    "environment": "production",
+    "file": "nic1-production.pem",
+    "source_url": "https://docs.gsp.vayana.com/files/production-irp-nic1-verification-public-key.pem",
+    "fetched": "2026-10-14",
+    "sha256": "f7f90b31bf932cf86464f82f1a2e0307c6ea133c54b84883fd50dd5a6cb96b5f",
+    "kid": null,
+    "confirmed_by_real_qr": false,
+    "not_after": null
+  },
+  {
+    "name": "NIC IRP-2 production",
+    "irp": "NIC2",
+    "environment": "production",
+    "file": "nic2-production.pem",
+    "source_url": "https://docs.gsp.vayana.com/files/production-irp-nic2-verification-public-key.pem",
+    "fetched": "2026-10-14",
+    "sha256": "9a57274caac55a18876df2e44f26df8e2c3151161ad420733cb6ab2ca6d5526d",
+    "kid": null,
+    "confirmed_by_real_qr": false,
+    "not_after": null
+  },
+  {
+    "name": "IRIS IRP (einvoice6) production, certificate of 21/11/2024",
+    "irp": "IRIS",
+    "environment": "production",
+    "file": "iris-production-2024.crt",
+    "source_url": "https://einvoice6.gst.gov.in/content/wp-content/uploads/2024/11/IRIS_IRP_Prod_sign_certificate_21112024.zip",
+    "fetched": "2026-10-14",
+    "sha256": "32028d843e1cd1e70432ca87967c6ef840facb5e5e19ab85bd560391adbf8203",
+    "kid": "E4ED5B77A8E0FEFEF5FB0E0E64344138CCC3E1E8",
+    "confirmed_by_real_qr": false,
+    "not_after": "2026-06-20"
+  },
+  {
+    "name": "NIC IRP sandbox",
+    "irp": "NIC",
+    "environment": "sandbox",
+    "file": "nic-sandbox.pem",
+    "source_url": "https://docs.gsp.vayana.com/files/sandbox_irp-verification-public-key.pem",
+    "fetched": "2026-10-14",
+    "sha256": "31991f72e63a26f5e7f50124904de3a7a63dca354c68db72885e45018be40706",
+    "kid": null,
+    "confirmed_by_real_qr": false,
+    "not_after": null
+  }
+]
