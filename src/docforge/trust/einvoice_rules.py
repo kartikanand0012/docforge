@@ -20,7 +20,8 @@ from docforge.trust.rules import Outcome, RuleResult, Severity
 
 TOTAL_TOLERANCE = Decimal("1.00")  # round-off on Indian invoices
 _NOT_COMPARED = "A value this check needs is missing."
-_SPACE = re.compile(r"[\s\-]+")
+_SPACE = re.compile(r"\s+")  # "/" and "-" are part of a document number (CGST Rule 46)
+_TITLE_AREA = 0.75  # the top quarter of page one, where a document's title is printed
 _TITLES = {"CRN": re.compile(r"credit\s*note", re.I), "DBN": re.compile(r"debit\s*note", re.I)}
 _NAMES = {"INV": "an invoice", "CRN": "a credit note", "DBN": "a debit note"}
 
@@ -49,7 +50,10 @@ def _same(printed: str | None, signed: str) -> bool | None:
 
 def _signature(evidence: QrEvidence) -> InvoiceRule:
     severity: Severity = "warning"
-    if evidence.status == "verified":
+    if evidence.status == "verified" and evidence.altered_beside:
+        ok, severity = False, "error"
+        message = "Another e-invoice QR on this document was altered."
+    elif evidence.status == "verified":
         ok, severity, message = True, "error", ""
     elif evidence.status == "bad_signature":
         ok, severity = False, "error"
@@ -71,8 +75,14 @@ def _signature(evidence: QrEvidence) -> InvoiceRule:
 
 
 def _fields(signed: SignedInvoice, parsed: ParsedDocument) -> InvoiceRule:
-    page = " ".join(block.text for block in parsed.blocks)
-    compact_page = _SPACE.sub("", page).lower()
+    compact_page = _SPACE.sub("", "".join(block.text for block in parsed.blocks)).lower()
+    first = next((page for page in parsed.pages if page.number == 1), None)
+    title = " ".join(
+        block.text
+        for block in parsed.blocks
+        if first and block.page == 1 and block.bbox.y1 >= first.height * _TITLE_AREA
+    )
+    titled = {kind for kind, pattern in _TITLES.items() if pattern.search(title)}
 
     def rule(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         seller = invoice.seller.gstin.value
@@ -81,8 +91,13 @@ def _fields(signed: SignedInvoice, parsed: ParsedDocument) -> InvoiceRule:
             _same(seller, signed.seller_gstin),
             f"The seller GSTIN {seller} is not the one registered: {signed.seller_gstin}.",
         )  # fmt: skip
-        if signed.buyer_gstin != "URP":
-            buyer = invoice.buyer.gstin.value
+        buyer = invoice.buyer.gstin.value
+        if signed.buyer_gstin == "URP":
+            yield _result(
+                "einvoice.buyer_gstin", "warning", ("buyer.gstin",), buyer is None,
+                f"The QR registers an unregistered buyer, but the page prints GSTIN {buyer}.",
+            )  # fmt: skip
+        else:
             yield _result(
                 "einvoice.buyer_gstin", "error", ("buyer.gstin",),
                 _same(buyer, signed.buyer_gstin),
@@ -110,11 +125,10 @@ def _fields(signed: SignedInvoice, parsed: ParsedDocument) -> InvoiceRule:
             len(invoice.lines) == signed.item_count if invoice.lines else None,
             f"{len(invoice.lines)} lines were read; {signed.item_count} were registered.",
         )  # fmt: skip
-        titled = {kind for kind, title in _TITLES.items() if title.search(page)}
         yield _result(
             "einvoice.document_type", "warning", (),
-            signed.doc_type in titled if signed.doc_type in _TITLES else True,
-            f"The QR registers {_NAMES[signed.doc_type]}, but the page does not say so.",
+            signed.doc_type in titled if signed.doc_type in _TITLES else not titled,
+            f"The QR registers {_NAMES[signed.doc_type]}, but the page's title does not say so.",
         )  # fmt: skip
         yield _result(
             "einvoice.irn_printed", "warning", (), signed.irn.lower() in compact_page,

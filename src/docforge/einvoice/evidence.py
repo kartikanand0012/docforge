@@ -3,8 +3,10 @@
 Of the QR codes found on an invoice, only those shaped like a signed e-invoice count; a UPI
 QR or a link says nothing about the invoice. Of those, the strongest is kept: a verified one,
 else one whose signature fails with a key we hold (altered), else one we could not read, else
-one signed by a key we do not hold. The raw QR text is not kept here: it can be stored with
-the check, but the rules need only its outcome and, when verified, its signed fields.
+one signed by a key we do not hold; and whether an altered one sat beside a verified one,
+which is tamper evidence although the verified one's fields are still compared. The raw QR
+text is not kept here: it can be stored with the check, but the rules need only its outcome
+and, when verified, its signed fields.
 """
 
 from collections.abc import Iterable
@@ -30,6 +32,7 @@ class QrEvidence(BaseModel):
     key_name: str | None
     key_confirmed: bool  # that key has verified a real invoice's QR
     qr_index: int = Field(ge=0)  # which of the QR codes found it was
+    altered_beside: bool = False  # another QR on the document was altered
 
 
 def evidence_from(qrs: Iterable[str], keyring: KeyRing) -> QrEvidence | None:
@@ -55,4 +58,8 @@ def evidence_from(qrs: Iterable[str], keyring: KeyRing) -> QrEvidence | None:
         )
     if not found:
         return None
-    return min(found, key=lambda evidence: _STRENGTH.index(evidence.status))
+    strongest = min(found, key=lambda evidence: _STRENGTH.index(evidence.status))
+    altered = any(evidence.status == "bad_signature" for evidence in found)
+    if strongest.status == "verified" and altered:
+        return strongest.model_copy(update={"altered_beside": True})
+    return strongest

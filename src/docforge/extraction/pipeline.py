@@ -103,6 +103,7 @@ class ExtractionPipeline[E: BaseModel]:
     def extract(
         self,
         parsed: ParsedDocument,
+        *,
         extra_rules: Sequence[Callable[[E], Iterable[RuleResult]]] = (),
     ) -> PipelineResult[E]:
         """Extraction from an already parsed document. One retry if the reply is malformed.

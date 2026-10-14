@@ -413,7 +413,7 @@ def test_review_reassesses_with_the_same_extra_rules(raw_invoice_from_label: Raw
     plain = reassess(INVOICE_SPEC, raw, parsed, [])
     extra = reassess(INVOICE_SPEC, raw, parsed, [], extra_rules=(_extra("einvoice.test"),))
     with pytest.raises(TypeError):
-        reassess(INVOICE_SPEC, raw, parsed, [], (_extra("einvoice.test"),))  # type: ignore[misc]
+        reassess(INVOICE_SPEC, raw, parsed, [], (_extra("einvoice.test"),))  # type: ignore[call-arg]
 
     assert plain.assessment.decision == "accept"
     assert extra.assessment.decision == "review"

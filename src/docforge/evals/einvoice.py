@@ -123,6 +123,8 @@ def run_einvoice_eval(
         PairLabel.model_validate_json((directory / "label.json").read_text("utf-8"))
         for directory in sorted(clean_dir.glob("pair_*"))
     ]
+    if len(labels) < 2:
+        raise ValueError("the copied case needs at least two invoices")
     cases: list[EinvoiceCase] = []
     for index, label in enumerate(labels):
         read = invoices.extract(

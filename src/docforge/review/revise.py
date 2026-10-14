@@ -90,6 +90,7 @@ def reassess(
     raw: BaseModel,
     parsed: ParsedDocument,
     corrections: Sequence[Correction],
+    *,
     extra_rules: Sequence[Callable[[Any], Iterable[RuleResult]]] = (),
 ) -> Reassessed:
     """The record and its assessment after `corrections`; `extra_rules` as when it was read."""
