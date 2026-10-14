@@ -14,7 +14,9 @@ import httpx
 import pytest
 
 from docforge.evals.real import (
+    format_summary,
     labels_from_export,
+    main,
     pull,
     run_real_eval,
     score_against_record,
@@ -46,15 +48,17 @@ def record(extraction: InvoiceExtraction) -> dict[str, Any]:
 
 
 def with_value(data: dict[str, Any], path: list[Any], value: Any) -> dict[str, Any]:
-    copy = json.loads(json.dumps(data))
-    node = copy
+    copy: dict[str, Any] = json.loads(json.dumps(data))
+    node: Any = copy
     for part in path:
         node = node[part]
     node["value"] = value
     return copy
 
 
-def labelled(tmp_path: Path, reading: InvoiceExtraction, names: tuple[str, ...]) -> tuple[Path, Path]:
+def labelled(
+    tmp_path: Path, reading: InvoiceExtraction, names: tuple[str, ...]
+) -> tuple[Path, Path]:
     pdfs, labels = tmp_path / "pdfs", tmp_path / "labels"
     pdfs.mkdir()
     labels.mkdir()
@@ -109,9 +113,7 @@ def test_missing_and_extra_lines_are_counted(reading: InvoiceExtraction) -> None
 
     assert missing.extracted_lines == missing.expected_lines - 1
     last = len(truth["lines"]) - 1
-    assert {f.outcome for f in missing.fields if f.path.startswith(f"lines[{last}]")} == {
-        "missing"
-    }
+    assert {f.outcome for f in missing.fields if f.path.startswith(f"lines[{last}]")} == {"missing"}
     assert extra.extra_lines == 1
 
 
@@ -267,3 +269,30 @@ def test_the_shareable_summary_holds_counts_only(
         assert secret
         assert secret not in shared
     assert '"documents": 1' in shared
+
+
+def test_the_printed_summary_names_no_bill_and_keeps_kinds_apart_from_fields(
+    tmp_path: Path, reading: InvoiceExtraction, raw_reply: str
+) -> None:
+    pdfs, labels = labelled(tmp_path, reading, ("bill-a.pdf",))
+    (pdfs / "bill-a.pdf").write_bytes(PDF)
+    pipeline = InvoicePipeline(FakeParser(), ScriptedProvider([raw_reply]))
+
+    printed = format_summary(run_real_eval(pdfs, labels, pipeline))
+
+    assert "bill-a" not in printed
+    assert printed.index("by kind") < printed.index("by field")
+    assert printed.count("  amount ") == 2  # the kind of field and the line's amount
+
+
+def test_the_command_writes_the_private_report_and_the_shareable_summary(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for folder in ("pdfs", "labels", "recorded"):
+        (tmp_path / folder).mkdir()
+
+    assert main(["--root", str(tmp_path), "run", "--mode", "replay"]) == 0
+
+    assert json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))["documents"] == 0
+    assert (tmp_path / "report.json").exists()
+    assert "keep private" in capsys.readouterr().out
