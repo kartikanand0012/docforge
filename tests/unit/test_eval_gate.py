@@ -106,7 +106,7 @@ def test_a_boolean_is_not_a_number_to_the_gate(reports: Path) -> None:
 
 def test_the_dataset_model_and_prompt_are_pinned(reports: Path) -> None:
     worsen(reports, "invoice", ["summary", "documents"], 10)
-    worsen(reports, "invoice", ["prompt_version"], "invoice-v2")
+    worsen(reports, "invoice", ["prompt_version"], "invoice-v0-unpinned")
 
     failed = {r.label.split(" ")[1] for r in check_gate(reports, load_gate(GATE)) if not r.passed}
 
@@ -202,3 +202,100 @@ def test_every_report_from_a_model_says_which_provider(name: str) -> None:
 
     found = next(getattr(m, name) for m in (run, trust, scans, coa, answers) if hasattr(m, name))
     assert "provider" in found.model_fields
+
+
+def accepted_file(tmp_path: Path, entries: list[dict[str, object]]) -> Path:
+    path = tmp_path / "accepted.json"
+    path.write_text(json.dumps(entries))
+    return path
+
+
+def entry(**overrides: object) -> dict[str, object]:
+    return {
+        "report": "invoice", "path": "summary.citations.accuracy", "value": 0.99,
+        "why": "a measured trade-off", "approved_by": "owner", "approved_on": "2026-10-14",
+        **overrides,
+    }  # fmt: skip
+
+
+def test_a_trade_off_the_owner_accepted_passes_at_its_value_and_says_so(
+    reports: Path, tmp_path: Path
+) -> None:
+    from docforge.evals.gate import compare_with_base, load_accepted
+
+    base = reports.parent / "base"
+    shutil.copytree(reports, base)
+    worsen(base, "invoice", ["summary", "citations", "accuracy"], 0.999)
+    worsen(reports, "invoice", ["summary", "citations", "accuracy"], 0.99)
+    checks = load_gate(GATE)
+    accepted = load_accepted(accepted_file(tmp_path, [entry()]), checks)
+
+    results = compare_with_base(reports, base, checks, accepted)
+
+    (result,) = [r for r in results if "citations" in r.label]
+    assert result.passed
+    assert "accepted by owner on 2026-10-14" in result.detail
+
+
+def test_a_drop_below_the_accepted_value_still_fails(reports: Path, tmp_path: Path) -> None:
+    from docforge.evals.gate import compare_with_base, load_accepted
+
+    base = reports.parent / "base"
+    shutil.copytree(reports, base)
+    worsen(base, "invoice", ["summary", "citations", "accuracy"], 0.999)
+    worsen(reports, "invoice", ["summary", "citations", "accuracy"], 0.985)
+    checks = load_gate(GATE)
+    accepted = load_accepted(accepted_file(tmp_path, [entry()]), checks)
+
+    results = compare_with_base(reports, base, checks, accepted)
+
+    assert not next(r for r in results if "citations" in r.label).passed
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        entry(why=""),
+        entry(approved_by=""),
+        entry(approved_on="yesterday"),
+        entry(path="summary.no_such_metric"),
+        entry(path="prompt_version", value="invoice-v9"),  # a pin is changed, not accepted
+    ],
+)
+def test_an_accepted_trade_off_must_say_why_who_when_and_name_a_gated_metric(
+    bad: dict[str, object], tmp_path: Path
+) -> None:
+    from docforge.evals.gate import load_accepted
+
+    with pytest.raises(GateError):
+        load_accepted(accepted_file(tmp_path, [bad]), load_gate(GATE))
+
+
+def test_without_an_accepted_file_nothing_is_accepted(tmp_path: Path) -> None:
+    from docforge.evals.gate import load_accepted
+
+    assert load_accepted(tmp_path / "missing.json", load_gate(GATE)) == []
+
+
+def test_the_committed_trade_offs_are_valid() -> None:
+    from docforge.evals.gate import load_accepted
+
+    load_accepted(Path("evals/accepted.json"), load_gate(GATE))
+
+
+def test_the_command_reads_the_accepted_trade_offs(
+    reports: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    base = reports.parent / "base"
+    shutil.copytree(reports, base)
+    worsen(base, "invoice", ["summary", "citations", "accuracy"], 0.999)
+    worsen(reports, "invoice", ["summary", "citations", "accuracy"], 0.99)
+    accepted = accepted_file(tmp_path, [entry()])
+
+    status = main(
+        ["--reports", str(reports), "--gate", str(GATE), "--base-reports", str(base),
+         "--accepted", str(accepted)]
+    )  # fmt: skip
+
+    assert status == 0
+    assert "ACCEPTED" in capsys.readouterr().out

@@ -79,7 +79,7 @@ def test_a_model_call_carries_its_tokens_and_the_document_its_cost(
     call = named["llm.generate"].attributes or {}
     assert call["gen_ai.request.model"]
     assert call["gen_ai.usage.input_tokens"] >= 0
-    assert call["docforge.prompt_version"] == "invoice-v1"
+    assert call["docforge.prompt_version"] == "invoice-v2"
     root = named["document.process"].attributes or {}
     assert root["docforge.model_calls"] >= 1
     assert root["docforge.cost_usd"] >= 0

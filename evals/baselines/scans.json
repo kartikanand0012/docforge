@@ -1,7 +1,7 @@
 {
   "provider": "gemini",
   "model": "gemini-3.5-flash-lite",
-  "prompt_version": "invoice-v1",
+  "prompt_version": "invoice-v2",
   "variants": {
     "clean": {
       "parser": "docling 2.132.0",
@@ -73,8 +73,8 @@
         },
         "citations": {
           "checked": 2472,
-          "correct": 2451,
-          "accuracy": 0.9915
+          "correct": 2459,
+          "accuracy": 0.9947
         },
         "null_expected": {
           "total": 26,
@@ -83,15 +83,15 @@
       },
       "usage": {
         "model_calls": 20,
-        "input_tokens": 41827,
-        "output_tokens": 103333,
+        "input_tokens": 44327,
+        "output_tokens": 46493,
         "thinking_tokens": 0,
         "pages": 20,
-        "latency_ms_p50": 14417.3,
-        "latency_ms_p95": 26647.0
+        "latency_ms_p50": 5089.0,
+        "latency_ms_p95": 6759.7
       },
       "extraction_failures": 0,
-      "sent_to_review": 8,
+      "sent_to_review": 5,
       "documents_with_errors": 0,
       "errors_sent_to_review": 0,
       "silent_errors": 0,
@@ -168,8 +168,8 @@
         },
         "citations": {
           "checked": 2472,
-          "correct": 2456,
-          "accuracy": 0.9935
+          "correct": 2457,
+          "accuracy": 0.9939
         },
         "null_expected": {
           "total": 26,
@@ -178,15 +178,15 @@
       },
       "usage": {
         "model_calls": 20,
-        "input_tokens": 41779,
-        "output_tokens": 103275,
+        "input_tokens": 44279,
+        "output_tokens": 46435,
         "thinking_tokens": 0,
         "pages": 20,
-        "latency_ms_p50": 13050.7,
-        "latency_ms_p95": 17933.0
+        "latency_ms_p50": 5242.8,
+        "latency_ms_p95": 6937.6
       },
       "extraction_failures": 0,
-      "sent_to_review": 11,
+      "sent_to_review": 12,
       "documents_with_errors": 1,
       "errors_sent_to_review": 1,
       "silent_errors": 0,
@@ -211,10 +211,10 @@
         "extra_lines": 0,
         "fields": {
           "total": 2472,
-          "correct": 2424,
-          "wrong": 40,
+          "correct": 2423,
+          "wrong": 41,
           "missing": 8,
-          "accuracy": 0.9806
+          "accuracy": 0.9802
         },
         "by_class": {
           "amount": {
@@ -240,10 +240,10 @@
           },
           "quantity": {
             "total": 588,
-            "correct": 578,
-            "wrong": 3,
+            "correct": 577,
+            "wrong": 4,
             "missing": 7,
-            "accuracy": 0.983
+            "accuracy": 0.9813
           },
           "text": {
             "total": 394,
@@ -263,16 +263,16 @@
           },
           "B": {
             "total": 1117,
-            "correct": 1075,
-            "wrong": 34,
+            "correct": 1074,
+            "wrong": 35,
             "missing": 8,
-            "accuracy": 0.9624
+            "accuracy": 0.9615
           }
         },
         "citations": {
           "checked": 2464,
-          "correct": 2444,
-          "accuracy": 0.9919
+          "correct": 2437,
+          "accuracy": 0.989
         },
         "null_expected": {
           "total": 26,
@@ -281,15 +281,15 @@
       },
       "usage": {
         "model_calls": 20,
-        "input_tokens": 41515,
-        "output_tokens": 103208,
+        "input_tokens": 44015,
+        "output_tokens": 46394,
         "thinking_tokens": 0,
         "pages": 20,
-        "latency_ms_p50": 12702.4,
-        "latency_ms_p95": 17773.7
+        "latency_ms_p50": 5542.3,
+        "latency_ms_p95": 7328.1
       },
       "extraction_failures": 0,
-      "sent_to_review": 12,
+      "sent_to_review": 14,
       "documents_with_errors": 16,
       "errors_sent_to_review": 11,
       "silent_errors": 5,
@@ -343,6 +343,13 @@
           "expected": "16",
           "actual": null,
           "outcome": "missing"
+        },
+        {
+          "pair_id": "pair_002",
+          "path": "lines[4].discount_pct",
+          "expected": "0",
+          "actual": "16",
+          "outcome": "wrong"
         },
         {
           "pair_id": "pair_003",

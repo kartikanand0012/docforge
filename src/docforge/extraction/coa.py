@@ -16,11 +16,12 @@ from pydantic import BaseModel, Field
 from docforge.extraction.normalize import Normalizer, clean_text, parse_date, parse_month
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.schema import Extracted, Issue, RawField, _Model
+from docforge.extraction.wire import CELL_INSTRUCTION, wire_model
 from docforge.parsing.base import ParsedDocument
 from docforge.trust.limits import check_result
 from docforge.trust.rules import RuleResult
 
-PROMPT_VERSION = "coa-v1"
+PROMPT_VERSION = "coa-v2"
 
 SYSTEM_INSTRUCTION = """\
 You extract fields from one certificate of analysis for a batch of a pharmaceutical product.
@@ -34,9 +35,8 @@ Rules:
 - Copy each value exactly as printed. Do not reformat dates, numbers, units or identifiers,
   do not calculate, and do not judge whether a result meets its specification.
 - Give the value only, without its label.
-- For every value, list the ids of the blocks it was read from.
-- If a field is not printed, return null for its text and an empty list of block ids.
-  Never guess.
+- For every value, give the ids of the blocks it was read from.
+- If a field is not printed, return null. Never guess.
 - Return one test per row of the results table, in printed order, with its name,
   specification and result exactly as printed.
 - The conclusion is the statement of whether the batch complies, copied in full.
@@ -184,9 +184,10 @@ def coa_rules(coa: CoaExtraction) -> Iterable[RuleResult]:
 COA_SPEC: DocumentSpec[CoaExtraction] = DocumentSpec(
     doc_type="coa",
     raw_schema=RawCoa,
-    system_instruction=SYSTEM_INSTRUCTION,
+    system_instruction=SYSTEM_INSTRUCTION + CELL_INSTRUCTION,
     prompt_version=PROMPT_VERSION,
     schema_version="coa-1",
     normalize=normalize_coa,
     rules=(coa_rules,),
+    wire_schema=wire_model(RawCoa),
 )

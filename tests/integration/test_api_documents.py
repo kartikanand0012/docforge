@@ -141,7 +141,7 @@ def test_extraction_is_returned_with_its_hash_and_model_runs(api: Api) -> None:
             "call_no": 1,
             "provider": "fake",
             "model": "fake-1",
-            "prompt_version": "invoice-v1",
+            "prompt_version": "invoice-v2",
             "input_tokens": 100,
             "output_tokens": 50,
             "thinking_tokens": None,
