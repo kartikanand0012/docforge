@@ -60,7 +60,7 @@ What we will not claim: certifications (SOC 2, ISO 27001) or enterprise scale. T
 | 0.1 | **Compact model output**: the model replies in a short wire format (each field one string `"<printed text>\|<block ids>"`, value first); code decodes it into the existing `Raw*` models, so normalising, rules, corrections, merge and storage do not change. Invoice first, then purchase order and CoA. | Eval gate passes on re-recorded live runs; output tokens per invoice down at least 2x; old readings still open and re-read | done (PR #23): 2.2x fewer output tokens, invoices p50 14.4 s -> 5.2 s |
 | 0.2 | **Multi-page reading**: why 140 s and 2/3; fix (smaller paged replies come with 0.1, then the merge and the failing document) | multipage eval 3/3, p50 latency at least halved | mostly done by 0.1: field accuracy 91.67% -> 99.40%, p50 140 s -> 40 s; left: the parser merges two rows' cells on one 120-line invoice (Phase 1 OCR) |
 | 0.3 | **Cost view from production**: real cost per page and per document type in the admin dashboard, plus fixed monthly infrastructure entered by hand | admin page shows it; numbers match `model_runs` | built (PR #25 + web PR #1): migration 0038, PLATFORM_FIXED_MONTHLY_USD |
-| 0.4 | **Real-invoice test set harness**: `data/real/` (ignored by git), a labelling format and a scorer per field (exact match for GSTIN, HSN, batch, expiry, MRP, PTR, totals; row accuracy for lines), report kept outside the repo; only aggregate numbers are committed | harness runs on any folder of labelled PDFs; ready for the owner's invoices | built (PR #24), tested end to end on the stack |
+| 0.4 | **Real-invoice test set harness** (built: `evals/real.py`): `data/real/` (ignored by git), a labelling format and a scorer per field (exact match for GSTIN, HSN, batch, expiry, MRP, PTR, totals; row accuracy for lines), report kept outside the repo; only aggregate numbers are committed | harness runs on any folder of labelled PDFs; ready for the owner's invoices | built (PR #24), tested end to end on the stack |
 | 0.5 | Run the real set when the owner's invoices arrive; publish the numbers | report with per-field accuracy | waiting on owner |
 
 ## Phase 1 - New reading engine (3-4 weeks)
@@ -125,3 +125,24 @@ or RunPod serverless, with pages sent in batches; about $0.10-0.60 per 1,000 pag
 | Marg export files | 2.1, 2.5 | owner |
 | GPU account (Modal) | 1.3 | later |
 | Production read access | 0.3 | granted 2026-10-14 |
+
+## How to run the real-invoice set (step 0.4, for the owner)
+
+Everything below stays on this machine under `data/real/` (ignored by git).
+
+1. Put the PDFs in `data/real/pdfs/` with distinct file names.
+2. Upload the same files to a workspace where you are an administrator (your own `kartik`
+   organisation; a self-service sign-up is a member and cannot make API keys).
+3. In review, check **every** field of each invoice against the paper, correct what is wrong
+   (lines included), and approve. A rejected invoice is not used.
+4. On the Agents page make a read-only API key, then:
+
+   ```
+   export DOCFORGE_API_KEY=...   # read from the environment, never typed as an argument
+   uv run python -m docforge.evals.real pull --api https://<the API's address>
+   uv run python -m docforge.evals.real run            # reads each PDF live (Gemini key in .env)
+   uv run python -m docforge.evals.real run --mode replay   # again later, free, from recordings
+   ```
+
+5. `data/real/report.json` has every field with the bills' values (private);
+   `data/real/summary.json` has counts only and is the part to share or commit.
