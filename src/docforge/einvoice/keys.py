@@ -99,6 +99,10 @@ def load_keyring(environment: Environment, directory: Path = KEYS_DIR) -> KeyRin
         if hashlib.sha256(raw).hexdigest() != entry.get("sha256"):
             raise KeyRingError(f"{name} does not match the sha256 in the manifest")
         key, thumbprint = _read(raw, name)
+        if environment == "production" and thumbprint is None:
+            # A bare key would be tried for every kid we do not hold, and a kid written beside
+            # it could not be checked: an altered QR could then pass as an unknown key's.
+            raise KeyRingError(f"{name}: a production key must be a certificate, to check its kid")
         listed = entry.get("kid")
         if thumbprint is not None and listed is not None and listed.upper() != thumbprint:
             raise KeyRingError(f"{name}: the manifest's kid is not its certificate's thumbprint")
