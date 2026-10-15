@@ -167,7 +167,9 @@ The heart of the product. Needs:
   "it may be a duplicate of {filename}, which has the same IRN" (or "... the same seller GSTIN
   and invoice number"): label it "Possible duplicate" and link to `/documents/{document_id}`.
   Only the later bill is flagged; an earlier one deleted or rejected does not count. Found
-  afresh on every read, so a correction on either bill can add or clear it.
+  afresh on every read, so a correction on either bill can add or clear it. Duplicates are a
+  review matter: `/assessment`'s `decision` is the reading's own and does not include them (nor
+  certificates); the review screen's `decision` and `blockers` do.
 - **E-invoice QR** (`einvoice` on `ReviewOut` and on `/assessment`, `EinvoiceOut`): an
   invoice's signed GST e-invoice QR, checked as it was read. Null when it was never scanned
   (a purchase order, or checking switched off). `status`:

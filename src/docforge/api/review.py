@@ -175,7 +175,10 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
         certificates=list(detail.certificates),
         claim=_claim_out(detail.claim) if detail.claim else None,
         einvoice=einvoice_out(detail.einvoice),
-        duplicates=[DuplicateOut(**vars(duplicate)) for duplicate in detail.duplicates],
+        duplicates=[
+            DuplicateOut(document_id=d.document_id, filename=d.filename, matched_on=d.matched_on)
+            for d in detail.duplicates
+        ],
     )
 
 

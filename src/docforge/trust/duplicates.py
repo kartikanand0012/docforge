@@ -14,14 +14,15 @@ then compared on their values as corrected.
 
 import uuid
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
-from sqlalchemy import and_, exists, func, literal, or_, select, union
+from sqlalchemy import Select, and_, exists, func, literal, or_, select, union
 from sqlalchemy.orm import Session, aliased
 
 from docforge.db.models import (
-    CORRECTED_NUMBER_KEY,
+    CORRECTED_KEY,
     INVOICE_NUMBER_KEY,
+    SELLER_GSTIN_KEY,
     SIGNED_IRN,
     Correction,
     Document,
@@ -49,17 +50,15 @@ class Duplicate:
         return f"it may be a duplicate of {self.filename}, which has {_SAME[self.matched_on]}"
 
 
-def number_key(text: object) -> str | None:
-    """An invoice number as compared; `INVOICE_NUMBER_KEY` in SQL."""
-    if not isinstance(text, str):
-        return None
-    return "".join(text.split()).lower() or None
+_INVISIBLE = "\u200b\ufeff"  # not whitespace to Python, but nothing printed either
 
 
-def gstin_key(text: object) -> str | None:
+def text_key(text: object) -> str | None:
+    """An invoice number or GSTIN as compared: lower case, without whitespace. The same as
+    `INVOICE_NUMBER_KEY` and the other keys in SQL."""
     if not isinstance(text, str):
         return None
-    return "".join(text.split()).upper() or None
+    return "".join(c for c in text if not (c.isspace() or c in _INVISIBLE)).lower() or None
 
 
 def find_duplicates(
@@ -79,32 +78,47 @@ def find_duplicates(
             .where(
                 EinvoiceCheck.tenant_id == document.tenant_id,
                 EinvoiceCheck.status == "verified",
-                irn == SIGNED_IRN,
+                literal(irn) == SIGNED_IRN,
             )
         ).all()
         for other, _ in rows:
             found.setdefault(other.id, Duplicate(other.id, other.filename, "irn"))
-    gstin, number = gstin_key(seller_gstin), number_key(invoice_no)
+    gstin, number = text_key(seller_gstin), text_key(invoice_no)
     if gstin and number:
+        tenant = document.tenant_id
         read = select(Extraction.document_version_id).where(
-            Extraction.tenant_id == document.tenant_id, literal(number) == INVOICE_NUMBER_KEY
+            Extraction.tenant_id == tenant, literal(number) == INVOICE_NUMBER_KEY
         )
         corrected = select(Correction.document_version_id).where(
-            Correction.tenant_id == document.tenant_id,
+            Correction.tenant_id == tenant,
             Correction.path == "invoice_no",
-            literal(number) == CORRECTED_NUMBER_KEY,
+            literal(number) == CORRECTED_KEY,
+        )
+        # The seller too, as read or as corrected, before the cap: another seller's bills with
+        # the same number must never crowd out this seller's.
+        seller_read = select(Extraction.document_version_id).where(
+            Extraction.tenant_id == tenant, literal(gstin) == SELLER_GSTIN_KEY
+        )
+        seller_corrected = select(Correction.document_version_id).where(
+            Correction.tenant_id == tenant,
+            Correction.path == "seller.gstin",
+            literal(gstin) == CORRECTED_KEY,
         )
         rows = session.execute(
-            _earlier(document).where(DocumentVersion.id.in_(union(read, corrected)))
+            _earlier(document).where(
+                DocumentVersion.id.in_(union(read, corrected)),
+                DocumentVersion.id.in_(union(seller_read, seller_corrected)),
+            )
         ).all()
+        values = _as_corrected(session, tenant, [version_id for _, version_id in rows])
         for other, version_id in rows:
-            seller, their_number = _as_corrected(session, version_id)
-            if gstin_key(seller) == gstin and number_key(their_number) == number:
+            seller, their_number = values[version_id]
+            if text_key(seller) == gstin and text_key(their_number) == number:
                 found.setdefault(other.id, Duplicate(other.id, other.filename, "seller_and_number"))
     return tuple(found.values())
 
 
-def _earlier(document: Document) -> Any:
+def _earlier(document: Document) -> Select[Document, uuid.UUID]:
     """Live invoices received before `document`, with their newest version, as candidates;
     none whose newest version a reviewer rejected."""
     newer = aliased(DocumentVersion)
@@ -137,20 +151,33 @@ def _earlier(document: Document) -> Any:
     )
 
 
-def _as_corrected(session: Session, version_id: uuid.UUID) -> tuple[object, object]:
-    """A version's seller GSTIN and invoice number, each as last corrected, else as read."""
-    data = (
-        session.scalar(select(Extraction.data).where(Extraction.document_version_id == version_id))
-        or {}
-    )
-    values: dict[str, object] = {
-        "invoice_no": (data.get("invoice_no") or {}).get("value"),
-        "seller.gstin": ((data.get("seller") or {}).get("gstin") or {}).get("value"),
-    }
-    for path, text in session.execute(
-        select(Correction.path, Correction.new_text)
-        .where(Correction.document_version_id == version_id, Correction.path.in_(_PATHS))
+def _as_corrected(
+    session: Session, tenant_id: uuid.UUID, version_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, tuple[object, object]]:
+    """Each version's seller GSTIN and invoice number, as last corrected, else as read."""
+    values: dict[uuid.UUID, dict[str, object]] = {}
+    if not version_ids:
+        return {}
+    for version_id, data in session.execute(
+        select(Extraction.document_version_id, Extraction.data).where(
+            Extraction.tenant_id == tenant_id, Extraction.document_version_id.in_(version_ids)
+        )
+    ):
+        values[version_id] = {
+            "invoice_no": (data.get("invoice_no") or {}).get("value"),
+            "seller.gstin": ((data.get("seller") or {}).get("gstin") or {}).get("value"),
+        }
+    for version_id, path, text in session.execute(
+        select(Correction.document_version_id, Correction.path, Correction.new_text)
+        .where(
+            Correction.tenant_id == tenant_id,
+            Correction.document_version_id.in_(version_ids),
+            Correction.path.in_(_PATHS),
+        )
         .order_by(Correction.created_at, Correction.id)
     ):
-        values[path] = text
-    return values["seller.gstin"], values["invoice_no"]
+        values.setdefault(version_id, {})[path] = text
+    return {
+        version_id: (fields.get("seller.gstin"), fields.get("invoice_no"))
+        for version_id, fields in values.items()
+    } | {version_id: (None, None) for version_id in version_ids if version_id not in values}

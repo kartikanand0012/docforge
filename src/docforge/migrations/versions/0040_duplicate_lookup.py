@@ -19,15 +19,20 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+# As `docforge.db.models._SPACES`: whitespace, and the no-break and zero-width spaces a locale's
+# [[:space:]] leaves out.
+_SPACES = "'[[:space:]\u00a0\u2007\u202f\u200b\ufeff]'"
+
+
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '5s'")
     op.execute(
         "CREATE INDEX ix_extractions_invoice_no_key ON extractions (tenant_id, "
-        "lower(regexp_replace(((data -> 'invoice_no') ->> 'value'), '[[:space:]]', '', 'g')))"
+        f"lower(regexp_replace(((data -> 'invoice_no') ->> 'value'), {_SPACES}, '', 'g')))"
     )
     op.execute(
         "CREATE INDEX ix_corrections_invoice_no_key ON corrections (tenant_id, "
-        "lower(regexp_replace(new_text, '[[:space:]]', '', 'g'))) WHERE path = 'invoice_no'"
+        f"lower(regexp_replace(new_text, {_SPACES}, '', 'g'))) WHERE path = 'invoice_no'"
     )
     op.execute(
         "CREATE INDEX ix_einvoice_checks_irn ON einvoice_checks "

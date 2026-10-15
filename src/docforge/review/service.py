@@ -262,6 +262,10 @@ def _einvoice_rules(check: EinvoiceCheck | None, parsed: ParsedDocument) -> tupl
     return einvoice_rules(evidence, parsed)
 
 
+def _text(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
 def _duplicates(
     session: Session, document: Document, extraction: BaseModel, check: EinvoiceCheck | None
 ) -> tuple[Duplicate, ...]:
@@ -274,7 +278,7 @@ def _duplicates(
         document,
         seller_gstin=extraction.seller.gstin.value,
         invoice_no=extraction.invoice_no.value,
-        irn=signed.get("irn") if isinstance(signed, dict) else None,
+        irn=_text(signed.get("irn")) if isinstance(signed, dict) else None,
     )
 
 

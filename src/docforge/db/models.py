@@ -165,17 +165,24 @@ ORDER_NUMBER: ColumnElement[str] = literal_column(
 )
 
 
-# An invoice number as compared for duplicates: lower case, no whitespace. Spelled exactly as
-# the expression indexes of migration 0040; `docforge.trust.duplicates.number_key` is the same
-# in Python.
+# An invoice number or GSTIN as compared for duplicates: lower case, without whitespace -
+# including the no-break and zero-width spaces a locale's [[:space:]] leaves out. Spelled
+# exactly as the expression indexes of migration 0040; `docforge.trust.duplicates.text_key`
+# is the same in Python.
+_SPACES = "'[[:space:]\u00a0\u2007\u202f\u200b\ufeff]'"
+
+
+def _key(expression: str) -> str:
+    return f"lower(regexp_replace({expression}, {_SPACES}, '', 'g'))"
+
+
 INVOICE_NUMBER_KEY: ColumnElement[str] = literal_column(
-    "lower(regexp_replace(((extractions.data -> 'invoice_no') ->> 'value'), "
-    "'[[:space:]]', '', 'g'))",
-    type_=Text,
+    _key("((extractions.data -> 'invoice_no') ->> 'value')"), type_=Text
 )
-CORRECTED_NUMBER_KEY: ColumnElement[str] = literal_column(
-    "lower(regexp_replace(corrections.new_text, '[[:space:]]', '', 'g'))", type_=Text
+SELLER_GSTIN_KEY: ColumnElement[str] = literal_column(
+    _key("(((extractions.data -> 'seller') -> 'gstin') ->> 'value')"), type_=Text
 )
+CORRECTED_KEY: ColumnElement[str] = literal_column(_key("corrections.new_text"), type_=Text)
 # The IRN a verified e-invoice QR signed (migration 0040).
 SIGNED_IRN: ColumnElement[str] = literal_column(
     "((einvoice_checks.evidence -> 'invoice') ->> 'irn')", type_=Text

@@ -9,13 +9,24 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import literal, select, text
+from sqlalchemy.engine import Engine
 
 from docforge.api.app import create_app
 from docforge.db import DEFAULT_TENANT_ID
+from docforge.db.models import (
+    CORRECTED_KEY,
+    INVOICE_NUMBER_KEY,
+    SIGNED_IRN,
+    Correction,
+    EinvoiceCheck,
+    Extraction,
+)
 from docforge.db.session import SessionFactory
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.review.service import ApprovalBlocked, ReviewService
+from docforge.trust import duplicates
 from einvoice_fakes import Scanner, qr_for, scanned
 from fakes import signed_in
 from worlds import World
@@ -51,8 +62,8 @@ class Bills:
         self.copies += 1
         world = World(self.sessions, self.invoice, self.order, "pair_001")
         world.invoice_pdf += f"\n%copy {self.copies}\n".encode()
-        for path, text in printed.items():
-            world.reprint_invoice(path.replace("__", "."), text)
+        for path, shown in printed.items():
+            world.reprint_invoice(path.replace("__", "."), shown)
         if scanner is not None:
             scanned(world, scanner)
         world.build()
@@ -226,3 +237,92 @@ def test_the_review_response_names_the_earlier_bill(bills: Bills) -> None:
     assert set(schema["DuplicateOut"]["properties"]["matched_on"]["enum"]) == {
         "irn", "seller_and_number"
     }  # fmt: skip
+
+
+def test_other_sellers_bills_with_the_number_never_hide_the_duplicate(
+    bills: Bills, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(duplicates, "_CANDIDATES", 2)
+    for n in range(3):  # more than the cap, each another seller's bill with the same number
+        bills.receive(f"theirs-{n}.pdf", seller__gstin=OTHER_SELLER)
+    first = bills.receive("bill.pdf")
+    second = bills.receive("bill-scan.pdf")
+
+    assert bills.duplicates(second) == [(first, "bill.pdf", "seller_and_number")]
+
+
+def test_unusual_spaces_in_the_number_are_spaces_too(bills: Bills) -> None:
+    first = bills.receive("bill.pdf")
+    second = bills.receive("photo.pdf", invoice_no="NVM/26-27/" + "\u00a0" + "32001")
+
+    assert bills.duplicates(second) == [(first, "bill.pdf", "seller_and_number")]
+
+
+def test_a_correction_of_the_earlier_bills_seller_is_seen(bills: Bills) -> None:
+    first = bills.receive("bill.pdf", seller__gstin=OTHER_SELLER)  # misread seller
+    second = bills.receive("photo.pdf")
+    assert bills.duplicates(second) == []
+
+    bills.correct(first, "seller.gstin", "24AABFN7754K1Z0")
+
+    assert bills.duplicates(second) == [(first, "bill.pdf", "seller_and_number")]
+
+
+def test_rejecting_the_original_later_clears_the_flag(bills: Bills) -> None:
+    first = bills.receive("bill.pdf")
+    second = bills.receive("bill-scan.pdf")
+    assert bills.duplicates(second) != []
+    detail = bills.review.detail(DEFAULT_TENANT_ID, first)
+    bills.review.sign(
+        DEFAULT_TENANT_ID, first, outcome="rejected", meaning="I reject this invoice",
+        reason="a wrong rate", override_reason=None,
+        expected_record_sha256=detail.record_sha256, email=EMAIL, pin=PIN,
+    )  # fmt: skip
+
+    assert bills.duplicates(second) == []
+
+
+@pytest.mark.parametrize(
+    ("query", "index"),
+    [
+        (
+            select(Extraction.document_version_id).where(
+                Extraction.tenant_id == DEFAULT_TENANT_ID, literal("x/1") == INVOICE_NUMBER_KEY
+            ),
+            "ix_extractions_invoice_no_key",
+        ),
+        (
+            select(Correction.document_version_id).where(
+                Correction.tenant_id == DEFAULT_TENANT_ID,
+                Correction.path == "invoice_no",
+                literal("x/1") == CORRECTED_KEY,
+            ),
+            "ix_corrections_invoice_no_key",
+        ),
+        (
+            select(EinvoiceCheck.document_version_id).where(
+                EinvoiceCheck.tenant_id == DEFAULT_TENANT_ID,
+                EinvoiceCheck.status == "verified",
+                literal("b" * 64) == SIGNED_IRN,
+            ),
+            "ix_einvoice_checks_irn",
+        ),
+    ],
+)
+def test_each_lookup_is_spelled_as_its_index(query: Any, index: str, owner_engine: Engine) -> None:
+    # Spelled differently from its index, a lookup would read the whole table.
+    with owner_engine.connect() as conn:
+        conn.execute(text("SET enable_seqscan = off"))
+        plan = (
+            conn.execute(
+                text(
+                    "EXPLAIN "
+                    + str(
+                        query.compile(dialect=conn.dialect, compile_kwargs={"literal_binds": True})
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert index in "\n".join(plan)
