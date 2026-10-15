@@ -255,3 +255,42 @@ def test_an_account_erasure_deletes_its_checks_before_its_versions(owner_engine:
 
     checks_at = definition.index("DELETE FROM einvoice_checks WHERE tenant_id = t;")
     assert checks_at < definition.index("DELETE FROM document_versions WHERE tenant_id = t;")
+
+
+def test_reprocessing_checks_the_new_version_and_keeps_the_old_check(
+    world: World, sessions: SessionFactory
+) -> None:
+    document_id = scanned(world, Scanner(qr_for(world))).process("invoice")
+    assert world.service is not None
+    again = world.service.reprocess(
+        tenant_id=DEFAULT_TENANT_ID, document_id=document_id, actor="api:reprocess"
+    )
+    assert world.service.process(again.id) == "succeeded"
+
+    stored = checks(sessions)
+    assert len(stored) == 2
+    assert len({check.document_version_id for check in stored}) == 2
+
+
+def test_a_stored_check_that_cannot_be_read_keeps_the_invoice_in_review(
+    world: World, sessions: SessionFactory, owner_engine: Engine
+) -> None:
+    # A check stored by an older release whose evidence no longer fits: review neither fails
+    # nor silently drops the e-invoice rules.
+    document_id = world.process("invoice")  # read with the check switched off
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO einvoice_checks (tenant_id, document_version_id, status, evidence, "
+                "pages_scanned) SELECT tenant_id, id, 'verified', '{\"old\": true}', 1 "
+                "FROM document_versions"
+            )
+        )
+    review = ReviewService(
+        sessions, world.store, {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC}
+    )
+
+    assessment = review.detail(DEFAULT_TENANT_ID, document_id).assessment
+
+    assert einvoice_rules(assessment) == {"einvoice.signature": ("not_evaluated", "error")}
+    assert assessment.decision == "review"

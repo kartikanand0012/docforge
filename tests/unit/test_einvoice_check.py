@@ -105,7 +105,7 @@ def test_the_check_is_on_by_default_with_the_production_keys() -> None:
     assert isinstance(checker, EinvoiceChecker)
     assert {key.environment for key in checker.keyring.keys} == {"production"}
     assert isinstance(checker.scanner, IsolatedScanner)
-    assert checker.scanner.timeout_seconds == 60
+    assert checker.scanner.timeout_seconds == 20
 
 
 def test_the_kill_switch_turns_the_check_off(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -126,3 +126,40 @@ def test_sandbox_keys_only_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert checker is not None
     assert {key.environment for key in checker.keyring.keys} == {"sandbox"}
+
+
+# --- security and database review ---------------------------------------------------------
+
+
+def test_a_failure_after_the_scan_is_unreadable_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    import docforge.einvoice.check as check
+
+    def broken(*_: object) -> None:
+        raise ValueError("a bug in verification")
+
+    monkeypatch.setattr(check, "evidence_from", broken)
+
+    result = EinvoiceChecker(Scanner(FoundQr(page=1, text=signed())), RING).check(b"%PDF")
+
+    assert (result.status, result.evidence, result.qr_text) == ("unreadable", None, None)
+
+
+def test_a_qr_holding_a_nul_character_is_left_out() -> None:
+    # Postgres stores no NUL in text: kept, it would fail the whole reading's transaction.
+    found = FoundQr(page=1, text=signed() + "\x00")
+
+    assert EinvoiceChecker(Scanner(found), RING).check(b"%PDF").status == "none"
+
+
+def test_a_signed_field_holding_a_nul_character_is_dropped() -> None:
+    head = b64(json.dumps({"alg": "RS256", "kid": KID}).encode())
+    data = DATA | {"MainHsnCode": "30\u000004", "IrnDt": "2026-09-02\u0000"}
+    body = b64(json.dumps({"data": json.dumps(data), "iss": "NIC"}).encode())
+    signature = KEY.sign(f"{head}.{body}".encode(), padding.PKCS1v15(), hashes.SHA256())
+    qr = f"{head}.{body}.{b64(signature)}"
+
+    result = EinvoiceChecker(Scanner(FoundQr(page=1, text=qr)), RING).check(b"%PDF")
+
+    assert result.evidence is not None and result.evidence.invoice is not None
+    assert (result.evidence.invoice.main_hsn, result.evidence.invoice.irn_date) == (None, None)
+    assert "\\u0000" not in result.evidence.model_dump_json()
