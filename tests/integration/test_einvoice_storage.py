@@ -100,10 +100,12 @@ def checks(sessions: SessionFactory) -> list[EinvoiceCheck]:
 
 
 def einvoice_rules(assessment: Any) -> dict[str, tuple[str, str]]:
+    """The e-invoice rules of a stored assessment (the worker's) or a reassessment (review's)."""
+    data = assessment.record.data if hasattr(assessment, "record") else assessment.model_dump()
     return {
-        r.rule_id: (r.outcome, r.severity)
-        for r in assessment.rules
-        if r.rule_id.startswith("einvoice.")
+        r["rule_id"]: (r["outcome"], r["severity"])
+        for r in data["rules"]
+        if r["rule_id"].startswith("einvoice.")
     }
 
 
@@ -115,7 +117,7 @@ def test_a_verified_qr_is_checked_as_the_invoice_is_read_and_stored(
 
     assessment = world.assessment(document_id)
     assert einvoice_rules(assessment)["einvoice.signature"] == ("passed", "error")
-    assert assessment.decision == "accept"
+    assert assessment.record.decision == "accept"  # its own checks; no order to match yet
     (check,) = checks(sessions)
     assert (check.status, check.qr_text, check.page, check.pages_scanned) == ("verified", qr, 1, 1)
     assert check.decoder == "zxing-cpp test"
@@ -144,7 +146,7 @@ def test_an_altered_qr_sends_the_invoice_to_review_and_a_correction_does_not_lif
     )
     review.add_reviewer(DEFAULT_TENANT_ID, name="Asha Rao", email=EMAIL, pin=PIN)
 
-    assert world.assessment(document_id).decision == "review"
+    assert world.assessment(document_id).record.decision == "review"
     before = review.detail(DEFAULT_TENANT_ID, document_id).assessment
     invoice_no = json.loads(world.label_text)["invoice"]["invoice_no"]
     review.correct(
@@ -174,7 +176,7 @@ def test_a_scan_that_fails_is_stored_as_unreadable_and_the_reading_goes_on(
 
     assessment = world.assessment(document_id)
     assert einvoice_rules(assessment) == {}
-    assert assessment.decision == "accept"
+    assert assessment.record.decision == "accept"  # its own checks; no order to match yet
     (check,) = checks(sessions)
     assert (check.status, check.evidence, check.qr_text) == ("unreadable", None, None)
 
@@ -220,7 +222,7 @@ def test_a_stored_check_cannot_be_changed_or_deleted(world: World, owner_engine:
 def test_a_version_has_at_most_one_check(world: World, owner_engine: Engine) -> None:
     scanned(world, Scanner(qr_for(world))).process("invoice")
 
-    with owner_engine.connect() as conn, pytest.raises(Exception, match="unique|duplicate"):
+    with owner_engine.connect() as conn, pytest.raises(Exception, match=r"unique|duplicate"):
         conn.execute(
             text(
                 "INSERT INTO einvoice_checks (tenant_id, document_version_id, status, "
@@ -233,7 +235,7 @@ def test_a_version_has_at_most_one_check(world: World, owner_engine: Engine) -> 
 def test_a_check_must_belong_to_its_versions_tenant(
     world: World, owner_engine: Engine, other_tenant: uuid.UUID
 ) -> None:
-    scanned(world, Scanner()).process("invoice")
+    scanned(world, Scanner()).process("purchase_order")  # a version with no check yet
 
     with owner_engine.connect() as conn, pytest.raises(Exception, match="foreign key"):
         conn.execute(

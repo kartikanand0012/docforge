@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
 from docforge.einvoice.check import EinvoiceChecker
 from docforge.einvoice.keys import KeyRing, TrustedKey
-from docforge.einvoice.scan import FoundQr, QrScan
+from docforge.einvoice.scan import FoundQr, IsolatedScanner, QrScan
 from docforge.parsing.base import ParserLimitExceeded
 
 KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -84,7 +84,7 @@ def test_a_scan_that_fails_is_unreadable_never_an_error(error: Exception) -> Non
 
 
 def test_an_altered_qr_is_kept_with_its_text_for_a_later_look() -> None:
-    head, body, signature = signed().split(".")
+    head, _, signature = signed().split(".")
     altered = f"{head}.{b64(json.dumps({'data': '{}', 'iss': 'NIC'}).encode())}.{signature}"
 
     result = EinvoiceChecker(Scanner(FoundQr(page=1, text=altered)), RING).check(b"%PDF")
@@ -100,10 +100,11 @@ def test_the_check_is_on_by_default_with_the_production_keys() -> None:
     from docforge.config import Settings
     from docforge.wiring import build_einvoice
 
-    checker = build_einvoice(Settings(_env_file=None))  # type: ignore[call-arg]
+    checker = build_einvoice(Settings(_env_file=None))
 
     assert isinstance(checker, EinvoiceChecker)
     assert {key.environment for key in checker.keyring.keys} == {"production"}
+    assert isinstance(checker.scanner, IsolatedScanner)
     assert checker.scanner.timeout_seconds == 60
 
 
@@ -113,7 +114,7 @@ def test_the_kill_switch_turns_the_check_off(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setenv("EINVOICE_ENABLED", "false")
 
-    assert build_einvoice(Settings(_env_file=None)) is None  # type: ignore[call-arg]
+    assert build_einvoice(Settings(_env_file=None)) is None
 
 
 def test_sandbox_keys_only_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -121,7 +122,7 @@ def test_sandbox_keys_only_when_asked(monkeypatch: pytest.MonkeyPatch) -> None:
     from docforge.wiring import build_einvoice
 
     monkeypatch.setenv("EINVOICE_KEYS", "sandbox")
-    checker = build_einvoice(Settings(_env_file=None))  # type: ignore[call-arg]
+    checker = build_einvoice(Settings(_env_file=None))
 
     assert checker is not None
     assert {key.environment for key in checker.keyring.keys} == {"sandbox"}

@@ -24,6 +24,7 @@ from docforge.db.models import (
     BATCH_NUMBER,
     Document,
     DocumentVersion,
+    EinvoiceCheck,
     Extraction,
     ParseOutput,
     Review,
@@ -37,6 +38,7 @@ from docforge.db.models import live as not_deleted
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.documents import DocumentNotFound, EventSink, current_match, event_id
+from docforge.einvoice.evidence import QrEvidence
 from docforge.extraction.coa import CoaExtraction
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
@@ -68,6 +70,7 @@ from docforge.review.signing import (
 )
 from docforge.storage import ObjectStore, rendition_key
 from docforge.trust.assess import Assessment
+from docforge.trust.einvoice_rules import InvoiceRule, einvoice_rules
 from docforge.trust.match import Discrepancy, match_invoice_to_order
 from docforge.trust.rules import run_rules
 
@@ -230,6 +233,19 @@ class _State:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _einvoice_rules(
+    session: Session, version_id: uuid.UUID, parsed: ParsedDocument
+) -> tuple[InvoiceRule, ...]:
+    """The rules from the version's stored e-invoice QR check, built again as when it was read;
+    none when it was not scanned or had no signed QR."""
+    stored = session.scalar(
+        select(EinvoiceCheck.evidence).where(EinvoiceCheck.document_version_id == version_id)
+    )
+    if stored is None:
+        return ()
+    return einvoice_rules(QrEvidence.model_validate(stored), parsed)
 
 
 class ReviewService:
@@ -900,11 +916,13 @@ class ReviewService:
             .where(CorrectionRow.document_version_id == version_id)
             .order_by(CorrectionRow.created_at, CorrectionRow.id)
         )
+        parsed = ParsedDocument.model_validate(parse_output.data)
         return reassess(
             spec,
             spec.raw_schema.model_validate(extraction.raw),
-            ParsedDocument.model_validate(parse_output.data),
+            parsed,
             [Correction(path=c.path, text=c.new_text) for c in corrections],
+            extra_rules=_einvoice_rules(session, version_id, parsed),
         ).extraction
 
     def _state(
@@ -945,7 +963,12 @@ class ReviewService:
             ).all()
         ]
         reassessed = reassess(
-            spec, raw, parsed, [Correction(path=c.path, text=c.new_text) for c, _ in corrections]
+            spec,
+            raw,
+            parsed,
+            [Correction(path=c.path, text=c.new_text) for c, _ in corrections],
+            # The same rules the reading was assessed with: a correction never drops them.
+            extra_rules=_einvoice_rules(session, version.id, parsed),
         )
         if memo is not None:
             memo[version.id] = reassessed.extraction

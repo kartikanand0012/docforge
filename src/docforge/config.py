@@ -113,6 +113,10 @@ class Settings(BaseSettings):
     # Use only models already on disk: no download while a document is being parsed.
     # Needs the models present first (`make models`); the deployed image bakes them in.
     parser_offline: bool = False
+    # E-invoice QR: each invoice's signed QR is checked against the IRPs' keys as it is read
+    # (its own child process, with its own limits). Off: no scan and no e-invoice rules.
+    einvoice_enabled: bool = True
+    einvoice_keys: Literal["production", "sandbox"] = "production"  # sandbox: IRP sandbox QRs
 
     # `module:function` returning one pipeline per document type; lets a deployment swap
     # the parser or model without changing this package.

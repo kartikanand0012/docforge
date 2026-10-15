@@ -6,7 +6,7 @@ What is recorded is what the parse shows: a title (the first line), pages and wo
 
 from pydantic import BaseModel, ConfigDict
 
-from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, PipelineResult
+from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, PipelineResult, RulesFor
 from docforge.parsing.base import DocumentTooLarge, NoTextLayer, ParsedDocument, Parser
 from docforge.parsing.pdf import pdf_page_count
 from docforge.telemetry import traced
@@ -37,8 +37,11 @@ class GeneralPipeline:
         self.parser = parser
         self.max_pages = max_pages
 
-    def run(self, pdf: bytes) -> PipelineResult[GeneralExtraction]:
-        """Raises `ParseError` (and its kinds `NoTextLayer` and `DocumentTooLarge`)."""
+    def run(
+        self, pdf: bytes, *, extra_rules_for: RulesFor | None = None
+    ) -> PipelineResult[GeneralExtraction]:
+        """Raises `ParseError` (and its kinds `NoTextLayer` and `DocumentTooLarge`). A general
+        document has no rules, so `extra_rules_for` is not used."""
         pages = pdf_page_count(pdf)
         if pages > self.max_pages:
             raise DocumentTooLarge(f"document has {pages} pages; the limit is {self.max_pages}")

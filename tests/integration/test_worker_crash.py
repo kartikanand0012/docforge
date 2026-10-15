@@ -136,6 +136,7 @@ def test_killing_a_worker_mid_job_loses_nothing(
         "processing.started",
         "processing.stage",  # extracting
         "processing.stage",  # checking
+        "einvoice.checked",  # an invoice's QR, checked as it is read (on by default)
         "extraction.created",
         "assessment.created",
         "processing.stage",  # processed (or indexing, where search is wired in)

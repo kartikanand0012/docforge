@@ -33,7 +33,7 @@ from docforge.documents import (
     TransientProcessingError,
     UnknownDocumentType,
 )
-from docforge.extraction.pipeline import InvoicePipeline, PipelineResult
+from docforge.extraction.pipeline import InvoicePipeline, PipelineResult, RulesFor
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.llm.base import LLMError
 from docforge.parsing.base import ParsedDocument, ParserLimitExceeded
@@ -62,11 +62,13 @@ class HookedPipeline:
         self.inner = inner
         self.during_run = during_run
 
-    def run(self, pdf: bytes) -> PipelineResult[InvoiceExtraction]:
+    def run(
+        self, pdf: bytes, *, extra_rules_for: RulesFor | None = None
+    ) -> PipelineResult[InvoiceExtraction]:
         if self.during_run is not None:
             hook, self.during_run = self.during_run, None  # only the first run is interrupted
             hook()
-        return self.inner.run(pdf)
+        return self.inner.run(pdf, extra_rules_for=extra_rules_for)
 
 
 class Harness:

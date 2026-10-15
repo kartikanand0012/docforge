@@ -19,6 +19,7 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from opentelemetry import trace
@@ -36,6 +37,7 @@ from docforge.db.models import (
     AuditEntry,
     Document,
     DocumentVersion,
+    EinvoiceCheck,
     Extraction,
     MatchRecord,
     ModelRun,
@@ -46,8 +48,14 @@ from docforge.db.models import (
 )
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
+from docforge.einvoice.check import EinvoiceChecker, QrCheck
 from docforge.erasure import ANCHORS_PREFIX, Eraser, Erasure, live_copy, lock_content
-from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, PipelineResult
+from docforge.extraction.pipeline import (
+    DEFAULT_MAX_PAGES,
+    ExtractionError,
+    PipelineResult,
+    RulesFor,
+)
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.formats import ACCEPTED, FORMAT_OF, MEDIA_TYPES, Format, sniff
@@ -71,6 +79,7 @@ from docforge.storage import (
     rendition_key,
 )
 from docforge.telemetry import Prices, current_prices, document_cost, traced
+from docforge.trust.einvoice_rules import einvoice_rules
 from docforge.trust.match import company_key, match_invoice_to_order
 
 if TYPE_CHECKING:
@@ -156,7 +165,9 @@ def event_id(event_type: str, subject: uuid.UUID) -> uuid.UUID:
 
 
 class Pipeline(Protocol):
-    def run(self, pdf: bytes) -> PipelineResult[BaseModel]: ...
+    def run(
+        self, pdf: bytes, *, extra_rules_for: RulesFor | None = None
+    ) -> PipelineResult[BaseModel]: ...
 
 
 # Called inside the transaction that creates the version, so the job exists only if the
@@ -345,7 +356,9 @@ class DocumentService:
         index: Enqueue | None = None,
         converter: Converter | None = None,
         max_pages: int = DEFAULT_MAX_PAGES,
+        einvoice: EinvoiceChecker | None = None,
     ) -> None:
+        self._einvoice = einvoice  # checks an invoice's signed QR; None: switched off
         self._max_pages = max_pages  # a PDF made from another file is held to it too
         self._converter = converter or FileConverter()  # files that are not PDFs, to PDFs
         self._index = index  # queues the search indexing of a finished version
@@ -666,8 +679,15 @@ class DocumentService:
                 rendition = rendition_key(tenant, sha256, self._converter.version)
                 data = self._rendition(data, fmt, rendition)
                 self._reach(version_id, turn, "parsing", recorded_at_start=False)
+            # An invoice's signed QR, checked before it is read: its rules join the reading's.
+            # The check never raises; whatever fails, it is `unreadable`.
+            checked = (
+                self._einvoice.check(data) if self._einvoice and doc_type == "invoice" else None
+            )
+            evidence = checked.evidence if checked is not None else None
+            extra_rules_for = partial(einvoice_rules, evidence) if evidence is not None else None
             with stage_listener(lambda stage: self._reach(version_id, turn, stage)):
-                result = pipeline.run(data)
+                result = pipeline.run(data, extra_rules_for=extra_rules_for)
         except ConversionError as error:
             return self._fail(version_id, turn, f"The file could not be converted to PDF. {error}")
         except ConverterUnavailable as error:
@@ -718,7 +738,7 @@ class DocumentService:
         cost = document_cost(calls, current_prices())
         if cost is not None:
             span.set_attribute("docforge.cost_usd", cost)
-        outcome = self._complete(version_id, turn, result, rendition)
+        outcome = self._complete(version_id, turn, result, rendition, checked)
         if outcome == "succeeded" and rendition is not None:
             self._drop_superseded(version_id, tenant, sha256, rendition)
         if outcome == "succeeded":
@@ -793,6 +813,7 @@ class DocumentService:
         turn: int,
         result: PipelineResult[BaseModel],
         rendition: str | None = None,
+        checked: QrCheck | None = None,
     ) -> Outcome:
         data = result.extraction.model_dump(mode="json")
         sha256 = hashlib.sha256(audit.canonical_json(data).encode("utf-8")).hexdigest()
@@ -832,6 +853,31 @@ class DocumentService:
                         thinking_tokens=response.thinking_tokens,
                         latency_ms=response.latency_ms,
                     )
+                )
+            if checked is not None:
+                # In this transaction: review rebuilds the e-invoice rules from this row, so it
+                # exists if and only if the assessment made with them does.
+                evidence = checked.evidence
+                session.add(
+                    EinvoiceCheck(
+                        tenant_id=version.tenant_id,
+                        document_version_id=version.id,
+                        status=checked.status,
+                        evidence=evidence.model_dump(mode="json") if evidence else None,
+                        qr_text=checked.qr_text,
+                        page=checked.page,
+                        pages_scanned=checked.pages_scanned,
+                        decoder=checked.decoder,
+                    )
+                )
+                self._audit(
+                    session,
+                    document,
+                    WORKER,
+                    "einvoice.checked",
+                    version_no=version.version_no,
+                    status=checked.status,
+                    **({"irp": evidence.irp} if evidence is not None and evidence.irp else {}),
                 )
             assessment = result.assessment
             session.add(
