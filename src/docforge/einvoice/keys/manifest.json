@@ -1,27 +1,75 @@
 [
   {
-    "name": "NIC IRP-1 production",
+    "name": "NIC IRP-1 production, 16/09/2022 - 06/09/2024",
     "irp": "NIC1",
     "environment": "production",
-    "file": "nic1-production.pem",
-    "source_url": "https://docs.gsp.vayana.com/files/production-irp-nic1-verification-public-key.pem",
-    "fetched": "2026-10-14",
-    "sha256": "f7f90b31bf932cf86464f82f1a2e0307c6ea133c54b84883fd50dd5a6cb96b5f",
-    "kid": null,
-    "confirmed_by_real_qr": false,
-    "not_after": null
+    "file": "nic1-2022.crt",
+    "source_url": "https://einvoice1.gst.gov.in/Documents/einvpublickey4.zip",
+    "fetched": "2026-10-15",
+    "sha256": "883d1865f0e65ac729e7fb28036f262d9ab795676e0731a09e1cbd9ac5d61803",
+    "kid": "B8D63ECB58EA5E6F4AAC3D524543B2246669B0F8",
+    "confirmed_by_real_qr": true,
+    "not_after": "2024-09-09"
   },
   {
-    "name": "NIC IRP-2 production",
+    "name": "NIC IRP-1 production, 06/09/2024 - 03/06/2026",
+    "irp": "NIC1",
+    "environment": "production",
+    "file": "nic1-2024.crt",
+    "source_url": "https://einvoice1.gst.gov.in/Documents/einvpublickey5.zip",
+    "fetched": "2026-10-15",
+    "sha256": "f17712bd8402607caa2ed41b84e2b8352f0249ca2ccd579d1ef535cc26445b50",
+    "kid": "4DE1544AE695BDC84EC7BC12F2F57F813F44E301",
+    "confirmed_by_real_qr": true,
+    "not_after": "2026-06-03"
+  },
+  {
+    "name": "NIC IRP-1 production, 03/06/2026 - 01/05/2027",
+    "irp": "NIC1",
+    "environment": "production",
+    "file": "nic1-2026.crt",
+    "source_url": "https://einvoice1.gst.gov.in/Documents/einv1publickeyApr2027.zip",
+    "fetched": "2026-10-15",
+    "sha256": "5a7e121d538201e056b9a104c984fc57de6f98f227b67e6f72440fa90b929209",
+    "kid": "CD01AC2B6E720CF0B9E048F1CCBC7509C766AF78",
+    "confirmed_by_real_qr": false,
+    "not_after": "2027-05-01"
+  },
+  {
+    "name": "NIC IRP-2 production, 01/04/2023 - 04/09/2024",
     "irp": "NIC2",
     "environment": "production",
-    "file": "nic2-production.pem",
-    "source_url": "https://docs.gsp.vayana.com/files/production-irp-nic2-verification-public-key.pem",
-    "fetched": "2026-10-14",
-    "sha256": "9a57274caac55a18876df2e44f26df8e2c3151161ad420733cb6ab2ca6d5526d",
-    "kid": null,
+    "file": "nic2-2023.crt",
+    "source_url": "https://einvoice1.gst.gov.in/Documents/einv2publickey1.zip",
+    "fetched": "2026-10-15",
+    "sha256": "a92e44a37fedb72be7be27c468d98b624807665561d0c2771e3dc9beaba9d6f1",
+    "kid": "6C9E76A15241484CBBFC0CB81A5F3F0E5D489918",
     "confirmed_by_real_qr": false,
-    "not_after": null
+    "not_after": "2024-09-09"
+  },
+  {
+    "name": "NIC IRP-2 production, 05/09/2024 - 03/06/2026",
+    "irp": "NIC2",
+    "environment": "production",
+    "file": "nic2-2024.crt",
+    "source_url": "https://einvoice1.gst.gov.in/Documents/einv2publickey2024.zip",
+    "fetched": "2026-10-15",
+    "sha256": "d6c70b9919678c2817cc85dc6d1e1140a35f796a63671719e74874823a8bed97",
+    "kid": "DEB2031A279F203BBDDF3538E77D4122ACB4D07D",
+    "confirmed_by_real_qr": false,
+    "not_after": "2026-06-20"
+  },
+  {
+    "name": "NIC IRP-2 production, 03/06/2026 - 01/05/2027",
+    "irp": "NIC2",
+    "environment": "production",
+    "file": "nic2-2026.crt",
+    "source_url": "https://einvoice1.gst.gov.in/Documents/einv2publickeyApr2027.zip",
+    "fetched": "2026-10-15",
+    "sha256": "d889255a59757db1d982625ce59ea8dfa1f83454b911d053cdcd70fb5996c2dc",
+    "kid": "644956C46E4E947AAD72FD15DFDB01EB9A96A66B",
+    "confirmed_by_real_qr": false,
+    "not_after": "2027-05-01"
   },
   {
     "name": "IRIS IRP (einvoice6) production, certificate of 21/11/2024",
@@ -36,6 +84,18 @@
     "not_after": "2026-06-20"
   },
   {
+    "name": "NIC sandbox, from 18/09/2020",
+    "irp": "NIC",
+    "environment": "sandbox",
+    "file": "nic-sandbox-2020.crt",
+    "source_url": "https://einvoice1.gst.gov.in/Documents/sandpubkey2.zip",
+    "fetched": "2026-10-15",
+    "sha256": "86be7b2d196e20b0f67e429f6269a184362cfb8bb037dbf3ae26e21b1f014ed8",
+    "kid": "EDC57DE1358B300BA9F79340A6696831F3C85047",
+    "confirmed_by_real_qr": false,
+    "not_after": "2022-09-09"
+  },
+  {
     "name": "NIC IRP sandbox",
     "irp": "NIC",
     "environment": "sandbox",
@@ -43,7 +103,7 @@
     "source_url": "https://docs.gsp.vayana.com/files/sandbox_irp-verification-public-key.pem",
     "fetched": "2026-10-14",
     "sha256": "31991f72e63a26f5e7f50124904de3a7a63dca354c68db72885e45018be40706",
-    "kid": null,
+    "kid": "3BE17E514192522647F01FDBFF5271AD5268D735",
     "confirmed_by_real_qr": false,
     "not_after": null
   }

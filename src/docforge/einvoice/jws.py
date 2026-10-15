@@ -195,4 +195,8 @@ def verify(text: str, keyring: KeyRing) -> Verification:
         return Verification("bad_signature", reason, kid=kid)
     # Bare keys were tried and failed too: altered, or signed by an IRP whose key we lack.
     reason = "signed with a key DocForge does not hold, or altered"
+    if issuer is not None and issuer.upper().startswith("NIC"):
+        # Unverified, so it only explains: DocForge holds every key NIC has published since
+        # September 2022, so a recent QR naming NIC with another key deserves a closer look.
+        reason += "; it names NIC as its issuer, but NIC has not published that key"
     return Verification("unknown_key", reason, kid=kid)
