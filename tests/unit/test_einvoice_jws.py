@@ -227,16 +227,49 @@ def manifest_entry(
     }  # fmt: skip
 
 
+def cert_file(directory: Path, name: str, key: rsa.RSAPrivateKey = SIGNER) -> tuple[str, str]:
+    cert = certificate(key)
+    pem = cert.public_bytes(serialization.Encoding.PEM)
+    (directory / name).write_bytes(pem)
+    return hashlib.sha256(pem).hexdigest(), thumbprint(cert)
+
+
 def test_the_key_set_loads_only_its_environment(tmp_path: Path) -> None:
+    sha, kid = cert_file(tmp_path, "prod.crt")
     write_manifest(tmp_path, [
-        manifest_entry("prod.pem", pem_file(tmp_path, "prod.pem")),
+        manifest_entry("prod.crt", sha, kid=kid),
         manifest_entry("sandbox.pem", pem_file(tmp_path, "sandbox.pem", OTHER), "sandbox"),
     ])  # fmt: skip
 
     production = load_keyring("production", tmp_path)
 
-    assert [key.name for key in production.keys] == ["prod.pem"]
+    assert [key.name for key in production.keys] == ["prod.crt"]
     assert [key.name for key in load_keyring("sandbox", tmp_path).keys] == ["sandbox.pem"]
+
+
+def test_a_production_key_must_be_a_certificate_with_its_kid(tmp_path: Path) -> None:
+    # A bare production key would be tried for any kid we do not hold, and a kid written
+    # beside it could not be checked against anything.
+    write_manifest(tmp_path, [manifest_entry("prod.pem", pem_file(tmp_path, "prod.pem"))])
+    with pytest.raises(KeyRingError, match="certificate"):
+        load_keyring("production", tmp_path)
+
+    write_manifest(
+        tmp_path, [manifest_entry("prod.pem", pem_file(tmp_path, "prod.pem"), kid="A" * 40)]
+    )
+    with pytest.raises(KeyRingError, match="certificate"):
+        load_keyring("production", tmp_path)
+
+
+def test_a_qr_naming_nic_with_a_key_nic_has_not_published_says_so() -> None:
+    ring = KeyRing((trusted(kid="A" * 40),))
+
+    nic = verify(signed(key=OTHER, kid="B" * 40), ring)
+    other = verify(signed(key=OTHER, kid="B" * 40, iss="IRIS"), ring)
+
+    assert nic.status == other.status == "unknown_key"
+    assert "names NIC as its issuer" in nic.reason
+    assert "NIC" not in other.reason
 
 
 def test_a_key_file_that_does_not_match_the_manifest_refuses_to_load(tmp_path: Path) -> None:
