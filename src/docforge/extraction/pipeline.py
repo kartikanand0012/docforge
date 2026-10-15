@@ -5,7 +5,7 @@ the shape the model must reply in, the instruction it is given, and the code tha
 its printed strings into typed values.
 """
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -104,17 +104,26 @@ class ExtractionPipeline[E: BaseModel]:
             span.set_attribute("docforge.blocks", len(parsed.blocks))
         return self.extract(parsed)
 
-    def extract(self, parsed: ParsedDocument) -> PipelineResult[E]:
+    def extract(
+        self,
+        parsed: ParsedDocument,
+        *,
+        extra_rules: Sequence[Callable[[E], Iterable[RuleResult]]] = (),
+    ) -> PipelineResult[E]:
         """Extraction from an already parsed document. One retry if the reply is malformed.
 
-        Raises `NoTextLayer`, `DocumentTooLarge`, `LLMError` or `ExtractionError`.
+        `extra_rules` run after the document type's own: rules from evidence outside the text,
+        such as an e-invoice QR. Raises `NoTextLayer`, `DocumentTooLarge`, `LLMError` or
+        `ExtractionError`.
         """
         report_stage("extracting")
         with traced("pipeline.extract") as span:
             span.set_attribute("docforge.doc_type", self.spec.doc_type)
-            return self._extract(parsed)
+            return self._extract(parsed, extra_rules)
 
-    def _extract(self, parsed: ParsedDocument) -> PipelineResult[E]:
+    def _extract(
+        self, parsed: ParsedDocument, extra_rules: Sequence[Callable[[E], Iterable[RuleResult]]]
+    ) -> PipelineResult[E]:
         if not parsed.blocks:
             # Without this the model is sent an empty document and returns an all-null record.
             raise NoTextLayer("the PDF has no extractable text")
@@ -150,7 +159,7 @@ class ExtractionPipeline[E: BaseModel]:
             extraction = extraction.model_copy(update={"issues": issues})
         report_stage("checking")
         with traced("pipeline.assess") as span:
-            assessment = assess(extraction, parsed, spec.rules)
+            assessment = assess(extraction, parsed, (*spec.rules, *extra_rules))
             span.set_attribute("docforge.decision", assessment.decision)
         return PipelineResult(
             parsed=parsed,

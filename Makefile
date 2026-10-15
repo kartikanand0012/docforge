@@ -68,6 +68,7 @@ eval: ## Re-run the invoice eval offline from recordings and rewrite the baselin
 	uv run python -m docforge.evals --mode replay
 	uv run python -m docforge.evals --mode replay --fixtures tests/fixtures/multipage --out evals/baselines/multipage.json
 	uv run python -m docforge.evals --suite trust --mode replay
+	uv run python -m docforge.evals --suite einvoice --mode replay
 	uv run python -m docforge.evals --suite scans --mode replay
 	uv run python -m docforge.evals --suite coa --mode replay
 	uv run python -m docforge.evals --suite search --mode replay

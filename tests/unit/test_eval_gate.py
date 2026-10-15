@@ -39,7 +39,9 @@ def test_the_gate_covers_every_report_and_the_tenant_leak_count() -> None:
     gate = load_gate(GATE)
     covered = {check.report for check in gate}
 
-    assert covered >= {"invoice", "multipage", "trust", "scans", "coa", "search", "search_heldout"}
+    assert covered >= {
+        "invoice", "multipage", "trust", "scans", "coa", "search", "search_heldout", "einvoice"
+    }  # fmt: skip
     assert any("cross_tenant_hits" in check.path for check in gate)
     assert any("input_tokens" in check.path for check in gate), "cost must be gated too"
 
@@ -154,7 +156,7 @@ def test_the_held_out_hard_slice_and_field_classes_are_gated() -> None:
 
 # --- other providers (C15) ---------------------------------------------------------------------
 
-MODEL_REPORTS = ("invoice", "multipage", "trust", "scans", "coa", "answers")
+MODEL_REPORTS = ("invoice", "multipage", "trust", "scans", "coa", "answers", "einvoice")
 
 
 def test_every_report_from_a_model_pins_its_provider_model_and_prompts() -> None:
@@ -191,16 +193,20 @@ def test_a_provider_with_any_report_is_held_to_every_floor_gemini_is(tmp_path: P
 
 
 @pytest.mark.parametrize(
-    "name", ["EvalReport", "TrustReport", "ScanReport", "CoaReport", "AnswerReport"]
+    "name",
+    ["EvalReport", "TrustReport", "ScanReport", "CoaReport", "AnswerReport", "EinvoiceReport"],
 )
 def test_every_report_from_a_model_says_which_provider(name: str) -> None:
     import docforge.evals.answers as answers
     import docforge.evals.coa as coa
+    import docforge.evals.einvoice as einvoice
     import docforge.evals.run as run
     import docforge.evals.scans as scans
     import docforge.evals.trust as trust
 
-    found = next(getattr(m, name) for m in (run, trust, scans, coa, answers) if hasattr(m, name))
+    found = next(
+        getattr(m, name) for m in (run, trust, scans, coa, answers, einvoice) if hasattr(m, name)
+    )
     assert "provider" in found.model_fields
 
 
