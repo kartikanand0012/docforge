@@ -91,6 +91,7 @@ class IsolatedParser:
         timeout_seconds: float = 900.0,
         max_rss_bytes: int = 8 * _GIB,
         child_env: Mapping[str, str] | None = None,
+        max_reply_bytes: int | None = None,
     ) -> None:
         self.name = name
         self.version = version
@@ -98,6 +99,8 @@ class IsolatedParser:
         self._max_documents = max_documents
         self._timeout_seconds = timeout_seconds
         self._max_rss_bytes = max_rss_bytes
+        # A reply longer than this stops the process: the child reads untrusted files.
+        self._max_reply_bytes = max_reply_bytes
         self._child_env = dict(child_env or {})  # e.g. HF_HUB_OFFLINE=1: no model downloads
         self._lock = threading.Lock()
         self._process: SpawnProcess | None = None
@@ -106,7 +109,23 @@ class IsolatedParser:
         self.peak_rss_bytes = 0  # highest memory use seen in any child, for measurement
         self.spawned = 0  # processes started, for measurement and tests
 
+    @property
+    def timeout_seconds(self) -> float:
+        return self._timeout_seconds
+
+    @property
+    def max_rss_bytes(self) -> int:
+        return self._max_rss_bytes
+
+    @property
+    def max_reply_bytes(self) -> int | None:
+        return self._max_reply_bytes
+
     def parse(self, pdf: bytes) -> ParsedDocument:
+        return ParsedDocument.model_validate_json(self._run(pdf))
+
+    def _run(self, pdf: bytes) -> str:
+        """The child's JSON reply for `pdf`, or the error it raised."""
         with self._lock:
             try:
                 kind, payload = self._exchange(pdf)
@@ -119,7 +138,7 @@ class IsolatedParser:
                 kind, payload = self._exchange(pdf)
         if kind != "ok":
             raise _ERRORS.get(kind, ParseError)(payload)
-        return ParsedDocument.model_validate_json(payload)
+        return payload
 
     def _exchange(self, pdf: bytes) -> tuple[str, str]:
         """Send one document to the child and wait for its reply, within the limits."""
@@ -149,7 +168,7 @@ class IsolatedParser:
                         f"{self._max_rss_bytes // 1024**2} MB.",
                         shared=shared,
                     )
-            kind, payload = json.loads(connection.recv_bytes())
+            kind, payload = json.loads(connection.recv_bytes(self._max_reply_bytes))
         except ParserLimitExceeded:
             self._stop()
             raise
