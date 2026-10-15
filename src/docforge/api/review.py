@@ -115,6 +115,14 @@ class SignedOut(BaseModel):
     draft: dict[str, Any] | None
 
 
+class DuplicateOut(BaseModel):
+    """An earlier bill this invoice repeats."""
+
+    document_id: uuid.UUID
+    filename: str
+    matched_on: Literal["irn", "seller_and_number"]
+
+
 class ReviewOut(BaseModel):
     document_id: uuid.UUID
     doc_type: str
@@ -139,6 +147,7 @@ class ReviewOut(BaseModel):
     certificates: list[dict[str, str]]
     claim: ClaimOut | None  # who has it open now, while their claim lasts
     einvoice: EinvoiceOut | None  # an invoice's signed QR, as checked; null if never scanned
+    duplicates: list[DuplicateOut]  # earlier bills an invoice repeats; each is also a blocker
 
 
 def _review_out(detail: ReviewDetail) -> ReviewOut:
@@ -166,6 +175,7 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
         certificates=list(detail.certificates),
         claim=_claim_out(detail.claim) if detail.claim else None,
         einvoice=einvoice_out(detail.einvoice),
+        duplicates=[DuplicateOut(**vars(duplicate)) for duplicate in detail.duplicates],
     )
 
 

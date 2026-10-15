@@ -165,6 +165,23 @@ ORDER_NUMBER: ColumnElement[str] = literal_column(
 )
 
 
+# An invoice number as compared for duplicates: lower case, no whitespace. Spelled exactly as
+# the expression indexes of migration 0040; `docforge.trust.duplicates.number_key` is the same
+# in Python.
+INVOICE_NUMBER_KEY: ColumnElement[str] = literal_column(
+    "lower(regexp_replace(((extractions.data -> 'invoice_no') ->> 'value'), "
+    "'[[:space:]]', '', 'g'))",
+    type_=Text,
+)
+CORRECTED_NUMBER_KEY: ColumnElement[str] = literal_column(
+    "lower(regexp_replace(corrections.new_text, '[[:space:]]', '', 'g'))", type_=Text
+)
+# The IRN a verified e-invoice QR signed (migration 0040).
+SIGNED_IRN: ColumnElement[str] = literal_column(
+    "((einvoice_checks.evidence -> 'invoice') ->> 'irn')", type_=Text
+)
+
+
 # The batch number of a stored certificate of analysis, spelled as its index (migration 0011).
 BATCH_NUMBER: ColumnElement[str] = literal_column(
     "((extractions.data -> 'batch_no') ->> 'value')", type_=Text
