@@ -40,6 +40,7 @@ from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.documents import DocumentNotFound, EventSink, current_match, event_id
 from docforge.einvoice.evidence import QrEvidence
+from docforge.einvoice.view import EinvoiceView, einvoice_view, stored_check
 from docforge.extraction.coa import CoaExtraction
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
@@ -191,6 +192,8 @@ class ReviewDetail:
     # For an invoice: the certificate found for each billed batch, and whether it is in limits.
     certificates: tuple[dict[str, str], ...] = ()
     claim: ClaimView | None = None  # a live claim, relative to whoever asked
+    # For an invoice scanned as it was read: its signed QR's check, its rules as reassessed.
+    einvoice: EinvoiceView | None = None
 
     @property
     def decision(self) -> str:
@@ -212,6 +215,7 @@ class _State:
     review: tuple[Review, str] | None
     superseded: bool
     certificates: tuple[dict[str, str], ...]
+    einvoice_check: EinvoiceCheck | None
 
     @property
     def blockers(self) -> tuple[str, ...]:
@@ -238,21 +242,18 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _einvoice_rules(
-    session: Session, version_id: uuid.UUID, parsed: ParsedDocument
-) -> tuple[InvoiceRule, ...]:
+def _einvoice_rules(check: EinvoiceCheck | None, parsed: ParsedDocument) -> tuple[InvoiceRule, ...]:
     """The rules from the version's stored e-invoice QR check, built again as when it was read;
     none when it was not scanned or had no signed QR."""
-    stored = session.scalar(
-        select(EinvoiceCheck.evidence).where(EinvoiceCheck.document_version_id == version_id)
-    )
-    if stored is None:
+    if check is None or check.evidence is None:
         return ()
     try:
-        evidence = QrEvidence.model_validate(stored)
+        evidence = QrEvidence.model_validate(check.evidence)
     except ValidationError:
         # Stored by a release whose evidence no longer fits: fail closed, never silently open.
-        logger.warning("stored e-invoice check of version %s cannot be read", version_id)
+        logger.warning(
+            "stored e-invoice check of version %s cannot be read", check.document_version_id
+        )
         return (unreadable_check_rule(),)
     return einvoice_rules(evidence, parsed)
 
@@ -969,13 +970,14 @@ class ReviewService:
                 .order_by(CorrectionRow.created_at, CorrectionRow.id)
             ).all()
         ]
+        einvoice_check = stored_check(session, version.id)
         reassessed = reassess(
             spec,
             raw,
             parsed,
             [Correction(path=c.path, text=c.new_text) for c, _ in corrections],
             # The same rules the reading was assessed with: a correction never drops them.
-            extra_rules=_einvoice_rules(session, version.id, parsed),
+            extra_rules=_einvoice_rules(einvoice_check, parsed),
         )
         if memo is not None:
             memo[version.id] = reassessed.extraction
@@ -1021,6 +1023,7 @@ class ReviewService:
             review=(signed[0], signed[1]) if signed is not None else None,
             superseded=newest_version != version.version_no,
             certificates=self._certificates(session, document, reassessed.extraction, memo),
+            einvoice_check=einvoice_check,
         )
 
     def _certificates(
@@ -1160,6 +1163,7 @@ class ReviewService:
             meanings=dict(MEANINGS[state.document.doc_type]),
             superseded=state.superseded,
             certificates=state.certificates,
+            einvoice=einvoice_view(state.einvoice_check, state.reassessed.assessment.rules),
         )
 
 

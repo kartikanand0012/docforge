@@ -1,18 +1,22 @@
 """V2 1.1 part 5: what an invoice's signed QR said, on the review and assessment responses -
 its outcome, who signed it, what it signed and which of its checks hold - never the QR itself."""
 
+import importlib.util
 import json
 from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 from docforge.api.app import create_app
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
+from docforge.einvoice.check import CheckStatus
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.review.service import ReviewService
@@ -49,7 +53,9 @@ def api_for(world: World, sessions: SessionFactory) -> Callable[[Scanner | None]
             world.store,
             {"invoice": INVOICE_SPEC, "purchase_order": PURCHASE_ORDER_SPEC},
         )
-        reviewer_id = review.add_reviewer(DEFAULT_TENANT_ID, name="Asha Rao", **CREDENTIALS)
+        reviewer_id = review.add_reviewer(
+            DEFAULT_TENANT_ID, name="Asha Rao", email=CREDENTIALS["email"], pin=CREDENTIALS["pin"]
+        )
         app = create_app(
             None,
             service=world.service,
@@ -63,7 +69,8 @@ def api_for(world: World, sessions: SessionFactory) -> Callable[[Scanner | None]
 
 
 def invoice(world: World) -> dict[str, Any]:
-    return json.loads(world.label_text)["invoice"]
+    found: dict[str, Any] = json.loads(world.label_text)["invoice"]
+    return found
 
 
 def outcomes(einvoice: dict[str, Any]) -> dict[str, str]:
@@ -216,7 +223,35 @@ def test_the_api_contract_describes_the_einvoice_field(
 
     assert "einvoice" in schema["ReviewOut"]["properties"]
     assert "einvoice" in schema["AssessmentOut"]["properties"]
-    assert set(schema["EinvoiceOut"]["properties"]["status"]["enum"]) == {
-        "verified", "bad_signature", "malformed", "unknown_key", "none", "unreadable"
-    }  # fmt: skip
+    # Every status the table may hold, or a stored one would fail the response.
+    migration = REPO / "src" / "docforge" / "migrations" / "versions" / "0039_einvoice_checks.py"
+    spec = importlib.util.spec_from_file_location("migration_0039", migration)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    statuses = set(schema["EinvoiceOut"]["properties"]["status"]["enum"])
+    assert statuses == set(module._STATUSES) == set(get_args(CheckStatus))
     assert "qr_text" not in schema["EinvoiceOut"]["properties"]
+
+
+def test_a_stored_check_that_cannot_be_read_says_so_and_keeps_the_invoice_in_review(
+    world: World, api_for: Callable[[Scanner | None], TestClient], owner_engine: Engine
+) -> None:
+    api = api_for(None)
+    invoice_id = world.process("invoice")
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO einvoice_checks (tenant_id, document_version_id, status, evidence, "
+                "pages_scanned) SELECT tenant_id, id, 'verified', '{\"old\": true}', 1 "
+                "FROM document_versions"
+            )
+        )
+
+    body = api.get(f"/v1/documents/{invoice_id}/review").json()
+
+    einvoice = body["einvoice"]
+    assert (einvoice["status"], einvoice["signed"]) == ("verified", None)
+    assert einvoice["reason"] == "the stored check could not be read"
+    assert outcomes(einvoice) == {"einvoice.signature": "not_evaluated"}
+    assert body["decision"] == "review"

@@ -49,6 +49,7 @@ from docforge.db.models import (
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped, tenant_scope
 from docforge.einvoice.check import EinvoiceChecker, QrCheck
+from docforge.einvoice.view import EinvoiceView, einvoice_view, stored_check
 from docforge.erasure import ANCHORS_PREFIX, Eraser, Erasure, live_copy, lock_content
 from docforge.extraction.pipeline import (
     DEFAULT_MAX_PAGES,
@@ -81,6 +82,7 @@ from docforge.storage import (
 from docforge.telemetry import Prices, current_prices, document_cost, traced
 from docforge.trust.einvoice_rules import einvoice_rules
 from docforge.trust.match import company_key, match_invoice_to_order
+from docforge.trust.rules import RuleResult
 
 if TYPE_CHECKING:
     from docforge.anchors import AnchoredReport, AnchorStore
@@ -239,6 +241,7 @@ class AssessmentDetail:
     match: MatchRecord | None  # the newest comparison involving this version, if any
     counterpart_document_id: uuid.UUID | None
     doc_type: str
+    einvoice: EinvoiceView | None = None  # for an invoice scanned as it was read
 
     @property
     def match_status(self) -> str:
@@ -1240,7 +1243,11 @@ class DocumentService:
                 return None
             version, record = row
             match, counterpart = current_match(session, tenant_id, version.id)
-            return AssessmentDetail(version, record, match, counterpart, document.doc_type)
+            rules = (RuleResult.model_validate(rule) for rule in record.data["rules"])
+            einvoice = einvoice_view(stored_check(session, version.id), rules)
+            return AssessmentDetail(
+                version, record, match, counterpart, document.doc_type, einvoice
+            )
 
     @scoped
     def audit_trail(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> list[AuditEntry]:

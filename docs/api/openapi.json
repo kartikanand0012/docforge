@@ -2890,6 +2890,16 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "einvoice": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/EinvoiceOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "type": "object",
@@ -2899,7 +2909,8 @@
                     "decision",
                     "match_status",
                     "assessment",
-                    "match"
+                    "match",
+                    "einvoice"
                 ],
                 "title": "AssessmentOut"
             },
@@ -3918,6 +3929,133 @@
                     "document_ids"
                 ],
                 "title": "DocumentsIn"
+            },
+            "EinvoiceOut": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "verified",
+                            "bad_signature",
+                            "malformed",
+                            "unknown_key",
+                            "none",
+                            "unreadable"
+                        ],
+                        "title": "Status"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason"
+                    },
+                    "irp": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Irp"
+                    },
+                    "key_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Key Name"
+                    },
+                    "key_confirmed": {
+                        "type": "boolean",
+                        "title": "Key Confirmed"
+                    },
+                    "page": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Page"
+                    },
+                    "altered_beside": {
+                        "type": "boolean",
+                        "title": "Altered Beside"
+                    },
+                    "signed": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/SignedInvoiceOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "rules": {
+                        "items": {
+                            "$ref": "#/components/schemas/EinvoiceRuleOut"
+                        },
+                        "type": "array",
+                        "title": "Rules"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "status",
+                    "reason",
+                    "irp",
+                    "key_name",
+                    "key_confirmed",
+                    "page",
+                    "altered_beside",
+                    "signed",
+                    "rules"
+                ],
+                "title": "EinvoiceOut",
+                "description": "`none`: no signed QR on it; `unreadable`: its pages could not be scanned. A key that is\nnot `key_confirmed` has not yet verified a real invoice's QR."
+            },
+            "EinvoiceRuleOut": {
+                "properties": {
+                    "rule_id": {
+                        "type": "string",
+                        "title": "Rule Id"
+                    },
+                    "outcome": {
+                        "type": "string",
+                        "title": "Outcome"
+                    },
+                    "severity": {
+                        "type": "string",
+                        "title": "Severity"
+                    },
+                    "message": {
+                        "type": "string",
+                        "title": "Message"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "rule_id",
+                    "outcome",
+                    "severity",
+                    "message"
+                ],
+                "title": "EinvoiceRuleOut"
             },
             "EntryOut": {
                 "properties": {
@@ -5259,6 +5397,16 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "einvoice": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/EinvoiceOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "type": "object",
@@ -5284,7 +5432,8 @@
                     "meanings",
                     "superseded",
                     "certificates",
-                    "claim"
+                    "claim",
+                    "einvoice"
                 ],
                 "title": "ReviewOut"
             },
@@ -5411,6 +5560,81 @@
                     "pin"
                 ],
                 "title": "SignIn"
+            },
+            "SignedInvoiceOut": {
+                "properties": {
+                    "seller_gstin": {
+                        "type": "string",
+                        "title": "Seller Gstin"
+                    },
+                    "buyer_gstin": {
+                        "type": "string",
+                        "title": "Buyer Gstin"
+                    },
+                    "invoice_no": {
+                        "type": "string",
+                        "title": "Invoice No"
+                    },
+                    "document_type": {
+                        "type": "string",
+                        "title": "Document Type"
+                    },
+                    "invoice_date": {
+                        "type": "string",
+                        "format": "date",
+                        "title": "Invoice Date"
+                    },
+                    "total": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Total"
+                    },
+                    "line_count": {
+                        "type": "integer",
+                        "title": "Line Count"
+                    },
+                    "main_hsn": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Main Hsn"
+                    },
+                    "irn": {
+                        "type": "string",
+                        "title": "Irn"
+                    },
+                    "irn_date": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Irn Date"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "seller_gstin",
+                    "buyer_gstin",
+                    "invoice_no",
+                    "document_type",
+                    "invoice_date",
+                    "total",
+                    "line_count",
+                    "main_hsn",
+                    "irn",
+                    "irn_date"
+                ],
+                "title": "SignedInvoiceOut",
+                "description": "What the IRP signed, as the QR states it."
             },
             "SignedOut": {
                 "properties": {

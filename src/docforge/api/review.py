@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from docforge.accounts import MAX_PASSWORD
 from docforge.api.auth import client_address, require
+from docforge.api.einvoice import EinvoiceOut, einvoice_out
 from docforge.auth import FailureLimiter, Principal, TooManyAttempts
 from docforge.documents import DocumentNotFound
 from docforge.parsing.base import ParseError
@@ -137,6 +138,7 @@ class ReviewOut(BaseModel):
     superseded: bool
     certificates: list[dict[str, str]]
     claim: ClaimOut | None  # who has it open now, while their claim lasts
+    einvoice: EinvoiceOut | None  # an invoice's signed QR, as checked; null if never scanned
 
 
 def _review_out(detail: ReviewDetail) -> ReviewOut:
@@ -163,6 +165,7 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
         superseded=detail.superseded,
         certificates=list(detail.certificates),
         claim=_claim_out(detail.claim) if detail.claim else None,
+        einvoice=einvoice_out(detail.einvoice),
     )
 
 
