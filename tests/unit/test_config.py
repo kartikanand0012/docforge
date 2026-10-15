@@ -420,3 +420,18 @@ def test_the_fixed_monthly_cost_is_read_and_never_negative(
     monkeypatch.setenv("PLATFORM_FIXED_MONTHLY_USD", "-1")
     with pytest.raises(ValueError, match="platform_fixed_monthly_usd"):
         Settings(_env_file=None)
+
+
+def test_production_refuses_sandbox_e_invoice_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A sandbox QR is anyone's to make: its keys must never vouch for a real invoice.
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://app:s3cr3t@db.internal:5432/docforge")
+    monkeypatch.setenv(
+        "MIGRATION_DATABASE_URL", "postgresql+psycopg://owner:0wn3r@db.internal:5432/docforge"
+    )
+    monkeypatch.setenv("S3_SECRET_KEY", "a-real-secret")
+    monkeypatch.setenv("WEBHOOK_SIGNING_KEY", "a-real-webhook-key")
+    monkeypatch.setenv("EINVOICE_KEYS", "sandbox")
+
+    with pytest.raises(ValueError, match="EINVOICE_KEYS"):
+        make_settings()

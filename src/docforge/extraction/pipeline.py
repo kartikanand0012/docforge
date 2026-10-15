@@ -30,6 +30,9 @@ from docforge.trust.assess import Assessment, assess
 from docforge.trust.invoice_rules import INVOICE_RULES
 from docforge.trust.rules import RuleResult
 
+# Rules from evidence outside a document's text, given the document once parsed.
+RulesFor = Callable[[ParsedDocument], Sequence[Callable[[Any], Iterable[RuleResult]]]]
+
 DEFAULT_MAX_PAGES = 20
 _MAX_PAGE_RETRIES = 2  # malformed replies retried per multi-page document
 DEFAULT_MAX_PROMPT_CHARS = 200_000  # far above any invoice; bounds model cost per request
@@ -93,8 +96,9 @@ class ExtractionPipeline[E: BaseModel]:
         self.max_pages = max_pages
         self.max_prompt_chars = max_prompt_chars
 
-    def run(self, pdf: bytes) -> PipelineResult[E]:
-        """Raises `ParseError`, `LLMError` or `ExtractionError`."""
+    def run(self, pdf: bytes, *, extra_rules_for: RulesFor | None = None) -> PipelineResult[E]:
+        """Raises `ParseError`, `LLMError` or `ExtractionError`. `extra_rules_for` gives rules
+        from evidence outside the text (an e-invoice QR) for the document once parsed."""
         pages = pdf_page_count(pdf)
         if pages > self.max_pages:
             raise DocumentTooLarge(f"document has {pages} pages; the limit is {self.max_pages}")
@@ -102,7 +106,8 @@ class ExtractionPipeline[E: BaseModel]:
             parsed = self.parser.parse(pdf)
             span.set_attribute("docforge.pages", len(parsed.pages))
             span.set_attribute("docforge.blocks", len(parsed.blocks))
-        return self.extract(parsed)
+        extra = extra_rules_for(parsed) if extra_rules_for is not None else ()
+        return self.extract(parsed, extra_rules=extra)
 
     def extract(
         self,

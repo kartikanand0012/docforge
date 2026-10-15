@@ -138,6 +138,16 @@ def _fields(signed: SignedInvoice, parsed: ParsedDocument) -> InvoiceRule:
     return rule
 
 
+def unreadable_check_rule() -> InvoiceRule:
+    """For a stored check whose evidence can no longer be read: the invoice stays in review
+    rather than losing its e-invoice rules unseen."""
+
+    def rule(_: InvoiceExtraction) -> Iterable[RuleResult]:
+        yield _result("einvoice.signature", "error", (), None, "")
+
+    return rule
+
+
 def einvoice_rules(evidence: QrEvidence | None, parsed: ParsedDocument) -> tuple[InvoiceRule, ...]:
     """The rules for an invoice whose QR codes gave `evidence`; none when there was none."""
     if evidence is None:

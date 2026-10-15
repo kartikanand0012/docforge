@@ -101,7 +101,7 @@ class IsolatedScanner(IsolatedParser):
 
 def isolated_scanner(
     *,
-    timeout_seconds: float = 60,
+    timeout_seconds: float = 20,  # six renders and decodes take a few seconds
     max_rss_mb: int = 2048,  # a page near the pixel cap at 450 dpi peaked near 850 MB
     max_documents: int = 200,
 ) -> IsolatedScanner:

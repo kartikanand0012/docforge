@@ -14,6 +14,9 @@ from docforge.conversion import Converter, FileConverter, IsolatedConverter, Rec
 from docforge.conversion_service import RemoteConverter
 from docforge.db.session import make_engine, make_session_factory
 from docforge.documents import DocumentService, EventSink, Pipeline
+from docforge.einvoice.check import EinvoiceChecker
+from docforge.einvoice.keys import load_keyring
+from docforge.einvoice.scan import isolated_scanner
 from docforge.extraction.coa import COA_SPEC, CoaExtraction
 from docforge.extraction.general import GeneralPipeline
 from docforge.extraction.pipeline import INVOICE_SPEC, ExtractionPipeline, InvoicePipeline
@@ -139,6 +142,13 @@ def build_replay_pipelines(settings: Settings) -> dict[str, Pipeline]:
 
 
 REPLAY_FACTORY = "docforge.wiring:build_replay_pipelines"
+
+
+def build_einvoice(settings: Settings) -> EinvoiceChecker | None:
+    """The e-invoice QR check, in its own child process; None when it is switched off."""
+    if not settings.einvoice_enabled:
+        return None
+    return EinvoiceChecker(isolated_scanner(), load_keyring(settings.einvoice_keys))
 
 
 def build_converter(settings: Settings) -> Converter:
@@ -284,6 +294,7 @@ def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
         index=queue.defer_index,
         converter=build_converter(settings),
         max_pages=settings.max_pages,
+        einvoice=build_einvoice(settings),
     )
     queue.bind(service)
     queue.bind_search(build_search(settings))

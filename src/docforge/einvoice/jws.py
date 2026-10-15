@@ -108,8 +108,8 @@ def _refuse_constant(name: str) -> None:
 
 
 def _optional(value: Any, limit: int) -> str | None:
-    if isinstance(value, bool) or not isinstance(value, str | int):
-        return None
+    if isinstance(value, bool) or not isinstance(value, str | int) or "\x00" in str(value):
+        return None  # a NUL cannot be stored (Postgres), and no real field holds one
     return str(value)[:limit]
 
 

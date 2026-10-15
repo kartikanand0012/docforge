@@ -10,6 +10,7 @@ from typing import Any
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
 from docforge.documents import DocumentService, EventSink
+from docforge.einvoice.check import EinvoiceChecker
 from docforge.extraction.coa import COA_SPEC, CoaExtraction
 from docforge.extraction.pipeline import ExtractionPipeline, InvoicePipeline
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC, PurchaseOrderExtraction
@@ -47,6 +48,7 @@ class World:
         self.coas: list[tuple[bytes, ParsedDocument, dict[str, Any]]] = []  # added before build
         self.store = MemoryObjectStore()  # kept across rebuilds, so reprocessing finds the file
         self.service: DocumentService | None = None
+        self.einvoice: EinvoiceChecker | None = None  # set before build to check QRs
 
     def reprint_invoice(self, path: str, value: str) -> None:
         self.invoice_parsed = reprint(self.invoice_parsed, self.invoice_raw, path, value)
@@ -76,6 +78,7 @@ class World:
             lambda session, version: self.queued.append(version.id),
             events=self.events,
             index=self.index,
+            einvoice=self.einvoice,
         )
         return self.service
 

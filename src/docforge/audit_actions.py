@@ -30,6 +30,7 @@ ACTIONS: dict[str, Action] = {
     "assessment.created": Action(
         "Checks run", ("version_no", "decision", "values_flagged", "checks_failed")
     ),
+    "einvoice.checked": Action("E-invoice QR checked", ("version_no", "status", "irp")),
     "match.created": Action("Matched", ("counterpart_document_id", "decision", "discrepancies")),
     "processing.retry_scheduled": Action(
         "Reading to be retried", ("version_no", "attempt", "error")

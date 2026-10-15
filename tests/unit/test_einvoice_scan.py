@@ -108,7 +108,7 @@ def test_a_reply_out_of_bounds_from_the_child_is_refused(reply: dict[str, object
 def test_the_scanner_has_limits_of_its_own_by_default() -> None:
     scanner = isolated_scanner()
 
-    assert scanner.timeout_seconds == 60
+    assert scanner.timeout_seconds == 20
     assert scanner.max_rss_bytes == 2048 * 1024 * 1024
     assert scanner.max_reply_bytes == 1024 * 1024
 

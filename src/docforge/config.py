@@ -113,6 +113,10 @@ class Settings(BaseSettings):
     # Use only models already on disk: no download while a document is being parsed.
     # Needs the models present first (`make models`); the deployed image bakes them in.
     parser_offline: bool = False
+    # E-invoice QR: each invoice's signed QR is checked against the IRPs' keys as it is read
+    # (its own child process, with its own limits). Off: no scan and no e-invoice rules.
+    einvoice_enabled: bool = True
+    einvoice_keys: Literal["production", "sandbox"] = "production"  # sandbox: IRP sandbox QRs
 
     # `module:function` returning one pipeline per document type; lets a deployment swap
     # the parser or model without changing this package.
@@ -353,6 +357,9 @@ class Settings(BaseSettings):
             raise ValueError("DRIVE_CLIENT=fake is for tests and local demos only")
         if self.drive_sync_interval_minutes < 5:
             raise ValueError("DRIVE_SYNC_INTERVAL_MINUTES must be at least 5 in production")
+        if self.einvoice_keys != "production":
+            # Anyone can make a sandbox QR: its keys must never vouch for a real invoice.
+            raise ValueError("EINVOICE_KEYS=sandbox is for tests and local use only")
         if self.chat_record:
             # Recording writes questions, passages and answers to disk, unprotected.
             raise ValueError("CHAT_RECORD is for local development only")

@@ -9,7 +9,7 @@ from pathlib import Path
 
 from docforge.config import Settings
 from docforge.documents import Pipeline
-from docforge.extraction.pipeline import InvoicePipeline, PipelineResult
+from docforge.extraction.pipeline import InvoicePipeline, PipelineResult, RulesFor
 from docforge.extraction.schema import InvoiceExtraction
 from fakes import FakeParser, ScriptedProvider
 
@@ -20,12 +20,15 @@ REPLY_FILE_VAR = "DOCFORGE_TEST_REPLY_FILE"
 class BlockingPipeline:
     """Waits while the block file exists, then extracts with a scripted model reply."""
 
-    def run(self, pdf: bytes) -> PipelineResult[InvoiceExtraction]:
+    def run(
+        self, pdf: bytes, *, extra_rules_for: RulesFor | None = None
+    ) -> PipelineResult[InvoiceExtraction]:
         block = Path(os.environ[BLOCK_FILE_VAR])
         while block.exists():
             time.sleep(0.05)
         reply = Path(os.environ[REPLY_FILE_VAR]).read_text(encoding="utf-8")
-        return InvoicePipeline(FakeParser(), ScriptedProvider([reply])).run(pdf)
+        pipeline = InvoicePipeline(FakeParser(), ScriptedProvider([reply]))
+        return pipeline.run(pdf, extra_rules_for=extra_rules_for)
 
 
 def build_pipelines(settings: Settings) -> dict[str, Pipeline]:

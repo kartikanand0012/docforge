@@ -7,6 +7,7 @@ never values or reasons, because the log cannot be edited if they must be erased
 """
 
 import io
+import logging
 import threading
 import uuid
 from collections.abc import Mapping, Sequence
@@ -14,7 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import Select, delete, exists, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
@@ -24,6 +25,7 @@ from docforge.db.models import (
     BATCH_NUMBER,
     Document,
     DocumentVersion,
+    EinvoiceCheck,
     Extraction,
     ParseOutput,
     Review,
@@ -37,6 +39,7 @@ from docforge.db.models import live as not_deleted
 from docforge.db.session import SessionFactory
 from docforge.db.tenancy import scoped
 from docforge.documents import DocumentNotFound, EventSink, current_match, event_id
+from docforge.einvoice.evidence import QrEvidence
 from docforge.extraction.coa import CoaExtraction
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
@@ -68,6 +71,7 @@ from docforge.review.signing import (
 )
 from docforge.storage import ObjectStore, rendition_key
 from docforge.trust.assess import Assessment
+from docforge.trust.einvoice_rules import InvoiceRule, einvoice_rules, unreadable_check_rule
 from docforge.trust.match import Discrepancy, match_invoice_to_order
 from docforge.trust.rules import run_rules
 
@@ -80,6 +84,8 @@ _QUEUE_SCAN = 20  # documents examined per queue entry returned, at most
 STATS_SCAN = 50  # documents the home screen's count of those awaiting review looks at, at most
 _CONCURRENT_RENDERS = 3  # page images rendered at once in the API process
 _DUMMY_HASH = hash_pin("not-a-real-pin")  # checked for unknown emails, so timing says nothing
+
+logger = logging.getLogger(__name__)
 
 
 class NotAuthenticated(Exception):
@@ -230,6 +236,25 @@ class _State:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _einvoice_rules(
+    session: Session, version_id: uuid.UUID, parsed: ParsedDocument
+) -> tuple[InvoiceRule, ...]:
+    """The rules from the version's stored e-invoice QR check, built again as when it was read;
+    none when it was not scanned or had no signed QR."""
+    stored = session.scalar(
+        select(EinvoiceCheck.evidence).where(EinvoiceCheck.document_version_id == version_id)
+    )
+    if stored is None:
+        return ()
+    try:
+        evidence = QrEvidence.model_validate(stored)
+    except ValidationError:
+        # Stored by a release whose evidence no longer fits: fail closed, never silently open.
+        logger.warning("stored e-invoice check of version %s cannot be read", version_id)
+        return (unreadable_check_rule(),)
+    return einvoice_rules(evidence, parsed)
 
 
 class ReviewService:
@@ -905,7 +930,7 @@ class ReviewService:
             spec.raw_schema.model_validate(extraction.raw),
             ParsedDocument.model_validate(parse_output.data),
             [Correction(path=c.path, text=c.new_text) for c in corrections],
-        ).extraction
+        ).extraction  # the record only: no assessment, so no e-invoice rules needed
 
     def _state(
         self,
@@ -945,7 +970,12 @@ class ReviewService:
             ).all()
         ]
         reassessed = reassess(
-            spec, raw, parsed, [Correction(path=c.path, text=c.new_text) for c, _ in corrections]
+            spec,
+            raw,
+            parsed,
+            [Correction(path=c.path, text=c.new_text) for c, _ in corrections],
+            # The same rules the reading was assessed with: a correction never drops them.
+            extra_rules=_einvoice_rules(session, version.id, parsed),
         )
         if memo is not None:
             memo[version.id] = reassessed.extraction
