@@ -1,83 +1,28 @@
 """V2 1.1 part 3: an invoice's QR checked as it is read, stored with its version, and its rules
 kept through review."""
 
-import base64
 import json
 import uuid
 from collections.abc import Callable
-from datetime import date
 from typing import Any
 
 import pytest
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from sqlalchemy import select, text
 from sqlalchemy.engine import Engine
 
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.models import AuditEntry, EinvoiceCheck
 from docforge.db.session import SessionFactory
-from docforge.einvoice.check import EinvoiceChecker
-from docforge.einvoice.keys import KeyRing, TrustedKey
-from docforge.einvoice.scan import FoundQr, QrScan
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.review.service import ReviewService
+from einvoice_fakes import Scanner, altered, qr_for, scanned
 from worlds import World
 
 pytestmark = pytest.mark.integration
 
 RawFromLabel = Callable[[dict[str, Any]], dict[str, Any]]
-KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-KID = "A" * 40
-RING = KeyRing(
-    (
-        TrustedKey(
-            name="TEST-1", irp="TEST", environment="production", source_url="https://x.test",
-            fetched="2026-10-15", sha256="0" * 64, kid=KID, confirmed_by_real_qr=False,
-            not_after=None, public_key=KEY.public_key(),
-        ),
-    )
-)  # fmt: skip
 EMAIL, PIN = "asha@example.com", "482913"
-
-
-def b64(raw: bytes) -> str:
-    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
-
-
-def qr_for(world: World, **changes: Any) -> str:
-    invoice = json.loads(world.label_text)["invoice"]
-    fields = {
-        "SellerGstin": invoice["seller"]["gstin"], "BuyerGstin": invoice["buyer"]["gstin"],
-        "DocNo": invoice["invoice_no"], "DocTyp": "INV",
-        "DocDt": date.fromisoformat(invoice["invoice_date"]).strftime("%d/%m/%Y"),
-        "TotInvVal": float(invoice["totals"]["grand_total"]), "ItemCnt": len(invoice["lines"]),
-        "MainHsnCode": None, "Irn": "b" * 64,
-    } | changes  # fmt: skip
-    head = b64(json.dumps({"alg": "RS256", "kid": KID}).encode())
-    body = b64(json.dumps({"data": json.dumps(fields), "iss": "NIC"}).encode())
-    signature = KEY.sign(f"{head}.{body}".encode(), padding.PKCS1v15(), hashes.SHA256())
-    return f"{head}.{body}.{b64(signature)}"
-
-
-def altered(qr: str) -> str:
-    head, body, signature = qr.split(".")
-    payload = json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
-    payload["data"] = json.dumps(json.loads(payload["data"]) | {"TotInvVal": 1.0})
-    return f"{head}.{b64(json.dumps(payload).encode())}.{signature}"
-
-
-class Scanner:
-    def __init__(self, *texts: str, error: Exception | None = None) -> None:
-        self.texts, self.error, self.calls = texts, error, 0
-
-    def parse(self, pdf: bytes) -> QrScan:
-        self.calls += 1
-        if self.error is not None:
-            raise self.error
-        found = tuple(FoundQr(page=1, text=text) for text in self.texts)
-        return QrScan(found=found, pages_scanned=1, decoder="zxing-cpp test")
 
 
 @pytest.fixture
@@ -87,11 +32,6 @@ def world(
     raw_order_from_label: RawFromLabel,
 ) -> World:
     return World(sessions, raw_invoice_from_label, raw_order_from_label, "pair_001")
-
-
-def scanned(world: World, scanner: Scanner) -> World:
-    world.einvoice = EinvoiceChecker(scanner, RING)
-    return world
 
 
 def checks(sessions: SessionFactory) -> list[EinvoiceCheck]:

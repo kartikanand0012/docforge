@@ -18,6 +18,7 @@ from starlette.background import BackgroundTask
 
 from docforge.accounts import MemberCaps
 from docforge.api.auth import require
+from docforge.api.einvoice import EinvoiceOut, einvoice_out
 from docforge.api.uploads import read_upload, safe_filename
 from docforge.auth import MEMBER, Principal
 from docforge.documents import (
@@ -172,6 +173,7 @@ class AssessmentOut(BaseModel):
     match_status: str  # match, mismatch or no_counterpart
     assessment: dict[str, Any]  # fields with their page boxes, rule results, unreadable values
     match: MatchOut | None
+    einvoice: EinvoiceOut | None  # an invoice's signed QR, as checked; null if never scanned
 
 
 class AuditEntryOut(_Out):
@@ -366,6 +368,7 @@ def documents_router(
                 counterpart_document_id=detail.counterpart_document_id,
                 discrepancies=match.data["discrepancies"],
             ),
+            einvoice=einvoice_out(detail.einvoice),
         )
 
     @router.post("/documents/{document_id}/reprocess", status_code=202, response_model=VersionOut)

@@ -154,12 +154,31 @@ The heart of the product. Needs:
   fields), `assessment` (each field's confidence, checks, flags), `editable_paths`,
   `corrections`, `match_status`, `discrepancies`, `counterpart_document_id`, `review` (the
   signature if signed), `signature_valid`, `record_sha256`, `meanings` (what a signature may
-  mean), `superseded`, `certificates` (CoAs linked by batch).
+  mean), `superseded`, `certificates` (CoAs linked by batch), `einvoice` (its signed QR, below).
 - A purchase order's `record` (since `purchase-order-2`) also has each line's `hsn` and
   `amount` and the order's `total`; older orders show them as not printed. A total that is
   not the sum of the line amounts fails the `order.total` check, and the match adds
   `order.total` (the order total is neither the invoice's grand total nor its taxable value)
   and `line.hsn` (a matched line's HSN differs) - all warnings: shown, never blocking.
+- **E-invoice QR** (`einvoice` on `ReviewOut` and on `/assessment`, `EinvoiceOut`): an
+  invoice's signed GST e-invoice QR, checked as it was read. Null when it was never scanned
+  (a purchase order, or checking switched off). `status`:
+  - `verified` - signed by `irp` (key `key_name`); `signed` holds what the portal signed
+    (`seller_gstin`, `buyer_gstin`, `invoice_no`, `invoice_date`, `total`, `line_count`,
+    `irn`, ...). Show "Verified e-invoice: signed by {irp}" and, from `rules`, what matches
+    and what disagrees (an `einvoice.*` rule with outcome `failed`, e.g. `einvoice.total`).
+    `key_confirmed: false` - add "key not yet confirmed against a real QR".
+    `altered_beside: true` - another QR on the invoice was altered (a failed rule says so).
+  - `bad_signature` - "QR signature invalid": the QR was changed after it was signed. The
+    invoice goes to review; `signed` is null, since nothing in it can be trusted.
+  - `unknown_key` - signed with a key DocForge does not hold (an older NIC key or a private
+    portal's); `reason` says which. A warning, not a failure.
+  - `malformed` - looks like an e-invoice QR but cannot be read; `reason` says why.
+  - `none` - no e-invoice QR on it; `unreadable` - its pages could not be scanned. Show
+    nothing, or a quiet note.
+  `rules` are the `einvoice.*` checks as of this assessment: on the review screen they follow
+  the reviewer's corrections; on `/assessment` they are as first read. The QR itself is never
+  sent.
 - `POST /v1/documents/{id}/corrections` `{path, text, reason, email, pin,
   expected_record_sha256?}` -> `ReviewOut`. `path` is one of `editable_paths` (e.g.
   `invoice_no`, `lines[0].qty`). Send the `record_sha256` you showed as
