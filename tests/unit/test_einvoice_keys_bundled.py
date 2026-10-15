@@ -12,8 +12,9 @@ from docforge.einvoice.keys import load_keyring
 OFFICIAL = ("https://einvoice1.gst.gov.in/", "https://einvoice2.gst.gov.in/",
             "https://einvoice6.gst.gov.in/")  # fmt: skip
 # Kids with which real production invoices' QRs, published in public code, verified (2026-10-15).
+# (NIC's August 2020 key verified 3 QRs too, but those predate e-invoicing going live on
+# 1 October 2020: trial QRs, so that key is not bundled.)
 CONFIRMED = {
-    "115F4426617A7938BE1BA06DBEE91A427584EDAB",  # NIC 2018-2020: 3 QRs
     "B8D63ECB58EA5E6F4AAC3D524543B2246669B0F8",  # NIC IRP-1 2022-2024: 112 QRs
     "4DE1544AE695BDC84EC7BC12F2F57F813F44E301",  # NIC IRP-1 2024-2026: 212 QRs
 }
