@@ -2,6 +2,40 @@
 
 One entry per checkpoint: what passed, the measured numbers, and what changed from the plan.
 
+## V2 1.1 E-invoice signed QR (2026-10-15): live
+
+PRs #26-#31 (backend) and docforge-web #2. Plan: `docs/plans/v2-1.1-einvoice-qr.md`. Deployed
+2026-10-15/16: migration 0039 `einvoice_checks`, worker, api, converter, web.
+
+### What was built
+
+- Every invoice's signed QR is found (isolated zxing-cpp child, pages 1, last, 2-5), verified
+  against NIC's own published certificates (IRP-1 and IRP-2 from September 2022, IRIS) and
+  compared with the page: seller and buyer GSTIN, invoice number, date and total are errors;
+  line count, document type and the IRN printed are warnings. An altered QR sends the invoice
+  to review; a key DocForge does not hold is a warning.
+- The check is stored per version (append-only, RLS, erased with the account) and its rules
+  are rebuilt on every reassessment, so a correction never drops them.
+- `einvoice` on the review and assessment responses (never the QR itself); a banner on the
+  review screen.
+
+### Measured
+
+- 661 real QRs from public code: 324 production QRs verify with NIC IRP-1 2022-24 and 2024-26
+  (both now confirmed), none wrongly reported as altered. The 2020-22 QRs name a key NIC never
+  published: a warning.
+- `einvoice` eval: 40/40 forged QRs caught, 40/40 harmless and 20/20 genuine unchanged.
+
+### Decisions
+
+- A QR naming NIC with a key NIC has not published stays a warning (owner, 2026-10-16): an
+  error could send private portals' invoices to review.
+
+### Not verified
+
+- No real e-invoice has been uploaded to the live site yet (the owner's test).
+- The worker's memory with the QR child beside Docling, under load.
+
 ## V2 0.1 Compact model replies (2026-10-14)
 
 Branch `v2-phase0`. Plan: `docs/plans/v2-market-leader.md`. Production before the change (73
