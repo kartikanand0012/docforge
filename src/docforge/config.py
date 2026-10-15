@@ -357,6 +357,9 @@ class Settings(BaseSettings):
             raise ValueError("DRIVE_CLIENT=fake is for tests and local demos only")
         if self.drive_sync_interval_minutes < 5:
             raise ValueError("DRIVE_SYNC_INTERVAL_MINUTES must be at least 5 in production")
+        if self.einvoice_keys != "production":
+            # Anyone can make a sandbox QR: its keys must never vouch for a real invoice.
+            raise ValueError("EINVOICE_KEYS=sandbox is for tests and local use only")
         if self.chat_record:
             # Recording writes questions, passages and answers to disk, unprotected.
             raise ValueError("CHAT_RECORD is for local development only")

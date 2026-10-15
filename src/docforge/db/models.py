@@ -194,7 +194,9 @@ class EinvoiceCheck(Base):
     tenant_id: Mapped[uuid.UUID] = _tenant()
     document_version_id: Mapped[uuid.UUID] = _version()
     status: Mapped[str] = mapped_column(Text)  # verified ... none, unreadable
-    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))  # QrEvidence
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True)  # None as SQL NULL, not JSON null: the status CHECK needs it
+    )  # QrEvidence
     qr_text: Mapped[str | None] = mapped_column(Text)  # the signed QR, to check again later
     page: Mapped[int | None] = mapped_column(Integer)
     pages_scanned: Mapped[int] = mapped_column(Integer)

@@ -7,6 +7,7 @@ never values or reasons, because the log cannot be edited if they must be erased
 """
 
 import io
+import logging
 import threading
 import uuid
 from collections.abc import Mapping, Sequence
@@ -14,7 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import Select, delete, exists, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
@@ -70,7 +71,7 @@ from docforge.review.signing import (
 )
 from docforge.storage import ObjectStore, rendition_key
 from docforge.trust.assess import Assessment
-from docforge.trust.einvoice_rules import InvoiceRule, einvoice_rules
+from docforge.trust.einvoice_rules import InvoiceRule, einvoice_rules, unreadable_check_rule
 from docforge.trust.match import Discrepancy, match_invoice_to_order
 from docforge.trust.rules import run_rules
 
@@ -83,6 +84,8 @@ _QUEUE_SCAN = 20  # documents examined per queue entry returned, at most
 STATS_SCAN = 50  # documents the home screen's count of those awaiting review looks at, at most
 _CONCURRENT_RENDERS = 3  # page images rendered at once in the API process
 _DUMMY_HASH = hash_pin("not-a-real-pin")  # checked for unknown emails, so timing says nothing
+
+logger = logging.getLogger(__name__)
 
 
 class NotAuthenticated(Exception):
@@ -245,7 +248,13 @@ def _einvoice_rules(
     )
     if stored is None:
         return ()
-    return einvoice_rules(QrEvidence.model_validate(stored), parsed)
+    try:
+        evidence = QrEvidence.model_validate(stored)
+    except ValidationError:
+        # Stored by a release whose evidence no longer fits: fail closed, never silently open.
+        logger.warning("stored e-invoice check of version %s cannot be read", version_id)
+        return (unreadable_check_rule(),)
+    return einvoice_rules(evidence, parsed)
 
 
 class ReviewService:
@@ -916,14 +925,12 @@ class ReviewService:
             .where(CorrectionRow.document_version_id == version_id)
             .order_by(CorrectionRow.created_at, CorrectionRow.id)
         )
-        parsed = ParsedDocument.model_validate(parse_output.data)
         return reassess(
             spec,
             spec.raw_schema.model_validate(extraction.raw),
-            parsed,
+            ParsedDocument.model_validate(parse_output.data),
             [Correction(path=c.path, text=c.new_text) for c in corrections],
-            extra_rules=_einvoice_rules(session, version_id, parsed),
-        ).extraction
+        ).extraction  # the record only: no assessment, so no e-invoice rules needed
 
     def _state(
         self,

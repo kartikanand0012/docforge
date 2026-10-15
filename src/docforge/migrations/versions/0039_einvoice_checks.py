@@ -40,7 +40,7 @@ def _erase_function(before: str, after: str) -> None:
         .scalar_one()
     )
     if before not in definition:
-        raise RuntimeError("docforge_delete_account is not as migration 0037 made it")
+        raise RuntimeError(f"docforge_delete_account does not hold {before!r}")
     op.execute(sa.text(definition.replace(before, after, 1)))
 
 

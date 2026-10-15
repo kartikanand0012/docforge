@@ -37,16 +37,31 @@ class EinvoiceChecker:
         self.keyring = keyring
 
     def check(self, pdf: bytes) -> QrCheck:
+        """The invoice's signed QR, if any; never raises."""
         try:
-            scan = self.scanner.parse(pdf)
+            return self._check(pdf)
         except Exception as error:
-            # Untrusted pixels into native code: any failure is a result, never the reading's.
-            logger.warning("e-invoice QR scan failed: %s", type(error).__name__)
-            return QrCheck("unreadable", None, None, None, 0, None)
-        evidence = evidence_from((found.text for found in scan.found), self.keyring)
+            # Untrusted pixels into native code, then untrusted text into verification: any
+            # failure is a result, never the reading's.
+            logger.warning("e-invoice QR check failed: %s", type(error).__name__)
+            return QrCheck(
+                status="unreadable", evidence=None, qr_text=None, page=None, pages_scanned=0,
+                decoder=None,
+            )  # fmt: skip
+
+    def _check(self, pdf: bytes) -> QrCheck:
+        scan = self.scanner.parse(pdf)
+        # Postgres stores no NUL in text: such a QR is no e-invoice's, and kept it would fail
+        # the reading's transaction.
+        found = [qr for qr in scan.found if "\x00" not in qr.text]
+        evidence = evidence_from((qr.text for qr in found), self.keyring)
         if evidence is None:
-            return QrCheck("none", None, None, None, scan.pages_scanned, scan.decoder)
-        chosen = scan.found[evidence.qr_index]
+            return QrCheck(
+                status="none", evidence=None, qr_text=None, page=None,
+                pages_scanned=scan.pages_scanned, decoder=scan.decoder,
+            )  # fmt: skip
+        chosen = found[evidence.qr_index]
         return QrCheck(
-            evidence.status, evidence, chosen.text, chosen.page, scan.pages_scanned, scan.decoder
-        )
+            status=evidence.status, evidence=evidence, qr_text=chosen.text, page=chosen.page,
+            pages_scanned=scan.pages_scanned, decoder=scan.decoder,
+        )  # fmt: skip

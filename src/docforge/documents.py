@@ -682,7 +682,9 @@ class DocumentService:
             # An invoice's signed QR, checked before it is read: its rules join the reading's.
             # The check never raises; whatever fails, it is `unreadable`.
             checked = (
-                self._einvoice.check(data) if self._einvoice and doc_type == "invoice" else None
+                self._einvoice.check(data)
+                if self._einvoice is not None and doc_type == "invoice"
+                else None
             )
             evidence = checked.evidence if checked is not None else None
             extra_rules_for = partial(einvoice_rules, evidence) if evidence is not None else None
@@ -858,6 +860,12 @@ class DocumentService:
                 # In this transaction: review rebuilds the e-invoice rules from this row, so it
                 # exists if and only if the assessment made with them does.
                 evidence = checked.evidence
+                details: dict[str, str | int] = {
+                    "version_no": version.version_no,
+                    "status": checked.status,
+                }
+                if evidence is not None and evidence.irp:
+                    details["irp"] = evidence.irp
                 session.add(
                     EinvoiceCheck(
                         tenant_id=version.tenant_id,
@@ -875,9 +883,7 @@ class DocumentService:
                     document,
                     WORKER,
                     "einvoice.checked",
-                    version_no=version.version_no,
-                    status=checked.status,
-                    **({"irp": evidence.irp} if evidence is not None and evidence.irp else {}),
+                    **details,
                 )
             assessment = result.assessment
             session.add(
