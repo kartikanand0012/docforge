@@ -67,7 +67,7 @@ What we will not claim: certifications (SOC 2, ISO 27001) or enterprise scale. T
 
 | Id | Step | Done when |
 |---|---|---|
-| 1.1 | **E-invoice QR**: find the QR on the page, decode it, verify the JWT signature (RS256) against the NIC public keys, and use its GSTINs, invoice number, date, total, item count and IRN as verified values; a mismatch with the printed values is a rule failure | tests with genuine and tampered QR codes; values marked "verified from e-invoice QR" in review |
+| 1.1 | **E-invoice QR** (done, live 2026-10-16: PRs #26-#31, web #2): find the QR on the page, decode it, verify the JWT signature (RS256) against the NIC public keys, and use its GSTINs, invoice number, date, total, item count and IRN as verified values; a mismatch with the printed values is a rule failure | tests with genuine and tampered QR codes; values marked "verified from e-invoice QR" in review |
 | 1.2 | **Router**: e-invoice QR -> text layer (Docling, no OCR) -> OCR model for scans and photos; the route is recorded on each reading | every route has a test; the reading shows its route |
 | 1.3 | **OCR model service** (needs the owner's GPU account): PaddleOCR-VL-1.6 on Modal (L4, GPU snapshot), called by the worker in batches; the current RapidOCR path stays as the fallback when the service is down | scans eval at least equal to today; p50 under 5 s per page |
 | 1.4 | **Bake-off on the real set**: today's path vs PaddleOCR-VL-1.6 vs Qianfan-OCR (direct to JSON) vs Unlimited-OCR (long documents only) | a written decision with per-field numbers and cost per 1,000 pages |
@@ -88,7 +88,7 @@ What we will not claim: certifications (SOC 2, ISO 27001) or enterprise scale. T
 |---|---|
 | 3.1 | Scheme and free quantity checked against the terms agreed with each supplier |
 | 3.2 | Bill against purchase order line by line (builds on PO v2) |
-| 3.3 | Duplicate bills by IRN, or by GSTIN + invoice number |
+| 3.3 | Duplicate bills by IRN, or by GSTIN + invoice number (in progress: `docs/plans/v2-3.3-duplicates.md`) |
 | 3.4 | Near-expiry flag at receipt (a workspace setting, e.g. under 6 months) |
 | 3.5 | MRP against NPPA ceiling prices for scheduled drugs (a curated, dated list) |
 | 3.6 | Schedule H1 items flagged on the purchase bill |

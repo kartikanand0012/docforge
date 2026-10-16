@@ -72,6 +72,7 @@ from docforge.review.signing import (
 )
 from docforge.storage import ObjectStore, rendition_key
 from docforge.trust.assess import Assessment
+from docforge.trust.duplicates import Duplicate, find_duplicates
 from docforge.trust.einvoice_rules import InvoiceRule, einvoice_rules, unreadable_check_rule
 from docforge.trust.match import Discrepancy, match_invoice_to_order
 from docforge.trust.rules import run_rules
@@ -194,6 +195,7 @@ class ReviewDetail:
     claim: ClaimView | None = None  # a live claim, relative to whoever asked
     # For an invoice scanned as it was read: its signed QR's check, its rules as reassessed.
     einvoice: EinvoiceView | None = None
+    duplicates: tuple[Duplicate, ...] = ()  # earlier bills this invoice repeats
 
     @property
     def decision(self) -> str:
@@ -216,6 +218,7 @@ class _State:
     superseded: bool
     certificates: tuple[dict[str, str], ...]
     einvoice_check: EinvoiceCheck | None
+    duplicates: tuple[Duplicate, ...]  # earlier bills an invoice repeats
 
     @property
     def blockers(self) -> tuple[str, ...]:
@@ -224,6 +227,7 @@ class _State:
             found.append("it does not match its purchase order")
         if self.document.doc_type == "invoice" and self.match_status == "no_counterpart":
             found.append("there is no purchase order on file to compare it with")
+        found.extend(duplicate.reason for duplicate in self.duplicates)
         for certificate in self.certificates:
             if certificate["status"] == "out_of_limit":
                 found.append(
@@ -256,6 +260,26 @@ def _einvoice_rules(check: EinvoiceCheck | None, parsed: ParsedDocument) -> tupl
         )
         return (unreadable_check_rule(),)
     return einvoice_rules(evidence, parsed)
+
+
+def _text(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _duplicates(
+    session: Session, document: Document, extraction: BaseModel, check: EinvoiceCheck | None
+) -> tuple[Duplicate, ...]:
+    """The earlier bills an invoice repeats, by its values as corrected and its signed IRN."""
+    if not isinstance(extraction, InvoiceExtraction):
+        return ()
+    signed = (check.evidence or {}).get("invoice") if check and check.status == "verified" else None
+    return find_duplicates(
+        session,
+        document,
+        seller_gstin=extraction.seller.gstin.value,
+        invoice_no=extraction.invoice_no.value,
+        irn=_text(signed.get("irn")) if isinstance(signed, dict) else None,
+    )
 
 
 class ReviewService:
@@ -1024,6 +1048,7 @@ class ReviewService:
             superseded=newest_version != version.version_no,
             certificates=self._certificates(session, document, reassessed.extraction, memo),
             einvoice_check=einvoice_check,
+            duplicates=_duplicates(session, document, reassessed.extraction, einvoice_check),
         )
 
     def _certificates(
@@ -1164,6 +1189,7 @@ class ReviewService:
             superseded=state.superseded,
             certificates=state.certificates,
             einvoice=einvoice_view(state.einvoice_check, state.reassessed.assessment.rules),
+            duplicates=state.duplicates,
         )
 
 

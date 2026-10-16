@@ -3930,6 +3930,35 @@
                 ],
                 "title": "DocumentsIn"
             },
+            "DuplicateOut": {
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Document Id"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "title": "Filename"
+                    },
+                    "matched_on": {
+                        "type": "string",
+                        "enum": [
+                            "irn",
+                            "seller_and_number"
+                        ],
+                        "title": "Matched On"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "document_id",
+                    "filename",
+                    "matched_on"
+                ],
+                "title": "DuplicateOut",
+                "description": "An earlier bill this invoice repeats."
+            },
             "EinvoiceOut": {
                 "properties": {
                     "status": {
@@ -5407,6 +5436,13 @@
                                 "type": "null"
                             }
                         ]
+                    },
+                    "duplicates": {
+                        "items": {
+                            "$ref": "#/components/schemas/DuplicateOut"
+                        },
+                        "type": "array",
+                        "title": "Duplicates"
                     }
                 },
                 "type": "object",
@@ -5433,7 +5469,8 @@
                     "superseded",
                     "certificates",
                     "claim",
-                    "einvoice"
+                    "einvoice",
+                    "duplicates"
                 ],
                 "title": "ReviewOut"
             },

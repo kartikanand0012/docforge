@@ -154,12 +154,22 @@ The heart of the product. Needs:
   fields), `assessment` (each field's confidence, checks, flags), `editable_paths`,
   `corrections`, `match_status`, `discrepancies`, `counterpart_document_id`, `review` (the
   signature if signed), `signature_valid`, `record_sha256`, `meanings` (what a signature may
-  mean), `superseded`, `certificates` (CoAs linked by batch), `einvoice` (its signed QR, below).
+  mean), `superseded`, `certificates` (CoAs linked by batch), `einvoice` (its signed QR, below), `duplicates` (earlier bills it repeats, below).
 - A purchase order's `record` (since `purchase-order-2`) also has each line's `hsn` and
   `amount` and the order's `total`; older orders show them as not printed. A total that is
   not the sum of the line amounts fails the `order.total` check, and the match adds
   `order.total` (the order total is neither the invoice's grand total nor its taxable value)
   and `line.hsn` (a matched line's HSN differs) - all warnings: shown, never blocking.
+- **Duplicate bills** (`duplicates` on `ReviewOut`, `DuplicateOut`): earlier invoices in the
+  workspace this one repeats - `{document_id, filename, matched_on}`, `matched_on` being `irn`
+  (both verified e-invoice QRs carry the same IRN) or `seller_and_number` (the same seller
+  GSTIN and invoice number, as corrected; case and spaces aside). Each is also a blocker,
+  "it may be a duplicate of {filename}, which has the same IRN" (or "... the same seller GSTIN
+  and invoice number"): label it "Possible duplicate" and link to `/documents/{document_id}`.
+  Only the later bill is flagged; an earlier one deleted or rejected does not count. Found
+  afresh on every read, so a correction on either bill can add or clear it. Duplicates are a
+  review matter: `/assessment`'s `decision` is the reading's own and does not include them (nor
+  certificates); the review screen's `decision` and `blockers` do.
 - **E-invoice QR** (`einvoice` on `ReviewOut` and on `/assessment`, `EinvoiceOut`): an
   invoice's signed GST e-invoice QR, checked as it was read. Null when it was never scanned
   (a purchase order, or checking switched off). `status`:
