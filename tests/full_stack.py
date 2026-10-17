@@ -27,6 +27,7 @@ from docforge.review.service import ReviewService
 from docforge.search.embeddings import FakeEmbedder
 from docforge.search.service import SearchService
 from docforge.webhooks import WebhookService
+from docforge.workspace_settings import WorkspaceSettingsService
 from worlds import World
 
 PASSWORD = "correct horse battery staple"  # noqa: S105 - a test account's
@@ -64,7 +65,8 @@ class FullStack:
         self.app = create_app(
             None, service=self.documents, review=self.review, authenticator=self.auth,
             webhooks=self.webhooks, search=self.search, chat=self.chat,
-            collections=self.collections, limits=self.limits, agents=self.tools,
+            collections=self.collections, settings=WorkspaceSettingsService(sessions),
+            limits=self.limits, agents=self.tools,
             audit_log=AuditLogService(sessions), signup_enabled=signup,
             signups_per_day=signups_per_day, member_caps=caps or MemberCaps(),
             platform=self.platform,

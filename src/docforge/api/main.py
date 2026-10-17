@@ -24,6 +24,7 @@ from docforge.wiring import (
     build_webhooks,
     load_pipelines,
 )
+from docforge.workspace_settings import WorkspaceSettingsService
 
 
 def create_default_app() -> FastAPI:
@@ -58,6 +59,7 @@ def create_default_app() -> FastAPI:
         search=search,
         chat=chat,
         collections=collections,
+        settings=WorkspaceSettingsService(sessions),
         limits=limits,
         agents=agents,
         audit_log=AuditLogService(sessions),

@@ -14,7 +14,9 @@ from docforge.trust.rules import Outcome, RuleResult, Severity
 _CENT = Decimal("0.01")
 _TOLERANCE = Decimal("0.01")
 _HSN = re.compile(r"\d{4}(\d{2}){0,2}", re.ASCII)  # 4, 6 or 8 digits
-_MIN_SHELF_LIFE_MONTHS = 3
+# Stock with less left than this when billed is flagged; each workspace sets its own window.
+DEFAULT_NEAR_EXPIRY_MONTHS = 6
+InvoiceRule = Callable[[InvoiceExtraction], Iterable[RuleResult]]
 
 
 def _money(value: Decimal) -> Decimal:
@@ -151,15 +153,38 @@ def line_not_expired(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
             None if remaining is None else remaining >= 0,
             f"Stock expired {expiry}, before the invoice date {issued}.",
         )
-        if remaining is not None and remaining >= 0:
+
+
+def near_expiry(months: int) -> InvoiceRule:
+    """Stock that expires less than `months` after the bill date: a warning on the line, never
+    a reason for review. The window is the workspace's (`workspace_settings`); 0 turns it
+    off. Expired stock is `line.not_expired`'s, an error, and not counted again here."""
+
+    def line_shelf_life(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
+        if months <= 0 or not (_medicine(invoice) or _printed(invoice, "expiry")):
+            return
+        issued = invoice.invoice_date.value
+        for path, line in _lines(invoice):
+            expiry = line.expiry.value
+            remaining = None
+            if expiry is not None and issued is not None:
+                remaining = _months(expiry) - (issued.year * 12 + issued.month)
+            # Without both dates there is nothing to measure (`required.present` reports a
+            # missing expiry); expired stock is `line.not_expired`'s.
+            if remaining is None or remaining < 0:
+                continue
+            after = "1 month" if remaining == 1 else f"{remaining} months"
             yield _result(
                 "line.shelf_life",
                 "warning",
                 (f"{path}.expiry",),
-                remaining >= _MIN_SHELF_LIFE_MONTHS,
-                f"Stock expires {expiry}, less than {_MIN_SHELF_LIFE_MONTHS} months after "
-                "the invoice date.",
+                remaining >= months,
+                f"Stock expires {expiry}, {after} after the bill date; this workspace flags "
+                f"stock with less than {months} months left.",
+                version=2,
             )
+
+    return line_shelf_life
 
 
 def line_ptr_not_above_mrp(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
@@ -391,7 +416,7 @@ def required_present(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         yield _result("required.present", "error", (path,), value is not None, message, 2)
 
 
-INVOICE_RULES: tuple[Callable[[InvoiceExtraction], Iterable[RuleResult]], ...] = (
+INVOICE_RULES: tuple[InvoiceRule, ...] = (
     required_present,
     gstin_checksum,
     place_of_supply_matches_buyer,

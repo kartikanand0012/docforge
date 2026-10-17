@@ -56,6 +56,9 @@ def two(
     other = next(d["id"] for d in listed if d["id"] != str(two.doc))
     claimed = two.api.post(f"/v1/documents/{other}/claim", headers=two.asha, json={})
     assert claimed.status_code in (200, 201), claimed.text
+    # A setting of her workspace's own.
+    changed = two.api.patch("/v1/settings", headers=two.asha, json={"near_expiry_months": 3})
+    assert changed.status_code == 200, changed.text
     store = world.store
     store.put(f"renditions/{two.asha_ws}/{'a' * 64}.pdf", b"%PDF-", "application/pdf")
     store.put(f"audit-anchors/{two.asha_ws}/latest.json", b"{}", "application/json")
@@ -113,7 +116,8 @@ def test_deleting_an_account_erases_its_whole_workspace_and_nothing_else(
     for table in ("documents", "document_versions", "extractions", "parse_outputs", "chunks",
                   "conversations", "messages", "collections", "collection_documents",
                   "review_claims", "corrections", "reviews", "sessions", "audit_log",
-                  "accounts", "reviewers", "assessments", "model_runs", "tenants"):  # fmt: skip
+                  "accounts", "reviewers", "assessments", "model_runs", "workspace_settings",
+                  "tenants"):  # fmt: skip
         assert before[table] > 0, table
     assert len(keys_of(two, two.asha_ws)) >= 4
     bens_rows, bens_keys = rows_of(owner_engine, two.ben_ws), keys_of(two, two.ben_ws)

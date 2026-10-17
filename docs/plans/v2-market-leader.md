@@ -88,10 +88,10 @@ What we will not claim: certifications (SOC 2, ISO 27001) or enterprise scale. T
 |---|---|
 | 3.1 | Scheme and free quantity checked against the terms agreed with each supplier |
 | 3.2 | Bill against purchase order line by line (builds on PO v2) |
-| 3.3 | Duplicate bills by IRN, or by GSTIN + invoice number (in progress: `docs/plans/v2-3.3-duplicates.md`) |
-| 3.4 | Near-expiry flag at receipt (a workspace setting, e.g. under 6 months) |
+| 3.3 | Duplicate bills by IRN, or by GSTIN + invoice number (done, live 2026-10-17: PR #32, web #3; `docs/plans/v2-3.3-duplicates.md`) |
+| 3.4 | Near-expiry flag at receipt (a workspace setting, e.g. under 6 months) (in progress: `docs/plans/v2-3.4-3.6-stock-checks.md`) |
 | 3.5 | MRP against NPPA ceiling prices for scheduled drugs (a curated, dated list) |
-| 3.6 | Schedule H1 items flagged on the purchase bill |
+| 3.6 | Schedule H1 items flagged on the purchase bill (in progress: `docs/plans/v2-3.4-3.6-stock-checks.md`) |
 | 3.7 | Supplier memory: corrections per supplier make the next bill from them more accurate |
 | 3.8 | GSTR-2B matching through a GSP with the taxpayer's OTP consent (cost quoted first) |
 

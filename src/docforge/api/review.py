@@ -148,6 +148,8 @@ class ReviewOut(BaseModel):
     claim: ClaimOut | None  # who has it open now, while their claim lasts
     einvoice: EinvoiceOut | None  # an invoice's signed QR, as checked; null if never scanned
     duplicates: list[DuplicateOut]  # earlier bills an invoice repeats; each is also a blocker
+    # The workspace's near-expiry window the checks used (line.shelf_life), 0 for off.
+    near_expiry_months: int
 
 
 def _review_out(detail: ReviewDetail) -> ReviewOut:
@@ -179,6 +181,7 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
             DuplicateOut(document_id=d.document_id, filename=d.filename, matched_on=d.matched_on)
             for d in detail.duplicates
         ],
+        near_expiry_months=detail.near_expiry_months,
     )
 
 
