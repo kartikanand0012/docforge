@@ -11,7 +11,7 @@ import pytest
 from docforge.extraction.normalize import normalize_invoice
 from docforge.extraction.schema import InvoiceExtraction, RawInvoice
 from docforge.parsing.base import Page, ParsedDocument
-from docforge.trust.invoice_rules import INVOICE_RULES
+from docforge.trust.invoice_rules import DEFAULT_NEAR_EXPIRY_MONTHS, INVOICE_RULES, near_expiry
 from docforge.trust.rules import RuleResult, run_rules
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "synthetic"
@@ -173,17 +173,72 @@ def test_a_rule_with_a_missing_input_is_not_evaluated_rather_than_failed(
     assert ("line.taxable_value", ("lines[0].taxable_value",)) not in failures(results)
 
 
+def near(raw: dict[str, Any], months: int = DEFAULT_NEAR_EXPIRY_MONTHS) -> list[RuleResult]:
+    return list(run_rules((*INVOICE_RULES, near_expiry(months)), extraction(raw)))
+
+
 def test_stock_close_to_expiry_is_a_warning_not_an_error(
     raw_invoice_from_label: RawFromLabel,
 ) -> None:
     raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
     set_line(0, "expiry", "11/26")(raw)  # two months after the invoice date
 
-    results = [result for result in run(raw) if result.outcome == "failed"]
+    results = [result for result in near(raw) if result.outcome == "failed"]
 
-    assert [(result.rule_id, result.severity) for result in results] == [
-        ("line.shelf_life", "warning")
+    assert [(result.rule_id, result.severity, result.paths) for result in results] == [
+        ("line.shelf_life", "warning", ("lines[0].expiry",))
     ]
+    assert results[0].version == 2
+    assert results[0].message == (
+        "Stock expires 2026-11, 2 months after the bill date; this workspace flags stock with "
+        "less than 6 months left."
+    )
+
+
+def test_the_near_expiry_window_is_the_workspaces(raw_invoice_from_label: RawFromLabel) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))  # billed 2026-09
+    set_line(0, "expiry", "01/27")(raw)  # four months left
+
+    def flagged(months: int) -> list[tuple[str, ...]]:
+        return [r.paths for r in near(raw, months) if r.rule_id == "line.shelf_life" and
+                r.outcome == "failed"]  # fmt: skip
+
+    assert DEFAULT_NEAR_EXPIRY_MONTHS == 6
+    assert flagged(6) == [("lines[0].expiry",)]
+    assert flagged(4) == []  # exactly the window left is enough
+    assert flagged(3) == []
+    assert flagged(5) == [("lines[0].expiry",)]
+
+
+def test_a_window_of_zero_turns_the_flag_off(raw_invoice_from_label: RawFromLabel) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    set_line(0, "expiry", "10/26")(raw)
+
+    assert not [r for r in near(raw, 0) if r.rule_id == "line.shelf_life"]
+
+
+def test_expired_stock_is_not_flagged_again_as_near_expiry(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    set_line(0, "expiry", "08/26")(raw)  # before the bill
+    raw["lines"][1]["expiry"] = {"text": None, "block_ids": []}  # nothing to measure
+
+    results = near(raw)
+
+    shelf = {r.paths[0] for r in results if r.rule_id == "line.shelf_life"}
+    assert "lines[0].expiry" not in shelf
+    assert "lines[1].expiry" not in shelf
+    assert ("line.not_expired", ("lines[0].expiry",)) in failures(tuple(results))
+
+
+def test_the_fixed_rules_leave_near_expiry_to_the_workspaces_window(
+    raw_invoice_from_label: RawFromLabel,
+) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    set_line(0, "expiry", "11/26")(raw)
+
+    assert "line.shelf_life" not in rule_ids(run(raw))
 
 
 def test_an_inter_state_invoice_must_not_carry_cgst(raw_invoice_from_label: RawFromLabel) -> None:
@@ -442,9 +497,9 @@ def rule_ids(results: tuple[RuleResult, ...]) -> set[str]:
 def test_an_invoice_that_prints_no_expiry_or_manufacture_has_no_date_checks(
     raw_invoice_from_label: RawFromLabel,
 ) -> None:
-    results = run(camera_invoice(raw_invoice_from_label))
+    results = near(camera_invoice(raw_invoice_from_label))
 
-    assert not rule_ids(results) & {"line.dates", "line.not_expired", "line.shelf_life"}
+    assert not rule_ids(tuple(results)) & {"line.dates", "line.not_expired", "line.shelf_life"}
 
 
 def test_an_invoice_that_prints_expiry_but_no_manufacture_checks_only_expiry(
