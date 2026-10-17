@@ -241,6 +241,20 @@ class WorkspaceSettings(Base):
     updated_at: Mapped[datetime] = _created_at()
 
 
+class H1Product(Base):
+    """A product a reviewer marked as Schedule H1 for the workspace: every bill line with the
+    same name (`schedule_h1.product_key`) is H1 from then on. A mark is removed by deleting."""
+
+    __tablename__ = "h1_products"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    product_key: Mapped[str] = mapped_column(Text)
+    product_name: Mapped[str] = mapped_column(Text)  # as it was printed when marked
+    marked_by: Mapped[str] = mapped_column(Text)  # by name (the audit log has the id)
+    created_at: Mapped[datetime] = _created_at()
+
+
 class MatchRecord(Base):
     """One comparison of an invoice version with a purchase-order version. Immutable."""
 

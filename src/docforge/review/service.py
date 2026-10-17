@@ -12,8 +12,9 @@ import threading
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import Select, delete, exists, func, select
@@ -45,6 +46,7 @@ from docforge.extraction.coa import CoaExtraction
 from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
+from docforge.h1_products import H1Line, schedule_h1_lines
 from docforge.parsing.base import ParsedDocument
 from docforge.parsing.raster import render_pages
 from docforge.review.claims import (
@@ -90,6 +92,7 @@ _CONCURRENT_RENDERS = 3  # page images rendered at once in the API process
 _DUMMY_HASH = hash_pin("not-a-real-pin")  # checked for unknown emails, so timing says nothing
 
 logger = logging.getLogger(__name__)
+_INDIA = ZoneInfo("Asia/Kolkata")
 
 
 class NotAuthenticated(Exception):
@@ -199,6 +202,7 @@ class ReviewDetail:
     einvoice: EinvoiceView | None = None
     duplicates: tuple[Duplicate, ...] = ()  # earlier bills this invoice repeats
     near_expiry_months: int = DEFAULT_NEAR_EXPIRY_MONTHS  # the window the checks used
+    schedule_h1: tuple[H1Line, ...] = ()  # an invoice's lines for the H1 register
 
     @property
     def decision(self) -> str:
@@ -248,6 +252,11 @@ class _State:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _india_today() -> date:
+    """Today as a bill in India is dated, whatever the server's clock zone."""
+    return datetime.now(_INDIA).date()
 
 
 def _einvoice_rules(check: EinvoiceCheck | None, parsed: ParsedDocument) -> tuple[InvoiceRule, ...]:
@@ -524,8 +533,19 @@ class ReviewService:
     ) -> ReviewDetail:
         """`viewer`, the signed-in reviewer asking, if any: a claim is `mine` only to them."""
         with self._sessions() as session:
-            detail = self._detail(self._state(session, self._find(session, tenant_id, document_id)))
-            return replace(detail, claim=_claim_view(session, document_id, viewer))
+            state = self._state(session, self._find(session, tenant_id, document_id))
+            extraction = state.reassessed.extraction
+            # Shown on the bill, never a blocker: so found here, not for the queue's scan.
+            h1 = (
+                schedule_h1_lines(session, tenant_id, extraction, today=_india_today())
+                if isinstance(extraction, InvoiceExtraction)
+                else ()
+            )
+            return replace(
+                self._detail(state),
+                claim=_claim_view(session, document_id, viewer),
+                schedule_h1=h1,
+            )
 
     # Claims
 
