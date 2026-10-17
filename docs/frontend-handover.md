@@ -191,10 +191,12 @@ The heart of the product. Needs:
   molecule, hence marking.
 - **Marking a product H1** - `GET /v1/schedule-h1/products` (anyone), `POST` with
   `{product_name}` (those who review: 201 marked now, 200 already marked - names are compared
-  without case, spaces or punctuation; 422 for a name with no letter or digit), `DELETE
+  without case, spaces or punctuation, but "/", "+" and "-" count, so "1/2" is not "12"; 422
+  for a name with no letter or digit; 409 past 5,000 marks), `DELETE
   /v1/schedule-h1/products/{id}` (204; 404 if not there). On a line: "Mark as Schedule H1"
   posts its `product_name`; a line with `product_id` offers "Remove H1 mark". Audited as
-  `h1_product.marked` / `h1_product.unmarked`.
+  `h1_product.marked` / `h1_product.unmarked`. A mark is the whole product name: another
+  strength or pack ("ALPRAX 0.25 TAB", "ALPRAX 0.5 10S") is another product, marked on its own.
 - **Workspace settings** - `GET /v1/settings` (anyone) and `PATCH /v1/settings` (an
   administrator, or a personal workspace's own person; others get 403):
   `{near_expiry_months: 0-36}` in, `{near_expiry_months, updated_by, updated_at}` out
