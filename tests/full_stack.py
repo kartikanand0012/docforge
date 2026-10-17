@@ -20,6 +20,7 @@ from docforge.collections import CollectionService
 from docforge.db.session import SessionFactory
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
+from docforge.h1_products import H1ProductService
 from docforge.limits import LocalLimits
 from docforge.mcp_server.tools import AgentTools
 from docforge.platform import PlatformService
@@ -66,6 +67,7 @@ class FullStack:
             None, service=self.documents, review=self.review, authenticator=self.auth,
             webhooks=self.webhooks, search=self.search, chat=self.chat,
             collections=self.collections, settings=WorkspaceSettingsService(sessions),
+            h1_products=H1ProductService(sessions),
             limits=self.limits, agents=self.tools,
             audit_log=AuditLogService(sessions), signup_enabled=signup,
             signups_per_day=signups_per_day, member_caps=caps or MemberCaps(),
