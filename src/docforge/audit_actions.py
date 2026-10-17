@@ -58,6 +58,9 @@ ACTIONS: dict[str, Action] = {
     "collection.documents_removed": Action("Documents removed from a knowledge base", ("count",)),
     # Workspace settings
     "settings.changed": Action("Setting changed", ("setting", "old", "new")),
+    # Schedule H1 products a reviewer marks for the workspace
+    "h1_product.marked": Action("Product marked Schedule H1", ("product_name",)),
+    "h1_product.unmarked": Action("Schedule H1 mark removed", ("product_name",)),
     # Keys and webhooks
     "api_key.created": Action("API key made", ("name", "role")),
     "api_key.revoked": Action("API key revoked", ("name",)),

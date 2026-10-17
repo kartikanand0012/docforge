@@ -180,6 +180,21 @@ The heart of the product. Needs:
   review screen uses the window as it is now; `/assessment` keeps the one the bill was read
   with. Months are counted by calendar month (an expiry is printed as a month), as the
   expired check counts them.
+- **Schedule H1** (`schedule_h1` on `ReviewOut`, `H1LineOut`): the invoice's lines a chemist
+  must enter in the H1 register - `{path: "lines[i]", product_name, molecule, notification,
+  product_id, joins_on}`. `molecule` (with the `notification` that added it) when the product
+  names a molecule on the schedule; `product_id` when the workspace marked the product as H1
+  (both may be set). `joins_on`: the molecule's day in force when that is after the bill's
+  date (pregabalin joins on 16 Nov 2026) - say "joins Schedule H1 on {date}". Never a blocker
+  and never a rule: show a "Schedule H1" badge on the line and "1 Schedule H1 line - enter it
+  in the H1 register" above the lines. Bills mostly print brand names, which name no
+  molecule, hence marking.
+- **Marking a product H1** - `GET /v1/schedule-h1/products` (anyone), `POST` with
+  `{product_name}` (those who review: 201 marked now, 200 already marked - names are compared
+  without case, spaces or punctuation; 422 for a name with no letter or digit), `DELETE
+  /v1/schedule-h1/products/{id}` (204; 404 if not there). On a line: "Mark as Schedule H1"
+  posts its `product_name`; a line with `product_id` offers "Remove H1 mark". Audited as
+  `h1_product.marked` / `h1_product.unmarked`.
 - **Workspace settings** - `GET /v1/settings` (anyone) and `PATCH /v1/settings` (an
   administrator, or a personal workspace's own person; others get 403):
   `{near_expiry_months: 0-36}` in, `{near_expiry_months, updated_by, updated_at}` out

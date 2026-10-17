@@ -6,7 +6,7 @@ and is never logged or returned.
 
 import json
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -123,6 +123,17 @@ class DuplicateOut(BaseModel):
     matched_on: Literal["irn", "seller_and_number"]
 
 
+class H1LineOut(BaseModel):
+    """A bill line a chemist must enter in the Schedule H1 register."""
+
+    path: str  # lines[i]
+    product_name: str
+    molecule: str | None  # the schedule's name, when the product names one
+    notification: str | None  # the notification that added the molecule
+    product_id: uuid.UUID | None  # the workspace's mark, when the product is marked as H1
+    joins_on: date | None  # the molecule's day in force, when that is after the bill's date
+
+
 class ReviewOut(BaseModel):
     document_id: uuid.UUID
     doc_type: str
@@ -150,6 +161,7 @@ class ReviewOut(BaseModel):
     duplicates: list[DuplicateOut]  # earlier bills an invoice repeats; each is also a blocker
     # The workspace's near-expiry window the checks used (line.shelf_life), 0 for off.
     near_expiry_months: int
+    schedule_h1: list[H1LineOut]  # an invoice's lines for the H1 register; never a blocker
 
 
 def _review_out(detail: ReviewDetail) -> ReviewOut:
@@ -182,6 +194,17 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
             for d in detail.duplicates
         ],
         near_expiry_months=detail.near_expiry_months,
+        schedule_h1=[
+            H1LineOut(
+                path=line.path,
+                product_name=line.product_name,
+                molecule=line.molecule,
+                notification=line.notification,
+                product_id=line.product_id,
+                joins_on=line.joins_on,
+            )
+            for line in detail.schedule_h1
+        ],
     )
 
 

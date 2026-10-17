@@ -36,6 +36,7 @@ from docforge.api.documents import documents_router
 from docforge.api.exports import exports_router
 from docforge.api.platform import platform_router
 from docforge.api.review import review_router
+from docforge.api.schedule_h1 import schedule_h1_router
 from docforge.api.search import search_router
 from docforge.api.settings import settings_router
 from docforge.api.stats import stats_router
@@ -54,6 +55,7 @@ from docforge.collections import CollectionService
 from docforge.documents import DocumentService
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, InvoicePipeline
 from docforge.extraction.schema import InvoiceExtraction
+from docforge.h1_products import H1ProductService
 from docforge.limits import Limits, LocalLimits
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.mcp_server.server import mount as mount_mcp
@@ -132,6 +134,7 @@ def create_app(
     questions_per_minute: int = 20,
     collections: CollectionService | None = None,
     settings: WorkspaceSettingsService | None = None,
+    h1_products: H1ProductService | None = None,
     limits: Limits | None = None,
     agents: AgentTools | None = None,
     audit_log: AuditLogService | None = None,
@@ -277,6 +280,8 @@ def create_app(
         app.include_router(collections_router(collections))
     if settings is not None:
         app.include_router(settings_router(settings))
+    if h1_products is not None:
+        app.include_router(schedule_h1_router(h1_products))
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
     if authenticator is not None:

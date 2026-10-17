@@ -11,6 +11,7 @@ from docforge.collections import CollectionService
 from docforge.config import get_settings
 from docforge.db.session import make_engine, make_session_factory
 from docforge.extraction.pipeline import InvoicePipeline
+from docforge.h1_products import H1ProductService
 from docforge.limits import DatabaseLimits
 from docforge.mcp_server.tools import AgentTools
 from docforge.telemetry import configure_tracing, settings_prices
@@ -60,6 +61,7 @@ def create_default_app() -> FastAPI:
         chat=chat,
         collections=collections,
         settings=WorkspaceSettingsService(sessions),
+        h1_products=H1ProductService(sessions),
         limits=limits,
         agents=agents,
         audit_log=AuditLogService(sessions),
