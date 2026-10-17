@@ -234,7 +234,7 @@ class WorkspaceSettings(Base):
     __tablename__ = "workspace_settings"
 
     tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="RESTRICT"), primary_key=True
     )
     near_expiry_months: Mapped[int] = mapped_column(Integer)  # 0 is off
     updated_by: Mapped[str] = mapped_column(Text)  # who changed it, by name (the log has the id)

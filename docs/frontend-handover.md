@@ -178,7 +178,8 @@ The heart of the product. Needs:
   not "Failed", and sum the lines up ("2 lines expire within 6 months of the bill").
   `near_expiry_months` is the window the checks used (0: off, and no such rule at all). The
   review screen uses the window as it is now; `/assessment` keeps the one the bill was read
-  with.
+  with. Months are counted by calendar month (an expiry is printed as a month), as the
+  expired check counts them.
 - **Workspace settings** - `GET /v1/settings` (anyone) and `PATCH /v1/settings` (an
   administrator, or a personal workspace's own person; others get 403):
   `{near_expiry_months: 0-36}` in, `{near_expiry_months, updated_by, updated_at}` out

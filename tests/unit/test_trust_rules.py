@@ -210,6 +210,18 @@ def test_the_near_expiry_window_is_the_workspaces(raw_invoice_from_label: RawFro
     assert flagged(5) == [("lines[0].expiry",)]
 
 
+def test_the_months_left_count_across_the_new_year(raw_invoice_from_label: RawFromLabel) -> None:
+    raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
+    raw["invoice_date"]["text"] = "28/12/2026"
+    set_line(0, "expiry", "02/27")(raw)  # two months on, in the next year
+
+    first = ("lines[0].expiry",)
+    shelf = [r for r in near(raw) if r.rule_id == "line.shelf_life" and r.paths == first]
+
+    assert [r.outcome for r in shelf] == ["failed"]
+    assert "2027-02, 2 months after the bill date" in shelf[0].message
+
+
 def test_a_window_of_zero_turns_the_flag_off(raw_invoice_from_label: RawFromLabel) -> None:
     raw = copy.deepcopy(raw_invoice_from_label(label("pair_001")))
     set_line(0, "expiry", "10/26")(raw)

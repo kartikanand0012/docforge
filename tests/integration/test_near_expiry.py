@@ -231,3 +231,23 @@ def test_the_review_response_says_which_window_its_checks_used(bill: Bill) -> No
 
     assert review["near_expiry_months"] == 0
     assert shelf_life(review["assessment"]["rules"]) == []
+
+
+def test_a_bill_whose_only_flag_is_near_expiry_does_not_wait_in_the_queue(bill: Bill) -> None:
+    document = bill.read()
+    blockers = bill.review.detail(DEFAULT_TENANT_ID, document).blockers
+
+    queued = {item.document_id: item.reasons for item in bill.review.queue(DEFAULT_TENANT_ID)}
+
+    # It waits only for what else holds it (no purchase order on file), never for its stock.
+    assert queued.get(document, ()) == blockers
+    assert not any("expir" in reason for reason in queued.get(document, ()))
+
+
+def test_a_long_name_is_cut_to_fit_rather_than_refused(bill: Bill) -> None:
+    changed = bill.settings.update(
+        DEFAULT_TENANT_ID, near_expiry_months=5, actor="cli", name="A" * 300
+    )
+
+    assert changed.updated_by == "A" * 200
+    assert changed.updated_at is not None

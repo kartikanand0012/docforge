@@ -425,8 +425,9 @@ class ReviewService:
             documents = session.scalars(
                 self._candidates(tenant_id).limit(self._queue_limit * _QUEUE_SCAN)
             ).all()
+            window = near_expiry_months(session, tenant_id)  # once for the whole scan
             for document in documents:
-                state = self._awaiting(session, document, memo)
+                state = self._awaiting(session, document, memo, window)
                 if state is not None:
                     items.append(
                         QueueItem(
@@ -468,17 +469,22 @@ class ReviewService:
         memo: dict[uuid.UUID, BaseModel | None] = {}
         with self._sessions() as session:
             documents = session.scalars(self._candidates(tenant_id).limit(bound + 1)).all()
+            window = near_expiry_months(session, tenant_id)
             for document in documents[:bound]:
-                if self._awaiting(session, document, memo) is not None:
+                if self._awaiting(session, document, memo, window) is not None:
                     count += 1
         return count, len(documents) > bound
 
     def _awaiting(
-        self, session: Session, document: Document, memo: dict[uuid.UUID, BaseModel | None]
+        self,
+        session: Session,
+        document: Document,
+        memo: dict[uuid.UUID, BaseModel | None],
+        window: int,
     ) -> "_State | None":
         """The document's state if it waits for a person, else None."""
         try:
-            state = self._state(session, document, memo)
+            state = self._state(session, document, memo, window)
         except NotReviewable:
             return None
         return state if state.review is None and state.blockers else None
@@ -966,7 +972,10 @@ class ReviewService:
         session: Session,
         document: Document,
         memo: dict[uuid.UUID, BaseModel | None] | None = None,
+        window: int | None = None,
     ) -> _State:
+        """`window` is the workspace's near-expiry window when the caller has read it once
+        for many documents (the queue); otherwise it is read here."""
         newest_version = session.scalar(
             select(func.max(DocumentVersion.version_no)).where(
                 DocumentVersion.document_id == document.id
@@ -1001,7 +1010,8 @@ class ReviewService:
         einvoice_check = stored_check(session, version.id)
         # The workspace's near-expiry window as it is now, not as when the bill was read: a
         # change applies to the bills still being reviewed.
-        window = near_expiry_months(session, document.tenant_id)
+        if window is None:
+            window = near_expiry_months(session, document.tenant_id)
         stock_rules = (near_expiry(window),) if document.doc_type == "invoice" else ()
         reassessed = reassess(
             spec,

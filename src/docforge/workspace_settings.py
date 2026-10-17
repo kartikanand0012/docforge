@@ -6,9 +6,9 @@ change is audited with the old and the new value, in the change's own transactio
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -49,8 +49,10 @@ class WorkspaceSettingsService:
     def update(
         self, tenant_id: uuid.UUID, *, near_expiry_months: int, actor: str, name: str
     ) -> SettingsView:
-        """`actor` as the audit log names them, `name` as the screen shows who changed it.
-        Raises `ValueError` for a window outside 0 to 36 months."""
+        """`actor` as the audit log names them, `name` as the screen shows who changed it
+        (cut to the column's 200 characters). Raises `ValueError` for a window outside 0 to 36
+        months."""
+        name = name[:200]
         if not 0 <= near_expiry_months <= MAX_NEAR_EXPIRY_MONTHS:
             raise ValueError(f"the window is 0 to {MAX_NEAR_EXPIRY_MONTHS} months")
         with self._sessions.begin() as session:
@@ -72,7 +74,7 @@ class WorkspaceSettingsService:
             old = row.near_expiry_months
             row.near_expiry_months = near_expiry_months
             row.updated_by = name
-            row.updated_at = datetime.now(UTC)
+            row.updated_at = func.now()  # the database's clock, as on insert
             audit.append(
                 session,
                 tenant_id=tenant_id,
@@ -82,6 +84,8 @@ class WorkspaceSettingsService:
                 target_id=str(tenant_id),
                 details={"setting": "near_expiry_months", "old": old, "new": near_expiry_months},
             )
+            session.flush()
+            session.refresh(row)  # updated_at as the database set it
             return _view(row)
 
 
