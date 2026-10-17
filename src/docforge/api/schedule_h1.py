@@ -11,11 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from docforge.api.auth import require
 from docforge.auth import Principal
 from docforge.h1_products import (
+    MAX_MARKS,
     MAX_PRODUCT_NAME,
     H1ProductService,
     MarkedProduct,
     MarkNotFound,
     ProductNameInvalid,
+    TooManyMarks,
 )
 
 Reader = Annotated[Principal, Depends(require("documents:read"))]
@@ -61,6 +63,9 @@ def schedule_h1_router(products: H1ProductService) -> APIRouter:
             )
         except ProductNameInvalid as error:
             raise HTTPException(422, "A product name needs letters or digits.") from error
+        except TooManyMarks as error:
+            full = f"This workspace has {MAX_MARKS} marked products already."
+            raise HTTPException(409, full) from error
         if not made:
             response.status_code = 200
         return _out(product)

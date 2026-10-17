@@ -74,3 +74,18 @@ def test_every_entry_is_found_by_its_own_name() -> None:
 def test_a_product_is_compared_without_case_spaces_or_punctuation() -> None:
     assert product_key("Alprax 0.5 mg Tab.") == product_key("ALPRAX 0.5MG TAB") == "alprax0.5mgtab"
     assert product_key("Alprax 0.25 mg Tab") != product_key("Alprax 0.5 mg Tab")
+
+
+def test_of_several_molecules_the_one_in_force_on_the_bills_date_is_named() -> None:
+    before = date(2026, 10, 1)  # pregabalin joins on 16 November 2026
+
+    assert h1_molecule("Pregabalin + Alprazolam", on=before).name == "Alprazolam"  # type: ignore[union-attr]
+    assert h1_molecule("Pregabalin + Alprazolam", on=date(2026, 12, 1)).name == "Pregabalin"  # type: ignore[union-attr]
+    assert h1_molecule("Rifampicin + Isoniazid").name == "Rifampicin"  # type: ignore[union-attr]
+
+
+def test_a_strength_written_with_a_separator_is_another_product() -> None:
+    assert product_key("Alprax 1/2") != product_key("Alprax 12")
+    assert product_key("Brand 10 + 5") == product_key("Brand 10+5") == "brand10/5"
+    assert product_key("\uff23efixime 200") == product_key("cefixime 200")  # full-width letters
+    assert product_key("...") == ""

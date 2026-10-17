@@ -4,12 +4,14 @@ shown on the bill and never holding it."""
 
 import uuid
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 
+from docforge import h1_products
 from docforge.api.app import create_app
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.models import AuditEntry
@@ -17,7 +19,8 @@ from docforge.db.session import SessionFactory
 from docforge.db.tenancy import tenant_scope
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
-from docforge.h1_products import H1ProductService
+from docforge.extraction.schema import InvoiceExtraction
+from docforge.h1_products import H1ProductService, schedule_h1_lines
 from docforge.review.service import ReviewService
 from fakes import signed_in
 from worlds import World
@@ -205,6 +208,7 @@ def test_no_one_who_does_not_review_marks_or_unmarks(bill: Bill, role: str) -> N
 
 REFUSED: list[dict[str, Any]] = [
     {"product_name": "..."},
+    {"product_name": "ALPRAX\u0000 0.5"},
     {"product_name": ""},
     {"product_name": "x" * 301},
     {},
@@ -234,3 +238,32 @@ def test_the_review_response_lists_the_h1_lines(bill: Bill) -> None:
         ("lines[1]", None, True, None),
         ("lines[2]", "Pregabalin", False, "2026-11-16"),
     ]
+
+
+def test_once_the_day_has_come_the_molecule_is_no_longer_joining(bill: Bill) -> None:
+    document = bill.read()
+    detail = bill.review.detail(DEFAULT_TENANT_ID, document)
+    invoice = bill.service.latest_extraction(DEFAULT_TENANT_ID, document)
+    assert invoice is not None
+    parsed = InvoiceExtraction.model_validate(invoice.extraction.data)
+
+    with bill.sessions() as session:
+        before = schedule_h1_lines(session, DEFAULT_TENANT_ID, parsed, today=date(2026, 10, 1))
+        after = schedule_h1_lines(session, DEFAULT_TENANT_ID, parsed, today=date(2026, 12, 1))
+
+    pregabalin = [h.joins_on for h in before if h.path == "lines[2]"]
+    assert pregabalin == [date(2026, 11, 16)]
+    assert [h.joins_on for h in after if h.path == "lines[2]"] == [None]
+    assert "lines[2]" in [h.path for h in detail.schedule_h1]
+
+
+def test_a_workspace_has_at_most_so_many_marks(bill: Bill, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(h1_products, "MAX_MARKS", 1)
+    api = client(bill)
+
+    assert api.post("/v1/schedule-h1/products", json={"product_name": "A 1"}).status_code == 201
+    assert api.post("/v1/schedule-h1/products", json={"product_name": "a 1"}).status_code == 200
+    refused = api.post("/v1/schedule-h1/products", json={"product_name": "B 2"})
+
+    assert refused.status_code == 409
+    assert len(bill.products.list(DEFAULT_TENANT_ID)) == 1

@@ -18,6 +18,7 @@ molecule, which is what a workspace's marked products are for (`docforge.h1_prod
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date
 
@@ -114,15 +115,22 @@ _PATTERN = re.compile(
 )
 
 
-def h1_molecule(product_name: str | None) -> H1Molecule | None:
-    """The first Schedule H1 molecule named in a product's name, if any."""
+def h1_molecule(product_name: str | None, on: date | None = None) -> H1Molecule | None:
+    """A Schedule H1 molecule named in a product's name, if any. Of several ("Pregabalin +
+    Alprazolam"), the first in force `on` that day, else the first named."""
     if not product_name:
         return None
-    found = _PATTERN.search(product_name)
-    return _WORDS[found.group(1).lower()] if found else None
+    named = [_WORDS[m.group(1).lower()] for m in _PATTERN.finditer(product_name)]
+    in_force = [m for m in named if on is not None and m.in_force <= on]
+    chosen = in_force or named
+    return chosen[0] if chosen else None
 
 
 def product_key(product_name: str) -> str:
-    """A product's name as compared with the workspace's marked products: lower case, letters,
-    digits and decimal points only ("Alprax 0.5 mg Tab." and "ALPRAX 0.5MG TAB" are one)."""
-    return re.sub(r"[^a-z0-9.]", "", product_name.lower()).strip(".")
+    """A product's name as compared with the workspace's marked products: compatibility-folded
+    and case-folded, letters, digits and decimal points kept, a run of "/", "+" or "-" kept as
+    one "/" (so "1/2" is not "12"), all else dropped ("Alprax 0.5 mg Tab." and "ALPRAX 0.5MG
+    TAB" are one). Stored with each mark: a change here needs a migration recomputing them."""
+    folded = unicodedata.normalize("NFKC", product_name).casefold()
+    joined = re.sub(r"\s*[/+\-]+\s*", "/", folded)
+    return re.sub(r"[^a-z0-9./]", "", joined).strip("./")
