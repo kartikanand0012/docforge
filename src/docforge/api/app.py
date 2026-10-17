@@ -37,6 +37,7 @@ from docforge.api.exports import exports_router
 from docforge.api.platform import platform_router
 from docforge.api.review import review_router
 from docforge.api.search import search_router
+from docforge.api.settings import settings_router
 from docforge.api.stats import stats_router
 from docforge.api.uploads import (
     DEFAULT_MAX_UPLOAD_BYTES,
@@ -64,6 +65,7 @@ from docforge.review.signing import HashingBusy
 from docforge.search.service import SearchService
 from docforge.telemetry import traced
 from docforge.webhooks import WebhookService
+from docforge.workspace_settings import WorkspaceSettingsService
 
 logger = logging.getLogger(__name__)
 __all__ = ["MemberCaps", "create_app"]
@@ -129,6 +131,7 @@ def create_app(
     chat: ChatService | None = None,
     questions_per_minute: int = 20,
     collections: CollectionService | None = None,
+    settings: WorkspaceSettingsService | None = None,
     limits: Limits | None = None,
     agents: AgentTools | None = None,
     audit_log: AuditLogService | None = None,
@@ -272,6 +275,8 @@ def create_app(
         app.include_router(chat_router(chat, questions_per_minute, caps, member_caps))
     if collections is not None:
         app.include_router(collections_router(collections))
+    if settings is not None:
+        app.include_router(settings_router(settings))
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
     if authenticator is not None:

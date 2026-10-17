@@ -170,6 +170,20 @@ The heart of the product. Needs:
   afresh on every read, so a correction on either bill can add or clear it. Duplicates are a
   review matter: `/assessment`'s `decision` is the reading's own and does not include them (nor
   certificates); the review screen's `decision` and `blockers` do.
+- **Near-expiry stock** (`line.shelf_life` in `assessment.rules`, `near_expiry_months` on
+  `ReviewOut`): a line that expires less than the workspace's window after the bill date has
+  a failed `line.shelf_life` rule on `lines[i].expiry`, severity `warning`, with the sentence
+  to show ("Stock expires 2027-01, 4 months after the bill date; this workspace flags stock
+  with less than 6 months left."). A flag, never a blocker: label it "Near expiry" (amber),
+  not "Failed", and sum the lines up ("2 lines expire within 6 months of the bill").
+  `near_expiry_months` is the window the checks used (0: off, and no such rule at all). The
+  review screen uses the window as it is now; `/assessment` keeps the one the bill was read
+  with.
+- **Workspace settings** - `GET /v1/settings` (anyone) and `PATCH /v1/settings` (an
+  administrator, or a personal workspace's own person; others get 403):
+  `{near_expiry_months: 0-36}` in, `{near_expiry_months, updated_by, updated_at}` out
+  (`updated_by` null while the defaults stand). A change is in the audit log as
+  `settings.changed` with the old and new value.
 - **E-invoice QR** (`einvoice` on `ReviewOut` and on `/assessment`, `EinvoiceOut`): an
   invoice's signed GST e-invoice QR, checked as it was read. Null when it was never scanned
   (a purchase order, or checking switched off). `status`:

@@ -228,6 +228,19 @@ class EinvoiceCheck(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class WorkspaceSettings(Base):
+    """One workspace's choices. No row is the defaults (`docforge.workspace_settings`)."""
+
+    __tablename__ = "workspace_settings"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+    )
+    near_expiry_months: Mapped[int] = mapped_column(Integer)  # 0 is off
+    updated_by: Mapped[str] = mapped_column(Text)  # who changed it, by name (the log has the id)
+    updated_at: Mapped[datetime] = _created_at()
+
+
 class MatchRecord(Base):
     """One comparison of an invoice version with a purchase-order version. Immutable."""
 

@@ -74,8 +74,10 @@ from docforge.storage import ObjectStore, rendition_key
 from docforge.trust.assess import Assessment
 from docforge.trust.duplicates import Duplicate, find_duplicates
 from docforge.trust.einvoice_rules import InvoiceRule, einvoice_rules, unreadable_check_rule
+from docforge.trust.invoice_rules import DEFAULT_NEAR_EXPIRY_MONTHS, near_expiry
 from docforge.trust.match import Discrepancy, match_invoice_to_order
 from docforge.trust.rules import run_rules
+from docforge.workspace_settings import near_expiry_months
 
 MAX_FAILED_PINS = 5
 LOCK_FOR = timedelta(minutes=15)
@@ -196,6 +198,7 @@ class ReviewDetail:
     # For an invoice scanned as it was read: its signed QR's check, its rules as reassessed.
     einvoice: EinvoiceView | None = None
     duplicates: tuple[Duplicate, ...] = ()  # earlier bills this invoice repeats
+    near_expiry_months: int = DEFAULT_NEAR_EXPIRY_MONTHS  # the window the checks used
 
     @property
     def decision(self) -> str:
@@ -219,6 +222,7 @@ class _State:
     certificates: tuple[dict[str, str], ...]
     einvoice_check: EinvoiceCheck | None
     duplicates: tuple[Duplicate, ...]  # earlier bills an invoice repeats
+    near_expiry_months: int  # the workspace's window the checks used, 0 for off
 
     @property
     def blockers(self) -> tuple[str, ...]:
@@ -995,13 +999,17 @@ class ReviewService:
             ).all()
         ]
         einvoice_check = stored_check(session, version.id)
+        # The workspace's near-expiry window as it is now, not as when the bill was read: a
+        # change applies to the bills still being reviewed.
+        window = near_expiry_months(session, document.tenant_id)
+        stock_rules = (near_expiry(window),) if document.doc_type == "invoice" else ()
         reassessed = reassess(
             spec,
             raw,
             parsed,
             [Correction(path=c.path, text=c.new_text) for c, _ in corrections],
             # The same rules the reading was assessed with: a correction never drops them.
-            extra_rules=_einvoice_rules(einvoice_check, parsed),
+            extra_rules=(*_einvoice_rules(einvoice_check, parsed), *stock_rules),
         )
         if memo is not None:
             memo[version.id] = reassessed.extraction
@@ -1049,6 +1057,7 @@ class ReviewService:
             certificates=self._certificates(session, document, reassessed.extraction, memo),
             einvoice_check=einvoice_check,
             duplicates=_duplicates(session, document, reassessed.extraction, einvoice_check),
+            near_expiry_months=window,
         )
 
     def _certificates(
@@ -1190,6 +1199,7 @@ class ReviewService:
             certificates=state.certificates,
             einvoice=einvoice_view(state.einvoice_check, state.reassessed.assessment.rules),
             duplicates=state.duplicates,
+            near_expiry_months=state.near_expiry_months,
         )
 
 

@@ -19,7 +19,6 @@ import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from functools import partial
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from opentelemetry import trace
@@ -65,6 +64,7 @@ from docforge.llm.replay import NotRecorded
 from docforge.parsing.base import (
     DocumentTooLarge,
     NoTextLayer,
+    ParsedDocument,
     ParseError,
     ParserLimitExceeded,
 )
@@ -81,8 +81,10 @@ from docforge.storage import (
 )
 from docforge.telemetry import Prices, current_prices, document_cost, traced
 from docforge.trust.einvoice_rules import einvoice_rules
+from docforge.trust.invoice_rules import InvoiceRule, near_expiry
 from docforge.trust.match import company_key, match_invoice_to_order
 from docforge.trust.rules import RuleResult
+from docforge.workspace_settings import near_expiry_months
 
 if TYPE_CHECKING:
     from docforge.anchors import AnchoredReport, AnchorStore
@@ -660,6 +662,10 @@ class DocumentService:
             turn = version.attempts
             doc_type, storage_key, sha256 = document.doc_type, document.storage_key, document.sha256
             tenant = document.tenant_id
+            # The workspace's near-expiry window as it is now, for the stored assessment.
+            stock_rules = (
+                (near_expiry(near_expiry_months(session, tenant)),) if doc_type == "invoice" else ()
+            )
 
         final = turn >= self._max_attempts
         span = trace.get_current_span()
@@ -690,7 +696,11 @@ class DocumentService:
                 else None
             )
             evidence = checked.evidence if checked is not None else None
-            extra_rules_for = partial(einvoice_rules, evidence) if evidence is not None else None
+
+            def extra_rules_for(parsed: ParsedDocument) -> tuple[InvoiceRule, ...]:
+                signed = einvoice_rules(evidence, parsed) if evidence is not None else ()
+                return (*signed, *stock_rules)
+
             with stage_listener(lambda stage: self._reach(version_id, turn, stage)):
                 result = pipeline.run(data, extra_rules_for=extra_rules_for)
         except ConversionError as error:
