@@ -56,6 +56,8 @@ ACTIONS: dict[str, Action] = {
     "collection.deleted": Action("Knowledge base deleted", ("name",)),
     "collection.documents_added": Action("Documents added to a knowledge base", ("count",)),
     "collection.documents_removed": Action("Documents removed from a knowledge base", ("count",)),
+    # Workspace settings
+    "settings.changed": Action("Setting changed", ("setting", "old", "new")),
     # Keys and webhooks
     "api_key.created": Action("API key made", ("name", "role")),
     "api_key.revoked": Action("API key revoked", ("name",)),

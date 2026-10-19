@@ -74,8 +74,10 @@ from docforge.storage import ObjectStore, rendition_key
 from docforge.trust.assess import Assessment
 from docforge.trust.duplicates import Duplicate, find_duplicates
 from docforge.trust.einvoice_rules import InvoiceRule, einvoice_rules, unreadable_check_rule
+from docforge.trust.invoice_rules import DEFAULT_NEAR_EXPIRY_MONTHS, near_expiry
 from docforge.trust.match import Discrepancy, match_invoice_to_order
 from docforge.trust.rules import run_rules
+from docforge.workspace_settings import near_expiry_months
 
 MAX_FAILED_PINS = 5
 LOCK_FOR = timedelta(minutes=15)
@@ -196,6 +198,7 @@ class ReviewDetail:
     # For an invoice scanned as it was read: its signed QR's check, its rules as reassessed.
     einvoice: EinvoiceView | None = None
     duplicates: tuple[Duplicate, ...] = ()  # earlier bills this invoice repeats
+    near_expiry_months: int = DEFAULT_NEAR_EXPIRY_MONTHS  # the window the checks used
 
     @property
     def decision(self) -> str:
@@ -219,6 +222,7 @@ class _State:
     certificates: tuple[dict[str, str], ...]
     einvoice_check: EinvoiceCheck | None
     duplicates: tuple[Duplicate, ...]  # earlier bills an invoice repeats
+    near_expiry_months: int  # the workspace's window the checks used, 0 for off
 
     @property
     def blockers(self) -> tuple[str, ...]:
@@ -421,8 +425,9 @@ class ReviewService:
             documents = session.scalars(
                 self._candidates(tenant_id).limit(self._queue_limit * _QUEUE_SCAN)
             ).all()
+            window = near_expiry_months(session, tenant_id)  # once for the whole scan
             for document in documents:
-                state = self._awaiting(session, document, memo)
+                state = self._awaiting(session, document, memo, window)
                 if state is not None:
                     items.append(
                         QueueItem(
@@ -464,17 +469,22 @@ class ReviewService:
         memo: dict[uuid.UUID, BaseModel | None] = {}
         with self._sessions() as session:
             documents = session.scalars(self._candidates(tenant_id).limit(bound + 1)).all()
+            window = near_expiry_months(session, tenant_id)
             for document in documents[:bound]:
-                if self._awaiting(session, document, memo) is not None:
+                if self._awaiting(session, document, memo, window) is not None:
                     count += 1
         return count, len(documents) > bound
 
     def _awaiting(
-        self, session: Session, document: Document, memo: dict[uuid.UUID, BaseModel | None]
+        self,
+        session: Session,
+        document: Document,
+        memo: dict[uuid.UUID, BaseModel | None],
+        window: int,
     ) -> "_State | None":
         """The document's state if it waits for a person, else None."""
         try:
-            state = self._state(session, document, memo)
+            state = self._state(session, document, memo, window)
         except NotReviewable:
             return None
         return state if state.review is None and state.blockers else None
@@ -962,7 +972,10 @@ class ReviewService:
         session: Session,
         document: Document,
         memo: dict[uuid.UUID, BaseModel | None] | None = None,
+        window: int | None = None,
     ) -> _State:
+        """`window` is the workspace's near-expiry window when the caller has read it once
+        for many documents (the queue); otherwise it is read here."""
         newest_version = session.scalar(
             select(func.max(DocumentVersion.version_no)).where(
                 DocumentVersion.document_id == document.id
@@ -995,13 +1008,18 @@ class ReviewService:
             ).all()
         ]
         einvoice_check = stored_check(session, version.id)
+        # The workspace's near-expiry window as it is now, not as when the bill was read: a
+        # change applies to the bills still being reviewed.
+        if window is None:
+            window = near_expiry_months(session, document.tenant_id)
+        stock_rules = (near_expiry(window),) if document.doc_type == "invoice" else ()
         reassessed = reassess(
             spec,
             raw,
             parsed,
             [Correction(path=c.path, text=c.new_text) for c, _ in corrections],
             # The same rules the reading was assessed with: a correction never drops them.
-            extra_rules=_einvoice_rules(einvoice_check, parsed),
+            extra_rules=(*_einvoice_rules(einvoice_check, parsed), *stock_rules),
         )
         if memo is not None:
             memo[version.id] = reassessed.extraction
@@ -1049,6 +1067,7 @@ class ReviewService:
             certificates=self._certificates(session, document, reassessed.extraction, memo),
             einvoice_check=einvoice_check,
             duplicates=_duplicates(session, document, reassessed.extraction, einvoice_check),
+            near_expiry_months=window,
         )
 
     def _certificates(
@@ -1190,6 +1209,7 @@ class ReviewService:
             certificates=state.certificates,
             einvoice=einvoice_view(state.einvoice_check, state.reassessed.assessment.rules),
             duplicates=state.duplicates,
+            near_expiry_months=state.near_expiry_months,
         )
 
 

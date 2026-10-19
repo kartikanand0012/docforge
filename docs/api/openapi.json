@@ -1955,6 +1955,60 @@
                 }
             }
         },
+        "/v1/settings": {
+            "get": {
+                "summary": "Read Settings",
+                "operationId": "read_settings_v1_settings_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SettingsOut"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "summary": "Change Settings",
+                "operationId": "change_settings_v1_settings_patch",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SettingsChange"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SettingsOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/audit": {
             "get": {
                 "summary": "Entries",
@@ -5443,6 +5497,10 @@
                         },
                         "type": "array",
                         "title": "Duplicates"
+                    },
+                    "near_expiry_months": {
+                        "type": "integer",
+                        "title": "Near Expiry Months"
                     }
                 },
                 "type": "object",
@@ -5470,7 +5528,8 @@
                     "certificates",
                     "claim",
                     "einvoice",
-                    "duplicates"
+                    "duplicates",
+                    "near_expiry_months"
                 ],
                 "title": "ReviewOut"
             },
@@ -5535,6 +5594,60 @@
                     "expires_in_seconds"
                 ],
                 "title": "SessionOut"
+            },
+            "SettingsChange": {
+                "properties": {
+                    "near_expiry_months": {
+                        "type": "integer",
+                        "maximum": 36.0,
+                        "minimum": 0.0,
+                        "title": "Near Expiry Months"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "near_expiry_months"
+                ],
+                "title": "SettingsChange"
+            },
+            "SettingsOut": {
+                "properties": {
+                    "near_expiry_months": {
+                        "type": "integer",
+                        "title": "Near Expiry Months"
+                    },
+                    "updated_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated By"
+                    },
+                    "updated_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "near_expiry_months",
+                    "updated_by",
+                    "updated_at"
+                ],
+                "title": "SettingsOut"
             },
             "SignIn": {
                 "properties": {

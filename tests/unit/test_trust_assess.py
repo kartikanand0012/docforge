@@ -12,7 +12,7 @@ from docforge.extraction.normalize import normalize_invoice
 from docforge.extraction.schema import RawInvoice
 from docforge.parsing.base import ParsedDocument
 from docforge.trust.assess import Assessment, assess
-from docforge.trust.invoice_rules import INVOICE_RULES
+from docforge.trust.invoice_rules import DEFAULT_NEAR_EXPIRY_MONTHS, INVOICE_RULES, near_expiry
 from docforge.trust.verify import extracted_fields
 from fakes import cited, reprint
 
@@ -38,7 +38,9 @@ class Case:
 
     def assess(self) -> Assessment:
         extraction = normalize_invoice(RawInvoice.model_validate(self.raw), self.parsed)
-        return assess(extraction, self.parsed, INVOICE_RULES)
+        # As the worker assesses a bill: the fixed rules and the workspace's window.
+        rules = (*INVOICE_RULES, near_expiry(DEFAULT_NEAR_EXPIRY_MONTHS))
+        return assess(extraction, self.parsed, rules)
 
 
 @pytest.fixture
