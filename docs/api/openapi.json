@@ -2009,6 +2009,98 @@
                 }
             }
         },
+        "/v1/schedule-h1/products": {
+            "get": {
+                "summary": "List Products",
+                "operationId": "list_products_v1_schedule_h1_products_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/ProductOut"
+                                    },
+                                    "type": "array",
+                                    "title": "Response List Products V1 Schedule H1 Products Get"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "summary": "Mark Product",
+                "description": "Mark a product as Schedule H1 for the workspace. 201 when marked now, 200 when it\nalready was (the same name, case, spaces and punctuation aside).",
+                "operationId": "mark_product_v1_schedule_h1_products_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ProductIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProductOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/schedule-h1/products/{product_id}": {
+            "delete": {
+                "summary": "Unmark Product",
+                "operationId": "unmark_product_v1_schedule_h1_products__product_id__delete",
+                "parameters": [
+                    {
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Product Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/audit": {
             "get": {
                 "summary": "Entries",
@@ -4471,6 +4563,75 @@
                 ],
                 "title": "ExtractionResponse"
             },
+            "H1LineOut": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path"
+                    },
+                    "product_name": {
+                        "type": "string",
+                        "title": "Product Name"
+                    },
+                    "molecule": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Molecule"
+                    },
+                    "notification": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Notification"
+                    },
+                    "product_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Product Id"
+                    },
+                    "joins_on": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Joins On"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "product_name",
+                    "molecule",
+                    "notification",
+                    "product_id",
+                    "joins_on"
+                ],
+                "title": "H1LineOut",
+                "description": "A bill line a chemist must enter in the Schedule H1 register."
+            },
             "HTTPValidationError": {
                 "properties": {
                     "detail": {
@@ -5225,6 +5386,52 @@
                 ],
                 "title": "PartyExtraction"
             },
+            "ProductIn": {
+                "properties": {
+                    "product_name": {
+                        "type": "string",
+                        "maxLength": 300,
+                        "minLength": 1,
+                        "title": "Product Name"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "product_name"
+                ],
+                "title": "ProductIn"
+            },
+            "ProductOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "product_name": {
+                        "type": "string",
+                        "title": "Product Name"
+                    },
+                    "marked_by": {
+                        "type": "string",
+                        "title": "Marked By"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "product_name",
+                    "marked_by",
+                    "created_at"
+                ],
+                "title": "ProductOut"
+            },
             "QuestionIn": {
                 "properties": {
                     "question": {
@@ -5501,6 +5708,13 @@
                     "near_expiry_months": {
                         "type": "integer",
                         "title": "Near Expiry Months"
+                    },
+                    "schedule_h1": {
+                        "items": {
+                            "$ref": "#/components/schemas/H1LineOut"
+                        },
+                        "type": "array",
+                        "title": "Schedule H1"
                     }
                 },
                 "type": "object",
@@ -5529,7 +5743,8 @@
                     "claim",
                     "einvoice",
                     "duplicates",
-                    "near_expiry_months"
+                    "near_expiry_months",
+                    "schedule_h1"
                 ],
                 "title": "ReviewOut"
             },
