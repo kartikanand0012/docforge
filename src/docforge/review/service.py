@@ -602,6 +602,34 @@ class ReviewService:
                 window=window, today=_india_today(), effective=effective,
             )  # fmt: skip
 
+    @scoped
+    def effective_invoice(
+        self, tenant_id: uuid.UUID, document_id: uuid.UUID
+    ) -> tuple[str, InvoiceExtraction]:
+        """An invoice's filename and its newest read version's values as corrected, without
+        the checks a review read runs (for what it needs mapped, V2 P1). Raises
+        `DocumentNotFound`, or `NotReviewable` for a document that is no invoice or not read."""
+        with self._sessions() as session:
+            document = self._find(session, tenant_id, document_id)
+            version_id = session.scalar(
+                select(DocumentVersion.id)
+                .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
+                .where(
+                    DocumentVersion.document_id == document.id,
+                    Extraction.tenant_id == tenant_id,
+                )
+                .order_by(DocumentVersion.version_no.desc())
+                .limit(1)
+            )
+            found = (
+                self._effective(session, version_id, document.doc_type)
+                if version_id is not None and document.doc_type == "invoice"
+                else None
+            )
+            if not isinstance(found, InvoiceExtraction):
+                raise NotReviewable(document_id)
+            return document.filename, found
+
     # Claims
 
     @scoped

@@ -1,7 +1,7 @@
 """ORM models for the tables the service reads and writes. Migrations are hand-written."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
@@ -9,6 +9,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     ColumnElement,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -253,6 +254,92 @@ class H1Product(Base):
     product_key: Mapped[str] = mapped_column(Text)
     product_name: Mapped[str] = mapped_column(Text)  # as it was printed when marked
     marked_by: Mapped[str] = mapped_column(Text)  # by name (the audit log has the id)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class SupplierMapping(Base):
+    """How the workspace's books name one supplier, keyed by its seller GSTIN (V2 P1): every
+    bill from that GSTIN, whatever name it prints, is booked under these names. Edited in
+    place and removed by deleting; past export runs keep the names they were made with."""
+
+    __tablename__ = "supplier_mappings"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    seller_gstin: Mapped[str] = mapped_column(Text)  # upper case, no spaces
+    printed_name: Mapped[str] = mapped_column(Text)  # as a bill printed it, for showing
+    sort_key: Mapped[str] = mapped_column(Text(collation="C"))  # printed_name, case-folded
+    tally_ledger: Mapped[str | None] = mapped_column(Text)
+    marg_party: Mapped[str | None] = mapped_column(Text)
+    purchase_ledger: Mapped[str | None] = mapped_column(Text)
+    tax_treatment: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)  # typed, or suggestion (confirmed by a click)
+    created_by: Mapped[str] = mapped_column(Text)  # by name (the audit log has the id)
+    created_at: Mapped[datetime] = _created_at()
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ItemMapping(Base):
+    """How the workspace's books name one product, keyed by its printed name and pack
+    (`mappings.keys.item_key`), with the HSN the workspace prefers if it differs."""
+
+    __tablename__ = "item_mappings"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    item_key: Mapped[str] = mapped_column(Text)
+    product_name: Mapped[str] = mapped_column(Text)  # as a bill printed it
+    pack: Mapped[str | None] = mapped_column(Text)
+    printed_hsn: Mapped[str | None] = mapped_column(Text)
+    sort_key: Mapped[str] = mapped_column(Text(collation="C"))  # product_name, case-folded
+    tally_item: Mapped[str | None] = mapped_column(Text)
+    marg_item: Mapped[str | None] = mapped_column(Text)
+    preferred_hsn: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MappingMaster(Base):
+    """A name the workspace's books already use - a ledger or party, or a stock item -
+    imported from its masters to be offered as a suggestion. Never applied by itself."""
+
+    __tablename__ = "mapping_masters"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    kind: Mapped[str] = mapped_column(Text)  # supplier or item
+    name: Mapped[str] = mapped_column(Text)
+    name_key: Mapped[str] = mapped_column(Text)  # case-folded, spacing collapsed
+    gstin: Mapped[str | None] = mapped_column(Text)  # a supplier's, when the file had it
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ExportRun(Base):
+    """One export of approved bills for Tally or Marg. Immutable: a run that met an
+    unmapped supplier or item holds its task list and no file; a ready one names its stored
+    file and the file's SHA-256, so a later download is the file as it was made."""
+
+    __tablename__ = "export_runs"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    target: Mapped[str] = mapped_column(Text)  # tally or marg
+    range_start: Mapped[date] = mapped_column(Date)  # India's dates the bills were approved
+    range_end: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(Text)  # needs_mapping or ready
+    invoices: Mapped[int] = mapped_column(Integer)
+    lines: Mapped[int] = mapped_column(Integer)
+    tasks: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    file_key: Mapped[str | None] = mapped_column(Text)
+    filename: Mapped[str | None] = mapped_column(Text)
+    sha256: Mapped[str | None] = mapped_column(CHAR(64))
+    size_bytes: Mapped[int | None] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 
 

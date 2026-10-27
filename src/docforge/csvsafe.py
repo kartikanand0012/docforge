@@ -20,12 +20,14 @@ def _cell(value: Any) -> str:
     return f"'{text}" if text.startswith(_FORMULA_START) else text
 
 
-def to_csv(rows: Sequence[dict[str, Any]]) -> str:
-    """Rows as CSV, every cell safe to open in a spreadsheet."""
-    if not rows:
+def to_csv(rows: Sequence[dict[str, Any]], fieldnames: Sequence[str] | None = None) -> str:
+    """Rows as CSV, every cell safe to open in a spreadsheet. With `fieldnames`, the header
+    is written even when there are no rows."""
+    if not rows and fieldnames is None:
         return ""
     out = io.StringIO()
-    writer = csv.DictWriter(out, fieldnames=list(rows[0]), lineterminator="\n")
+    names = list(fieldnames) if fieldnames is not None else list(rows[0])
+    writer = csv.DictWriter(out, fieldnames=names, lineterminator="\n")
     writer.writeheader()
     for row in rows:
         writer.writerow({key: _cell(value) for key, value in row.items()})

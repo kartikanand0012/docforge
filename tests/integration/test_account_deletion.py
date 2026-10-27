@@ -63,6 +63,28 @@ def two(
         "/v1/schedule-h1/products", headers=two.asha, json={"product_name": "ALPRAX 0.5 TAB"}
     )
     assert marked.status_code == 201, marked.text
+    # Her mapping master and an export run, with its stored file (V2 P1).
+    mapped = two.api.post(
+        "/v1/settings/mappings/suppliers", headers=two.asha,
+        json={"seller_gstin": "24AABFN7754K1Z0", "printed_name": "Navjivan",
+              "tally_ledger": "Navjivan"},
+    )  # fmt: skip
+    assert mapped.status_code == 201, mapped.text
+    item = two.api.post(
+        "/v1/settings/mappings/items", headers=two.asha,
+        json={"product_name": "Dolo 650 Tab", "tally_item": "DOLO 650"},
+    )  # fmt: skip
+    assert item.status_code == 201, item.text
+    imported = two.api.post(
+        "/v1/settings/mappings/import", headers=two.asha,
+        files={"file": ("m.csv", b"name,type\nNavjivan,supplier\n")},
+    )  # fmt: skip
+    assert imported.json()["imported"] == 1, imported.text
+    run = two.api.post(
+        "/v1/exports/runs", headers=two.asha,
+        json={"target": "tally", "from": "2026-01-01", "to": "2026-01-31"},
+    )  # fmt: skip
+    assert run.json()["status"] == "ready", run.text
     store = world.store
     store.put(f"renditions/{two.asha_ws}/{'a' * 64}.pdf", b"%PDF-", "application/pdf")
     store.put(f"audit-anchors/{two.asha_ws}/latest.json", b"{}", "application/json")
@@ -121,9 +143,10 @@ def test_deleting_an_account_erases_its_whole_workspace_and_nothing_else(
                   "conversations", "messages", "collections", "collection_documents",
                   "review_claims", "corrections", "reviews", "sessions", "audit_log",
                   "accounts", "reviewers", "assessments", "model_runs", "workspace_settings",
-                  "h1_products", "tenants"):  # fmt: skip
+                  "h1_products", "supplier_mappings", "item_mappings", "mapping_masters",
+                  "export_runs", "tenants"):  # fmt: skip
         assert before[table] > 0, table
-    assert len(keys_of(two, two.asha_ws)) >= 4
+    assert len(keys_of(two, two.asha_ws)) >= 5  # with the export run's file
     bens_rows, bens_keys = rows_of(owner_engine, two.ben_ws), keys_of(two, two.ben_ws)
 
     with caplog.at_level(logging.INFO, logger="docforge.auth"):

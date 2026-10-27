@@ -33,7 +33,9 @@ from docforge.api.auth import (
 from docforge.api.chat import chat_router
 from docforge.api.collections import collections_router
 from docforge.api.documents import documents_router
+from docforge.api.export_runs import export_runs_router
 from docforge.api.exports import exports_router
+from docforge.api.mappings import mappings_router
 from docforge.api.platform import platform_router
 from docforge.api.review import review_router
 from docforge.api.schedule_h1 import schedule_h1_router
@@ -53,11 +55,13 @@ from docforge.auth import MEMBER, Authenticator, FailureLimiter, Principal
 from docforge.chat.service import ChatService
 from docforge.collections import CollectionService
 from docforge.documents import DocumentService
+from docforge.export_runs import ExportRunService
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, InvoicePipeline
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.h1_products import H1ProductService
 from docforge.limits import Limits, LocalLimits
 from docforge.llm.base import LLMError, LLMQuotaExhausted
+from docforge.mappings.service import MappingService
 from docforge.mcp_server.server import mount as mount_mcp
 from docforge.mcp_server.tools import AgentTools
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
@@ -135,6 +139,8 @@ def create_app(
     collections: CollectionService | None = None,
     settings: WorkspaceSettingsService | None = None,
     h1_products: H1ProductService | None = None,
+    mappings: MappingService | None = None,
+    export_runs: ExportRunService | None = None,
     limits: Limits | None = None,
     agents: AgentTools | None = None,
     audit_log: AuditLogService | None = None,
@@ -282,6 +288,10 @@ def create_app(
         app.include_router(settings_router(settings))
     if h1_products is not None:
         app.include_router(schedule_h1_router(h1_products))
+    if mappings is not None:
+        app.include_router(mappings_router(mappings, review, export_runs))
+    if export_runs is not None:
+        app.include_router(export_runs_router(export_runs))
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
     if authenticator is not None:

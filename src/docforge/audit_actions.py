@@ -64,6 +64,28 @@ ACTIONS: dict[str, Action] = {
     # Schedule H1 products a reviewer marks for the workspace
     "h1_product.marked": Action("Product marked Schedule H1", ("product_name",)),
     "h1_product.unmarked": Action("Schedule H1 mark removed", ("product_name",)),
+    # The mapping master (V2 P1): what was done, never the names themselves
+    "mapping.created": Action("Mapping made", ("kind", "source")),
+    "mapping.updated": Action("Mapping changed", ("kind", "fields")),
+    "mapping.deleted": Action("Mapping removed", ("kind",)),
+    "mapping.imported": Action(
+        "Master names imported", ("rows", "imported", "already_known", "rejected")
+    ),
+    # Export runs for Tally and Marg
+    "export.created": Action(
+        "Export run",
+        (
+            "target",
+            "status",
+            "invoices",
+            "lines",
+            "unmapped_suppliers",
+            "unmapped_items",
+            "problems",
+            "sha256",
+        ),
+    ),
+    "export.downloaded": Action("Export file downloaded", ("sha256",)),
     # Keys and webhooks
     "api_key.created": Action("API key made", ("name", "role")),
     "api_key.revoked": Action("API key revoked", ("name",)),

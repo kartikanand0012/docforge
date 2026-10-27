@@ -10,10 +10,13 @@ from docforge.audit_log import AuditLogService
 from docforge.collections import CollectionService
 from docforge.config import get_settings
 from docforge.db.session import make_engine, make_session_factory
+from docforge.export_runs import ExportRunService
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.h1_products import H1ProductService
 from docforge.limits import DatabaseLimits
+from docforge.mappings.service import MappingService
 from docforge.mcp_server.tools import AgentTools
+from docforge.storage import S3ObjectStore
 from docforge.telemetry import configure_tracing, settings_prices
 from docforge.wiring import (
     build_authenticator,
@@ -41,6 +44,7 @@ def create_default_app() -> FastAPI:
     chat = build_chat(settings, search)
     collections = CollectionService(sessions)
     limits = DatabaseLimits(sessions)
+    mappings = MappingService(sessions)
     # AI agents read through the same services, under the same limits.
     agents = AgentTools(
         sessions, search=search, chat=chat, collections=collections, documents=service,
@@ -62,6 +66,8 @@ def create_default_app() -> FastAPI:
         collections=collections,
         settings=WorkspaceSettingsService(sessions),
         h1_products=H1ProductService(sessions),
+        mappings=mappings,
+        export_runs=ExportRunService(sessions, S3ObjectStore.from_settings(settings), mappings),
         limits=limits,
         agents=agents,
         audit_log=AuditLogService(sessions),

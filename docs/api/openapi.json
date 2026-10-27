@@ -2262,6 +2262,692 @@
                 }
             }
         },
+        "/v1/settings/mappings/suppliers": {
+            "get": {
+                "summary": "List Suppliers",
+                "description": "In printed-name order; `q` finds by words of the name, GSTIN, ledger or party.",
+                "operationId": "list_suppliers_v1_settings_mappings_suppliers_get",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 200
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Q"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 1000
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "After"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SupplierPage"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "summary": "Create Supplier",
+                "description": "Map a seller GSTIN to the names the books use. Every later bill from the GSTIN,\nunder any printed name, is booked under them.",
+                "operationId": "create_supplier_v1_settings_mappings_suppliers_post",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SupplierIn"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SupplierOut"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The GSTIN is mapped already: `existing_id` names it"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/mappings/suppliers/{mapping_id}": {
+            "patch": {
+                "summary": "Change Supplier",
+                "description": "Change the names it is booked under. Later exports use them; past ones keep theirs.",
+                "operationId": "change_supplier_v1_settings_mappings_suppliers__mapping_id__patch",
+                "parameters": [
+                    {
+                        "name": "mapping_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Mapping Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SupplierChange"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SupplierOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "summary": "Remove Supplier",
+                "operationId": "remove_supplier_v1_settings_mappings_suppliers__mapping_id__delete",
+                "parameters": [
+                    {
+                        "name": "mapping_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Mapping Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/mappings/items": {
+            "get": {
+                "summary": "List Items",
+                "description": "In printed-name order; `q` finds by words of the name, pack or stock item.",
+                "operationId": "list_items_v1_settings_mappings_items_get",
+                "parameters": [
+                    {
+                        "name": "q",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 200
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Q"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    },
+                    {
+                        "name": "after",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 1000
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "After"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ItemPage"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "summary": "Create Item",
+                "description": "Map a printed product name and pack to the stock item the books use.",
+                "operationId": "create_item_v1_settings_mappings_items_post",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ItemIn"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ItemOut"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "The name and pack are mapped already: `existing_id`"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/mappings/items/{mapping_id}": {
+            "patch": {
+                "summary": "Change Item",
+                "description": "Change the names it is booked under, or its HSN. Later exports use them.",
+                "operationId": "change_item_v1_settings_mappings_items__mapping_id__patch",
+                "parameters": [
+                    {
+                        "name": "mapping_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Mapping Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ItemChange"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ItemOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "summary": "Remove Item",
+                "operationId": "remove_item_v1_settings_mappings_items__mapping_id__delete",
+                "parameters": [
+                    {
+                        "name": "mapping_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Mapping Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/mappings/import": {
+            "post": {
+                "summary": "Import Masters",
+                "description": "A CSV of the books' existing names - columns name, type (supplier or item) and,\nfor suppliers, gstin - kept to be offered as suggestions, never applied. Each bad row\nis reported by its line (the header is line 1); the good rows are kept.",
+                "operationId": "import_masters_v1_settings_mappings_import_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_import_masters_v1_settings_mappings_import_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ImportOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/mappings/suggestions": {
+            "get": {
+                "summary": "Suggestions",
+                "description": "What a bill, or an export run, still needs mapped, each with names to offer. Only\noffered: nothing is mapped until a mapping is made with POST.",
+                "operationId": "suggestions_v1_settings_mappings_suggestions_get",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "uuid"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Document Id"
+                        }
+                    },
+                    {
+                        "name": "export_run_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "uuid"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Export Run Id"
+                        }
+                    },
+                    {
+                        "name": "target",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "enum": [
+                                        "tally",
+                                        "marg"
+                                    ],
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Target"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TasksOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/exports/runs": {
+            "post": {
+                "summary": "Create Run",
+                "description": "Export the invoices approved in the range for Tally or Marg. Nothing is guessed:\nwith anything unmapped the run lists it and makes no file.",
+                "operationId": "create_run_v1_exports_runs_post",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/RunIn"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RunOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "summary": "List Runs",
+                "description": "Newest first.",
+                "operationId": "list_runs_v1_exports_runs_get",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/RunOut"
+                                    },
+                                    "title": "Response List Runs V1 Exports Runs Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/exports/runs/{run_id}": {
+            "get": {
+                "summary": "Read Run",
+                "operationId": "read_run_v1_exports_runs__run_id__get",
+                "parameters": [
+                    {
+                        "name": "run_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Run Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RunOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/exports/runs/{run_id}/file": {
+            "get": {
+                "summary": "Download Run",
+                "description": "The run's file, byte for byte as it was made.",
+                "operationId": "download_run_v1_exports_runs__run_id__file_get",
+                "parameters": [
+                    {
+                        "name": "run_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Run Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "text/csv": {}
+                        }
+                    },
+                    "409": {
+                        "description": "No file made"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/audit": {
             "get": {
                 "summary": "Entries",
@@ -3392,6 +4078,20 @@
                     "file"
                 ],
                 "title": "Body_create_extraction_v1_extractions_post"
+            },
+            "Body_import_masters_v1_settings_mappings_import_post": {
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "contentMediaType": "application/octet-stream",
+                        "title": "File"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file"
+                ],
+                "title": "Body_import_masters_v1_settings_mappings_import_post"
             },
             "Body_upload_document_v1_documents_post": {
                 "properties": {
@@ -4724,6 +5424,29 @@
                 ],
                 "title": "ExtractionResponse"
             },
+            "FileOut": {
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "title": "Filename"
+                    },
+                    "sha256": {
+                        "type": "string",
+                        "title": "Sha256"
+                    },
+                    "size_bytes": {
+                        "type": "integer",
+                        "title": "Size Bytes"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "filename",
+                    "sha256",
+                    "size_bytes"
+                ],
+                "title": "FileOut"
+            },
             "FlagCountsOut": {
                 "properties": {
                     "duplicates": {
@@ -4943,6 +5666,37 @@
                 ],
                 "title": "HitOut"
             },
+            "ImportOut": {
+                "properties": {
+                    "rows": {
+                        "type": "integer",
+                        "title": "Rows"
+                    },
+                    "imported": {
+                        "type": "integer",
+                        "title": "Imported"
+                    },
+                    "already_known": {
+                        "type": "integer",
+                        "title": "Already Known"
+                    },
+                    "rejected": {
+                        "items": {
+                            "$ref": "#/components/schemas/RejectedOut"
+                        },
+                        "type": "array",
+                        "title": "Rejected"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "rows",
+                    "imported",
+                    "already_known",
+                    "rejected"
+                ],
+                "title": "ImportOut"
+            },
             "InvoiceExtraction": {
                 "properties": {
                     "schema_version": {
@@ -5039,6 +5793,375 @@
                     "message"
                 ],
                 "title": "Issue"
+            },
+            "ItemChange": {
+                "properties": {
+                    "printed_hsn": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Printed Hsn"
+                    },
+                    "tally_item": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tally Item"
+                    },
+                    "marg_item": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Marg Item"
+                    },
+                    "preferred_hsn": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Preferred Hsn"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "ItemChange"
+            },
+            "ItemIn": {
+                "properties": {
+                    "product_name": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "title": "Product Name"
+                    },
+                    "pack": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pack"
+                    },
+                    "printed_hsn": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Printed Hsn"
+                    },
+                    "tally_item": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tally Item"
+                    },
+                    "marg_item": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Marg Item"
+                    },
+                    "preferred_hsn": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Preferred Hsn"
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "typed",
+                            "suggestion"
+                        ],
+                        "title": "Source",
+                        "default": "typed"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "product_name"
+                ],
+                "title": "ItemIn"
+            },
+            "ItemOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "item_key": {
+                        "type": "string",
+                        "title": "Item Key"
+                    },
+                    "product_name": {
+                        "type": "string",
+                        "title": "Product Name"
+                    },
+                    "pack": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pack"
+                    },
+                    "printed_hsn": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Printed Hsn"
+                    },
+                    "tally_item": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tally Item"
+                    },
+                    "marg_item": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Marg Item"
+                    },
+                    "preferred_hsn": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Preferred Hsn"
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "typed",
+                            "suggestion"
+                        ],
+                        "title": "Source"
+                    },
+                    "created_by": {
+                        "type": "string",
+                        "title": "Created By"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated By"
+                    },
+                    "updated_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "item_key",
+                    "product_name",
+                    "pack",
+                    "printed_hsn",
+                    "tally_item",
+                    "marg_item",
+                    "preferred_hsn",
+                    "source",
+                    "created_by",
+                    "created_at",
+                    "updated_by",
+                    "updated_at"
+                ],
+                "title": "ItemOut"
+            },
+            "ItemPage": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/ItemOut"
+                        },
+                        "type": "array",
+                        "title": "Items"
+                    },
+                    "total": {
+                        "type": "integer",
+                        "title": "Total"
+                    },
+                    "next_after": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Next After"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "items",
+                    "total",
+                    "next_after"
+                ],
+                "title": "ItemPage"
+            },
+            "ItemTaskOut": {
+                "properties": {
+                    "item_key": {
+                        "type": "string",
+                        "title": "Item Key"
+                    },
+                    "product_name": {
+                        "type": "string",
+                        "title": "Product Name"
+                    },
+                    "pack": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pack"
+                    },
+                    "printed_hsn": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Printed Hsn"
+                    },
+                    "bills": {
+                        "type": "integer",
+                        "title": "Bills"
+                    },
+                    "mapping_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Mapping Id"
+                    },
+                    "suggestions": {
+                        "items": {
+                            "$ref": "#/components/schemas/SuggestionOut"
+                        },
+                        "type": "array",
+                        "title": "Suggestions"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "item_key",
+                    "product_name",
+                    "pack",
+                    "printed_hsn",
+                    "bills",
+                    "mapping_id",
+                    "suggestions"
+                ],
+                "title": "ItemTaskOut"
             },
             "KeyIn": {
                 "properties": {
@@ -5750,6 +6873,30 @@
                 ],
                 "title": "PartyExtraction"
             },
+            "ProblemOut": {
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Document Id"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "title": "Filename"
+                    },
+                    "problem": {
+                        "type": "string",
+                        "title": "Problem"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "document_id",
+                    "filename",
+                    "problem"
+                ],
+                "title": "ProblemOut"
+            },
             "ProductIn": {
                 "properties": {
                     "product_name": {
@@ -5910,6 +7057,24 @@
                     "flags"
                 ],
                 "title": "QueueItemOut"
+            },
+            "RejectedOut": {
+                "properties": {
+                    "line": {
+                        "type": "integer",
+                        "title": "Line"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "title": "Reason"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "line",
+                    "reason"
+                ],
+                "title": "RejectedOut"
             },
             "ReviewOut": {
                 "properties": {
@@ -6123,6 +7288,123 @@
                     "near_expiry"
                 ],
                 "title": "ReviewOut"
+            },
+            "RunIn": {
+                "properties": {
+                    "target": {
+                        "type": "string",
+                        "enum": [
+                            "tally",
+                            "marg"
+                        ],
+                        "title": "Target"
+                    },
+                    "from": {
+                        "type": "string",
+                        "format": "date",
+                        "title": "From"
+                    },
+                    "to": {
+                        "type": "string",
+                        "format": "date",
+                        "title": "To"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "target",
+                    "from",
+                    "to"
+                ],
+                "title": "RunIn"
+            },
+            "RunOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "target": {
+                        "type": "string",
+                        "enum": [
+                            "tally",
+                            "marg"
+                        ],
+                        "title": "Target"
+                    },
+                    "from": {
+                        "type": "string",
+                        "format": "date",
+                        "title": "From"
+                    },
+                    "to": {
+                        "type": "string",
+                        "format": "date",
+                        "title": "To"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "needs_mapping",
+                            "ready"
+                        ],
+                        "title": "Status"
+                    },
+                    "invoices": {
+                        "type": "integer",
+                        "title": "Invoices"
+                    },
+                    "lines": {
+                        "type": "integer",
+                        "title": "Lines"
+                    },
+                    "tasks": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/TasksOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "file": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/FileOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "created_by": {
+                        "type": "string",
+                        "title": "Created By"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "target",
+                    "from",
+                    "to",
+                    "status",
+                    "invoices",
+                    "lines",
+                    "tasks",
+                    "file",
+                    "created_by",
+                    "created_at"
+                ],
+                "title": "RunOut"
             },
             "SearchOut": {
                 "properties": {
@@ -6538,6 +7820,429 @@
                     "detail"
                 ],
                 "title": "StepOut"
+            },
+            "SuggestionOut": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gstin"
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "master",
+                            "mapping"
+                        ],
+                        "title": "Source"
+                    },
+                    "score": {
+                        "type": "number",
+                        "title": "Score"
+                    },
+                    "why": {
+                        "type": "string",
+                        "enum": [
+                            "same GSTIN",
+                            "same name",
+                            "similar name"
+                        ],
+                        "title": "Why"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "gstin",
+                    "source",
+                    "score",
+                    "why"
+                ],
+                "title": "SuggestionOut"
+            },
+            "SupplierChange": {
+                "properties": {
+                    "printed_name": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Printed Name"
+                    },
+                    "tally_ledger": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tally Ledger"
+                    },
+                    "marg_party": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Marg Party"
+                    },
+                    "purchase_ledger": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Purchase Ledger"
+                    },
+                    "tax_treatment": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tax Treatment"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "SupplierChange"
+            },
+            "SupplierIn": {
+                "properties": {
+                    "seller_gstin": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "title": "Seller Gstin"
+                    },
+                    "printed_name": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "title": "Printed Name"
+                    },
+                    "tally_ledger": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tally Ledger"
+                    },
+                    "marg_party": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Marg Party"
+                    },
+                    "purchase_ledger": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Purchase Ledger"
+                    },
+                    "tax_treatment": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tax Treatment"
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "typed",
+                            "suggestion"
+                        ],
+                        "title": "Source",
+                        "default": "typed"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "seller_gstin",
+                    "printed_name"
+                ],
+                "title": "SupplierIn"
+            },
+            "SupplierOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "seller_gstin": {
+                        "type": "string",
+                        "title": "Seller Gstin"
+                    },
+                    "printed_name": {
+                        "type": "string",
+                        "title": "Printed Name"
+                    },
+                    "tally_ledger": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tally Ledger"
+                    },
+                    "marg_party": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Marg Party"
+                    },
+                    "purchase_ledger": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Purchase Ledger"
+                    },
+                    "tax_treatment": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tax Treatment"
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "typed",
+                            "suggestion"
+                        ],
+                        "title": "Source"
+                    },
+                    "created_by": {
+                        "type": "string",
+                        "title": "Created By"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated By"
+                    },
+                    "updated_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "seller_gstin",
+                    "printed_name",
+                    "tally_ledger",
+                    "marg_party",
+                    "purchase_ledger",
+                    "tax_treatment",
+                    "source",
+                    "created_by",
+                    "created_at",
+                    "updated_by",
+                    "updated_at"
+                ],
+                "title": "SupplierOut"
+            },
+            "SupplierPage": {
+                "properties": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/SupplierOut"
+                        },
+                        "type": "array",
+                        "title": "Items"
+                    },
+                    "total": {
+                        "type": "integer",
+                        "title": "Total"
+                    },
+                    "next_after": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Next After"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "items",
+                    "total",
+                    "next_after"
+                ],
+                "title": "SupplierPage"
+            },
+            "SupplierTaskOut": {
+                "properties": {
+                    "seller_gstin": {
+                        "type": "string",
+                        "title": "Seller Gstin"
+                    },
+                    "printed_names": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Printed Names"
+                    },
+                    "bills": {
+                        "type": "integer",
+                        "title": "Bills"
+                    },
+                    "mapping_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Mapping Id"
+                    },
+                    "suggestions": {
+                        "items": {
+                            "$ref": "#/components/schemas/SuggestionOut"
+                        },
+                        "type": "array",
+                        "title": "Suggestions"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "seller_gstin",
+                    "printed_names",
+                    "bills",
+                    "mapping_id",
+                    "suggestions"
+                ],
+                "title": "SupplierTaskOut"
+            },
+            "TasksOut": {
+                "properties": {
+                    "suppliers": {
+                        "items": {
+                            "$ref": "#/components/schemas/SupplierTaskOut"
+                        },
+                        "type": "array",
+                        "title": "Suppliers"
+                    },
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/ItemTaskOut"
+                        },
+                        "type": "array",
+                        "title": "Items"
+                    },
+                    "problems": {
+                        "items": {
+                            "$ref": "#/components/schemas/ProblemOut"
+                        },
+                        "type": "array",
+                        "title": "Problems"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "suppliers",
+                    "items",
+                    "problems"
+                ],
+                "title": "TasksOut"
             },
             "TotalsExtraction": {
                 "properties": {
