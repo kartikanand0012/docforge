@@ -15,6 +15,7 @@ from sqlalchemy import (
     Identity,
     Integer,
     Text,
+    false,
     literal_column,
     text,
     true,
@@ -266,6 +267,7 @@ class MatchRecord(Base):
     order_version_id: Mapped[uuid.UUID] = _version()
     decision: Mapped[str] = mapped_column(Text)
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    manual: Mapped[bool] = mapped_column(Boolean, server_default=false())  # linked by hand
     created_at: Mapped[datetime] = _created_at()
 
 

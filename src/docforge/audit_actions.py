@@ -32,6 +32,9 @@ ACTIONS: dict[str, Action] = {
     ),
     "einvoice.checked": Action("E-invoice QR checked", ("version_no", "status", "irp")),
     "match.created": Action("Matched", ("counterpart_document_id", "decision", "discrepancies")),
+    "match.linked": Action(
+        "Linked to its order by hand", ("counterpart_document_id", "decision", "discrepancies")
+    ),
     "processing.retry_scheduled": Action(
         "Reading to be retried", ("version_no", "attempt", "error")
     ),

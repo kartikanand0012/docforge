@@ -6,11 +6,12 @@ and is never logged or returned.
 
 import json
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
+from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -20,12 +21,14 @@ from docforge.api.einvoice import EinvoiceOut, einvoice_out
 from docforge.auth import FailureLimiter, Principal, TooManyAttempts
 from docforge.documents import DocumentNotFound
 from docforge.parsing.base import ParseError
+from docforge.review.flags import MAX_RANGE_DAYS, RangeInvalid
 from docforge.review.service import (
     AlreadySigned,
     ApprovalBlocked,
     ClaimedByOther,
     ClaimView,
     NotAuthenticated,
+    NotLinkable,
     NotPermitted,
     NotReviewable,
     PageNotFound,
@@ -38,6 +41,7 @@ from docforge.review.service import (
 
 # 403, not 401: the caller's session is fine, only the PIN re-entered for this action failed.
 _NOT_AUTHENTICATED = HTTPException(403, "The email or PIN is not right.")
+_INDIA = ZoneInfo("Asia/Kolkata")
 
 
 class _In(BaseModel):
@@ -86,6 +90,54 @@ class QueueItemOut(BaseModel):
     reasons: list[str]
     match_status: str
     claimed_by: str | None  # another reviewer who has it open now
+    flags: "FlagCountsOut"  # what the checks flagged, for badges on the row
+
+
+class FlagCountsOut(BaseModel):
+    """A bill's flags. Duplicates block approval (an override reason is needed); near-expiry
+    stock and Schedule H1 lines are for information and never need an override."""
+
+    duplicates: int  # earlier bills this one may repeat
+    near_expiry_lines: int
+    schedule_h1_lines: int
+
+
+class NearExpiryLineOut(BaseModel):
+    """A line whose stock has less than the workspace's window left after the bill date."""
+
+    path: str  # lines[i]
+    product_name: str | None
+    batch_no: str | None
+    expiry: str  # YYYY-MM
+    months_left: int  # from the bill date's month, at least 0 and less than the window
+
+
+class FlagSummaryOut(BaseModel):
+    from_: date = Field(serialization_alias="from")  # India's dates, both included
+    to: date
+    invoices: int  # invoices received in the range and counted
+    duplicates: int  # of those, how many may repeat an earlier bill
+    near_expiry_lines: int
+    near_expiry_bills: int
+    schedule_h1_lines: int
+    schedule_h1_bills: int
+    # True when the range held more invoices than one summary counts: the counts are then a
+    # lower bound.
+    capped: bool
+
+
+class OrderCandidateOut(BaseModel):
+    document_id: uuid.UUID
+    filename: str
+    po_no: str | None
+    supplier_name: str | None
+    created_at: datetime
+    same_supplier: bool  # the invoice's seller, by GSTIN or name
+
+
+class OrderLinkIn(_In):
+    order_document_id: uuid.UUID
+    reason: Annotated[str, Field(min_length=1, max_length=500)]
 
 
 class ClaimOut(BaseModel):
@@ -162,6 +214,8 @@ class ReviewOut(BaseModel):
     # The workspace's near-expiry window the checks used (line.shelf_life), 0 for off.
     near_expiry_months: int
     schedule_h1: list[H1LineOut]  # an invoice's lines for the H1 register; never a blocker
+    # An invoice's lines with less than the window left after the bill date; never a blocker.
+    near_expiry: list[NearExpiryLineOut]
 
 
 def _review_out(detail: ReviewDetail) -> ReviewOut:
@@ -205,6 +259,7 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
             )
             for line in detail.schedule_h1
         ],
+        near_expiry=[NearExpiryLineOut(**vars(line)) for line in detail.near_expiry],
     )
 
 
@@ -251,6 +306,22 @@ def _errors(error: Exception) -> HTTPException:
     raise error
 
 
+def _india_today() -> date:
+    return datetime.now(_INDIA).date()
+
+
+def _link_errors(error: Exception) -> HTTPException:
+    if isinstance(error, NotLinkable):
+        return HTTPException(
+            409,
+            f"This cannot be linked: {error}. Open the invoice, then choose one of the "
+            "purchase orders offered.",
+        )
+    if isinstance(error, ValueError) and not isinstance(error, ValidationError):
+        return HTTPException(422, "Say why this is the right order before linking it.")
+    return _errors(error)
+
+
 Reader = Annotated[Principal, Depends(require("documents:read"))]
 Reviewing = Annotated[Principal, Depends(require("review"))]
 
@@ -279,9 +350,59 @@ def review_router(
     def review_queue(principal: Reviewing) -> list[QueueItemOut]:
         """Documents waiting for a person, oldest first."""
         return [
-            QueueItemOut(**{**vars(i), "reasons": list(i.reasons)})
+            QueueItemOut(
+                **{**vars(i), "reasons": list(i.reasons), "flags": FlagCountsOut(**vars(i.flags))}
+            )
             for i in review.queue(principal.tenant_id, viewer=_viewer(principal))
         ]
+
+    @router.get("/flags/summary", response_model=FlagSummaryOut, response_model_by_alias=True)
+    def flag_summary(
+        principal: Reader,
+        response: Response,
+        from_: Annotated[date | None, Query(alias="from")] = None,
+        to: date | None = None,
+    ) -> FlagSummaryOut:
+        """What the checks caught on the invoices received from `from` to `to` (India's dates,
+        both included; by default the 30 days to today): duplicates, near-expiry lines and
+        Schedule H1 lines. Only the caller's workspace is counted."""
+        end = to or _india_today()
+        start = from_ or end - timedelta(days=29)
+        try:
+            found = review.flag_summary(principal.tenant_id, start, end)
+        except RangeInvalid as error:
+            raise HTTPException(
+                422,
+                f"That date range cannot be counted: {error}. Choose a range of at most "
+                f"{MAX_RANGE_DAYS} days that ends on or after its first day.",
+            ) from error
+        response.headers["Cache-Control"] = "no-store"
+        return FlagSummaryOut(**{**vars(found), "from_": found.start, "to": found.end})
+
+    @router.get("/documents/{document_id}/order-candidates", response_model=list[OrderCandidateOut])
+    def order_candidates(document_id: uuid.UUID, principal: Reviewing) -> list[OrderCandidateOut]:
+        """Purchase orders an invoice can be linked to by hand: the bill's seller's first,
+        then the newest."""
+        try:
+            found = review.order_candidates(principal.tenant_id, document_id)
+        except Exception as error:
+            raise _link_errors(error) from error
+        return [OrderCandidateOut(**vars(candidate)) for candidate in found]
+
+    @router.post("/documents/{document_id}/order-link", response_model=ReviewOut)
+    def order_link(document_id: uuid.UUID, body: OrderLinkIn, principal: Reviewing) -> ReviewOut:
+        """Link an invoice to its purchase order by hand, with a reason, when nothing on the
+        page links them (an order number misprinted, an order placed by phone). The two are
+        then compared as usual. Audited on both documents as `match.linked`."""
+        _person(principal, "link an order")
+        try:
+            detail = review.link_order(
+                principal.tenant_id, document_id, body.order_document_id,
+                reason=body.reason, actor=principal.actor, name=principal.name,
+            )  # fmt: skip
+        except Exception as error:
+            raise _link_errors(error) from error
+        return _review_out(detail)
 
     @router.get("/documents/{document_id}/review", response_model=ReviewOut)
     def review_detail(document_id: uuid.UUID, principal: Reader) -> ReviewOut:

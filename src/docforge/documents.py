@@ -31,7 +31,6 @@ from sqlalchemy.orm import Session, aliased
 from docforge import audit
 from docforge.conversion import ConversionError, Converter, ConverterUnavailable, FileConverter
 from docforge.db.models import (
-    ORDER_NUMBER,
     AssessmentRecord,
     AuditEntry,
     Document,
@@ -61,6 +60,7 @@ from docforge.extraction.schema import InvoiceExtraction
 from docforge.formats import ACCEPTED, FORMAT_OF, MEDIA_TYPES, Format, sniff
 from docforge.llm.base import LLMError
 from docforge.llm.replay import NotRecorded
+from docforge.order_match import find_counterpart, record_match
 from docforge.parsing.base import (
     DocumentTooLarge,
     NoTextLayer,
@@ -82,7 +82,6 @@ from docforge.storage import (
 from docforge.telemetry import Prices, current_prices, document_cost, traced
 from docforge.trust.einvoice_rules import einvoice_rules
 from docforge.trust.invoice_rules import InvoiceRule, near_expiry
-from docforge.trust.match import company_key, match_invoice_to_order
 from docforge.trust.rules import RuleResult
 from docforge.workspace_settings import near_expiry_months
 
@@ -95,7 +94,6 @@ WORKER = "system:worker"
 IN_FLIGHT = ("queued", "running")
 # Document types that are compared with each other once both are extracted, joined on the
 # order number each carries.
-_COUNTERPART = {"invoice": "purchase_order", "purchase_order": "invoice"}
 Outcome = Literal["succeeded", "failed", "skipped"]
 
 
@@ -305,41 +303,6 @@ def current_match(
         .limit(1)
     ).first()
     return (found[0], found[1]) if found is not None else (None, None)
-
-
-_MATCH_CANDIDATES = 20
-
-
-@dataclass(frozen=True)
-class _Parties:
-    supplier_gstin: str | None
-    supplier_name: str | None  # as compared: see `company_key`
-    buyer_gstin: str | None
-
-    def pair_with(self, other: "_Parties") -> bool:
-        """The same buyer by GSTIN, and the same supplier: by GSTIN when both print one, by
-        name when either does not (many orders leave out the supplier's GSTIN)."""
-        if self.buyer_gstin is None or self.buyer_gstin != other.buyer_gstin:
-            return False
-        if self.supplier_gstin is not None and other.supplier_gstin is not None:
-            return self.supplier_gstin == other.supplier_gstin
-        return self.supplier_name is not None and self.supplier_name == other.supplier_name
-
-
-def _parties(data: Mapping[str, Any], *, invoice: bool) -> _Parties:
-    """Supplier and buyer from a stored invoice or purchase-order extraction."""
-
-    def value(field: Any) -> Any:
-        return (field or {}).get("value") or None
-
-    seller = data.get("seller") or {}
-    return _Parties(
-        supplier_gstin=value(seller.get("gstin") if invoice else data.get("supplier_gstin")),
-        supplier_name=company_key(
-            value(seller.get("name") if invoice else data.get("supplier_name"))
-        ),
-        buyer_gstin=value((data.get("buyer") or {}).get("gstin")),
-    )
 
 
 def _now() -> datetime:
@@ -966,90 +929,40 @@ class DocumentService:
         """Compare a newly extracted invoice or order with its counterpart, if one is stored.
 
         Runs after the extraction has committed, so whichever of the two finishes second
-        sees the other. If both run at once, the unique pair keeps a single record.
+        sees the other. If both run at once, the unique pair keeps a single record. The
+        counterpart is found by its values as corrected (`order_match`); the comparison stored
+        here is of the two as read, and every review read compares them again as corrected.
         """
         with self._sessions.begin() as session:
             version = session.get_one(DocumentVersion, version_id)
             document = session.get(Document, version.document_id)
             if document is None or document.deleted_at is not None:
                 return  # deleted meanwhile: nothing to compare
-            other_type = _COUNTERPART.get(document.doc_type)
-            mine = session.scalar(
-                select(Extraction).where(Extraction.document_version_id == version.id)
-            )
-            if other_type is None or mine is None:
-                return
-            order_number = (mine.data.get("po_no") or {}).get("value")
-            if order_number is None:
-                return
-            # Only a document's newest version is a candidate, never a superseded one.
-            newer = aliased(DocumentVersion)
-            newest = (
-                select(func.max(newer.version_no))
-                .where(newer.document_id == Document.id)
-                .correlate(Document)
-                .scalar_subquery()
-            )
-            candidates = session.execute(
-                select(DocumentVersion, Extraction, Document)
-                .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
-                .join(Document, Document.id == DocumentVersion.document_id)
-                .where(
-                    Document.tenant_id == document.tenant_id,
-                    live(),
-                    Document.doc_type == other_type,
-                    DocumentVersion.version_no == newest,
-                    order_number == ORDER_NUMBER,
-                )
-                .order_by(DocumentVersion.created_at.desc())
-                .limit(_MATCH_CANDIDATES)
-            ).all()
-            is_invoice = document.doc_type == "invoice"
-            # The order number alone is whatever the document says. The two must also name
-            # the same supplier and buyer before they are treated as a pair.
-            parties = _parties(mine.data, invoice=is_invoice)
-            found = next(
-                (
-                    row
-                    for row in candidates
-                    if parties.pair_with(_parties(row[1].data, invoice=not is_invoice))
-                ),
-                None,
-            )
+            found = find_counterpart(session, document, version.id)
             if found is None:
                 return
-            other_version, theirs, other_document = found
-            invoice_side = (version, mine) if is_invoice else (other_version, theirs)
-            order_side = (other_version, theirs) if is_invoice else (version, mine)
-            discrepancies = match_invoice_to_order(
-                InvoiceExtraction.model_validate(invoice_side[1].data),
-                PurchaseOrderExtraction.model_validate(order_side[1].data),
+            other_document, other_version = found
+            stored = {
+                row.document_version_id: row.data
+                for row in session.scalars(
+                    select(Extraction).where(
+                        Extraction.document_version_id.in_((version.id, other_version))
+                    )
+                )
+            }
+            is_invoice = document.doc_type == "invoice"
+            invoice = (document, version.id) if is_invoice else (other_document, other_version)
+            order = (other_document, other_version) if is_invoice else (document, version.id)
+            record_match(
+                session,
+                invoice=invoice,
+                order=order,
+                records=(
+                    InvoiceExtraction.model_validate(stored[invoice[1]]),
+                    PurchaseOrderExtraction.model_validate(stored[order[1]]),
+                ),
+                actor=WORKER,
             )
-            decision = "mismatch" if any(d.severity == "error" for d in discrepancies) else "match"
-            inserted = session.execute(
-                insert(MatchRecord)
-                .values(
-                    tenant_id=document.tenant_id,
-                    invoice_version_id=invoice_side[0].id,
-                    order_version_id=order_side[0].id,
-                    decision=decision,
-                    data={"discrepancies": [d.model_dump(mode="json") for d in discrepancies]},
-                )
-                .on_conflict_do_nothing(index_elements=["invoice_version_id", "order_version_id"])
-                .returning(MatchRecord.id)
-            ).scalar_one_or_none()
-            if inserted is None:
-                return
-            for subject, counterpart in ((document, other_document), (other_document, document)):
-                self._audit(
-                    session,
-                    subject,
-                    WORKER,
-                    "match.created",
-                    counterpart_document_id=str(counterpart.id),
-                    decision=decision,
-                    discrepancies=len(discrepancies),
-                )
 
     def _fail(self, version_id: uuid.UUID, turn: int, message: str) -> Outcome:
         """A failure that retrying will not fix. `message` is safe to show to a client."""

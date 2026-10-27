@@ -677,6 +677,167 @@
                 }
             }
         },
+        "/v1/flags/summary": {
+            "get": {
+                "summary": "Flag Summary",
+                "description": "What the checks caught on the invoices received from `from` to `to` (India's dates,\nboth included; by default the 30 days to today): duplicates, near-expiry lines and\nSchedule H1 lines. Only the caller's workspace is counted.",
+                "operationId": "flag_summary_v1_flags_summary_get",
+                "parameters": [
+                    {
+                        "name": "from",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "date"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "From"
+                        }
+                    },
+                    {
+                        "name": "to",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "format": "date"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "To"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/FlagSummaryOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/documents/{document_id}/order-candidates": {
+            "get": {
+                "summary": "Order Candidates",
+                "description": "Purchase orders an invoice can be linked to by hand: the bill's seller's first,\nthen the newest.",
+                "operationId": "order_candidates_v1_documents__document_id__order_candidates_get",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/OrderCandidateOut"
+                                    },
+                                    "title": "Response Order Candidates V1 Documents  Document Id  Order Candidates Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/documents/{document_id}/order-link": {
+            "post": {
+                "summary": "Order Link",
+                "description": "Link an invoice to its purchase order by hand, with a reason, when nothing on the\npage links them (an order number misprinted, an order placed by phone). The two are\nthen compared as usual. Audited on both documents as `match.linked`.",
+                "operationId": "order_link_v1_documents__document_id__order_link_post",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/OrderLinkIn"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ReviewOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/documents/{document_id}/review": {
             "get": {
                 "summary": "Review Detail",
@@ -4563,6 +4724,85 @@
                 ],
                 "title": "ExtractionResponse"
             },
+            "FlagCountsOut": {
+                "properties": {
+                    "duplicates": {
+                        "type": "integer",
+                        "title": "Duplicates"
+                    },
+                    "near_expiry_lines": {
+                        "type": "integer",
+                        "title": "Near Expiry Lines"
+                    },
+                    "schedule_h1_lines": {
+                        "type": "integer",
+                        "title": "Schedule H1 Lines"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "duplicates",
+                    "near_expiry_lines",
+                    "schedule_h1_lines"
+                ],
+                "title": "FlagCountsOut",
+                "description": "A bill's flags. Duplicates block approval (an override reason is needed); near-expiry\nstock and Schedule H1 lines are for information and never need an override."
+            },
+            "FlagSummaryOut": {
+                "properties": {
+                    "from": {
+                        "type": "string",
+                        "format": "date",
+                        "title": "From"
+                    },
+                    "to": {
+                        "type": "string",
+                        "format": "date",
+                        "title": "To"
+                    },
+                    "invoices": {
+                        "type": "integer",
+                        "title": "Invoices"
+                    },
+                    "duplicates": {
+                        "type": "integer",
+                        "title": "Duplicates"
+                    },
+                    "near_expiry_lines": {
+                        "type": "integer",
+                        "title": "Near Expiry Lines"
+                    },
+                    "near_expiry_bills": {
+                        "type": "integer",
+                        "title": "Near Expiry Bills"
+                    },
+                    "schedule_h1_lines": {
+                        "type": "integer",
+                        "title": "Schedule H1 Lines"
+                    },
+                    "schedule_h1_bills": {
+                        "type": "integer",
+                        "title": "Schedule H1 Bills"
+                    },
+                    "capped": {
+                        "type": "boolean",
+                        "title": "Capped"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "from",
+                    "to",
+                    "invoices",
+                    "duplicates",
+                    "near_expiry_lines",
+                    "near_expiry_bills",
+                    "schedule_h1_lines",
+                    "schedule_h1_bills",
+                    "capped"
+                ],
+                "title": "FlagSummaryOut"
+            },
             "H1LineOut": {
                 "properties": {
                     "path": {
@@ -5305,6 +5545,130 @@
                 ],
                 "title": "ModelRunOut"
             },
+            "NearExpiryLineOut": {
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "title": "Path"
+                    },
+                    "product_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Product Name"
+                    },
+                    "batch_no": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Batch No"
+                    },
+                    "expiry": {
+                        "type": "string",
+                        "title": "Expiry"
+                    },
+                    "months_left": {
+                        "type": "integer",
+                        "title": "Months Left"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "path",
+                    "product_name",
+                    "batch_no",
+                    "expiry",
+                    "months_left"
+                ],
+                "title": "NearExpiryLineOut",
+                "description": "A line whose stock has less than the workspace's window left after the bill date."
+            },
+            "OrderCandidateOut": {
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Document Id"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "title": "Filename"
+                    },
+                    "po_no": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Po No"
+                    },
+                    "supplier_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Name"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "same_supplier": {
+                        "type": "boolean",
+                        "title": "Same Supplier"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "document_id",
+                    "filename",
+                    "po_no",
+                    "supplier_name",
+                    "created_at",
+                    "same_supplier"
+                ],
+                "title": "OrderCandidateOut"
+            },
+            "OrderLinkIn": {
+                "properties": {
+                    "order_document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Order Document Id"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "maxLength": 500,
+                        "minLength": 1,
+                        "title": "Reason"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "order_document_id",
+                    "reason"
+                ],
+                "title": "OrderLinkIn"
+            },
             "OverviewOut": {
                 "properties": {
                     "totals": {
@@ -5528,6 +5892,9 @@
                             }
                         ],
                         "title": "Claimed By"
+                    },
+                    "flags": {
+                        "$ref": "#/components/schemas/FlagCountsOut"
                     }
                 },
                 "type": "object",
@@ -5539,7 +5906,8 @@
                     "created_at",
                     "reasons",
                     "match_status",
-                    "claimed_by"
+                    "claimed_by",
+                    "flags"
                 ],
                 "title": "QueueItemOut"
             },
@@ -5715,6 +6083,13 @@
                         },
                         "type": "array",
                         "title": "Schedule H1"
+                    },
+                    "near_expiry": {
+                        "items": {
+                            "$ref": "#/components/schemas/NearExpiryLineOut"
+                        },
+                        "type": "array",
+                        "title": "Near Expiry"
                     }
                 },
                 "type": "object",
@@ -5744,7 +6119,8 @@
                     "einvoice",
                     "duplicates",
                     "near_expiry_months",
-                    "schedule_h1"
+                    "schedule_h1",
+                    "near_expiry"
                 ],
                 "title": "ReviewOut"
             },

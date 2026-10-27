@@ -5,6 +5,7 @@ Each rule reports `not_evaluated` when a value it needs is missing; it never gue
 
 import re
 from collections.abc import Callable, Iterable, Iterator
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from docforge.extraction.schema import InvoiceExtraction, LineExtraction
@@ -155,6 +156,18 @@ def line_not_expired(invoice: InvoiceExtraction) -> Iterable[RuleResult]:
         )
 
 
+def months_left(expiry: str, issued: date) -> int:
+    """Months from the bill date's month to the expiry month (`2027-01` on a bill of
+    2 September 2026 is 4); negative once expired."""
+    return _months(expiry) - (issued.year * 12 + issued.month)
+
+
+def is_near_expiry(remaining: int, months: int) -> bool:
+    """Whether stock with `remaining` months left is inside a window of `months`: not yet
+    expired (that is `line.not_expired`'s) and less than the window. A window of 0 is off."""
+    return months > 0 and 0 <= remaining < months
+
+
 def near_expiry(months: int) -> InvoiceRule:
     """Stock that expires less than `months` after the bill date: a warning on the line, never
     a reason for review. The window is the workspace's (`workspace_settings`); 0 turns it
@@ -168,7 +181,7 @@ def near_expiry(months: int) -> InvoiceRule:
             expiry = line.expiry.value
             remaining = None
             if expiry is not None and issued is not None:
-                remaining = _months(expiry) - (issued.year * 12 + issued.month)
+                remaining = months_left(expiry, issued)
             # Without both dates there is nothing to measure (`required.present` reports a
             # missing expiry); expired stock is `line.not_expired`'s.
             if remaining is None or remaining < 0:
@@ -178,7 +191,7 @@ def near_expiry(months: int) -> InvoiceRule:
                 "line.shelf_life",
                 "warning",
                 (f"{path}.expiry",),
-                remaining >= months,
+                not is_near_expiry(remaining, months),
                 f"Stock expires {expiry}, {after} after the bill date; this workspace flags "
                 f"stock with less than {months} months left.",
                 version=2,
