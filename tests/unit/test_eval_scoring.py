@@ -251,7 +251,7 @@ def test_summary_tallies_fields_classes_layouts_and_citations(
 
 def test_the_printed_state_code_is_scored(intra: Perfect) -> None:
     raw = intra.changed()
-    raw["place_of_supply"]["text"] = "Gujarat (99)"
+    raw["place_of_supply"]["text"] = "Gujarat (27)"  # a state code, but not Gujarat's
 
     score = intra.score(raw)
 

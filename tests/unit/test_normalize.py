@@ -1,5 +1,6 @@
 """Printed strings to typed values. This is code, not the model, so it is tested exhaustively."""
 
+import re
 from datetime import date
 from decimal import Decimal
 
@@ -159,3 +160,64 @@ def test_parse_date_rejects_mixed_separators_and_foreign_digits(raw: str) -> Non
 def test_a_bare_code_is_not_taken_for_a_state_name() -> None:
     assert parse_place_of_supply("24") == (None, "24")
     assert parse_place_of_supply("Gujarat - 24") == ("Gujarat", "24")
+
+
+# QA bug 2026-10-09: the place of supply's code must be exactly a 2-digit GST state code or
+# nothing, whatever the bill prints around it. A code is never the whole printed text.
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Gujarat [24]", ("Gujarat", "24")),
+        ("Gujarat (Code: 24)", ("Gujarat", "24")),
+        ("Gujarat (State Code: 24)", ("Gujarat", "24")),
+        ("Gujarat (State Code - 24)", ("Gujarat", "24")),
+        ("State: Gujarat, Code: 24", ("Gujarat", "24")),
+        ("State Name: Gujarat State Code: 24", ("Gujarat", "24")),
+        ("Gujarat, 24", ("Gujarat", "24")),
+        ("Gujarat / 24", ("Gujarat", "24")),
+        ("(24) Gujarat", ("Gujarat", "24")),
+        ("24 Gujarat", ("Gujarat", "24")),
+        ("Gujarat 24", ("Gujarat", "24")),
+        ("97-Other Territory", ("Other Territory", "97")),
+        ("96 - Other Countries", ("Other Countries", "96")),
+        ("Ladakh (38)", ("Ladakh", "38")),
+    ],
+)
+def test_parse_place_of_supply_reads_the_code_however_it_is_printed(
+    raw: str, expected: tuple[str | None, str | None]
+) -> None:
+    assert parse_place_of_supply(raw) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # Not a GST state code: no code rather than a wrong one.
+        ("Gujarat (99)", ("Gujarat", None)),
+        ("Gujarat (00)", ("Gujarat", None)),
+        ("Gujarat - 45", ("Gujarat", None)),
+        ("99", (None, None)),
+        # One digit, three digits or foreign digits are not a 2-digit code.
+        ("Delhi (7)", ("Delhi (7)", None)),
+        ("Gujarat (024)", ("Gujarat (024)", None)),
+        ("Gujarat (\uff12\uff14)", ("Gujarat (\uff12\uff14)", None)),
+    ],
+)
+def test_parse_place_of_supply_never_takes_what_is_not_a_state_code(
+    raw: str, expected: tuple[str | None, str | None]
+) -> None:
+    assert parse_place_of_supply(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Gujarat (24)", "Gujarat [24]", "State: Gujarat, Code: 24", "Gujarat", "24",
+        "Gujarat (99)", "Delhi (7)", "", " ", "(", "Code:", "24-", "-24", "Gujarat (24) (27)",
+        "27-Maharashtra (24)", "Maharashtra, Mumbai 400001", "PIN 380015", "Gujarat 380015",
+    ],
+)  # fmt: skip
+def test_a_place_of_supply_code_is_two_digits_or_nothing(raw: str) -> None:
+    _, code = parse_place_of_supply(raw)
+    assert code is None or re.fullmatch(r"\d{2}", code, re.ASCII)
+    assert code is None or code in raw
