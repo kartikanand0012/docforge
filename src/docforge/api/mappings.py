@@ -169,6 +169,7 @@ class ProblemOut(BaseModel):
     document_id: uuid.UUID
     filename: str
     problem: str  # what to correct on the bill, in a sentence
+    line: int | None = None  # the bill's line, from 1, when the problem is one line's
 
 
 class TasksOut(BaseModel):
@@ -214,7 +215,9 @@ def tasks_out(tasks: Tasks) -> TasksOut:
             for t in tasks.items
         ],
         problems=[
-            ProblemOut(document_id=p.document_id, filename=p.filename, problem=p.problem)
+            ProblemOut(
+                document_id=p.document_id, filename=p.filename, problem=p.problem, line=p.line
+            )
             for p in tasks.problems
         ],
     )

@@ -14,6 +14,7 @@ from test_member_isolation import Two
 
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
+from docforge.profiles.spec import sample_profile
 from docforge.review.service import ReviewService
 from full_stack import PASSWORD, FullStack
 from worlds import World
@@ -85,6 +86,24 @@ def two(
         json={"target": "tally", "from": "2026-01-01", "to": "2026-01-31"},
     )  # fmt: skip
     assert run.json()["status"] == "ready", run.text
+    # Her Marg import profile, edited once, and what her run booked (V2 P3).
+    spec = sample_profile().model_dump(mode="json")
+    profile = two.api.post(
+        "/v1/settings/export-profiles", headers=two.asha,
+        json={"name": "Ours", "basis": "upload", "spec": spec},
+    )  # fmt: skip
+    assert profile.status_code == 201, profile.text
+    edited = two.api.put(
+        f"/v1/settings/export-profiles/{profile.json()['id']}", headers=two.asha,
+        json={"basis": "manual", "spec": spec},
+    )  # fmt: skip
+    assert edited.status_code == 200, edited.text
+    with owner_engine.begin() as conn:  # her bill was rejected, so no run of hers booked one
+        conn.execute(
+            text("INSERT INTO export_run_documents (tenant_id, run_id, document_id) "
+                 "VALUES (:t, :r, :d)"),
+            {"t": two.asha_ws, "r": run.json()["id"], "d": two.doc},
+        )  # fmt: skip
     store = world.store
     store.put(f"renditions/{two.asha_ws}/{'a' * 64}.pdf", b"%PDF-", "application/pdf")
     store.put(f"audit-anchors/{two.asha_ws}/latest.json", b"{}", "application/json")
@@ -144,7 +163,8 @@ def test_deleting_an_account_erases_its_whole_workspace_and_nothing_else(
                   "review_claims", "corrections", "reviews", "sessions", "audit_log",
                   "accounts", "reviewers", "assessments", "model_runs", "workspace_settings",
                   "h1_products", "supplier_mappings", "item_mappings", "mapping_masters",
-                  "export_runs", "tenants"):  # fmt: skip
+                  "export_runs", "export_profiles", "export_profile_versions",
+                  "export_run_documents", "tenants"):  # fmt: skip
         assert before[table] > 0, table
     assert len(keys_of(two, two.asha_ws)) >= 5  # with the export run's file
     bens_rows, bens_keys = rows_of(owner_engine, two.ben_ws), keys_of(two, two.ben_ws)

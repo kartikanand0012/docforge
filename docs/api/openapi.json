@@ -2787,7 +2787,7 @@
         "/v1/exports/runs": {
             "post": {
                 "summary": "Create Run",
-                "description": "Export the invoices approved in the range for Tally or Marg. Nothing is guessed:\nwith anything unmapped the run lists it and makes no file.",
+                "description": "Export the invoices approved in the range for Tally or Marg. Nothing is guessed:\nwith anything unmapped, or a bill that fails pre-flight, the run lists it and makes\nno file.",
                 "operationId": "create_run_v1_exports_runs_post",
                 "requestBody": {
                     "required": true,
@@ -2809,6 +2809,9 @@
                                 }
                             }
                         }
+                    },
+                    "409": {
+                        "description": "A Marg import with no active Marg profile"
                     },
                     "422": {
                         "description": "Validation Error",
@@ -2929,11 +2932,379 @@
                     "200": {
                         "description": "Successful Response",
                         "content": {
-                            "text/csv": {}
+                            "text/csv": {},
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
                         }
                     },
                     "409": {
                         "description": "No file made"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/export-profiles": {
+            "get": {
+                "summary": "List Profiles",
+                "description": "The workspace's Marg import profiles, the active one first.",
+                "operationId": "list_profiles_v1_settings_export_profiles_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/ProfileOut"
+                                    },
+                                    "type": "array",
+                                    "title": "Response List Profiles V1 Settings Export Profiles Get"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "summary": "Create Profile",
+                "description": "Version 1 of a profile; it is made active when the workspace has none active.",
+                "operationId": "create_profile_v1_settings_export_profiles_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ProfileIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProfileOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/export-profiles/template": {
+            "get": {
+                "summary": "Template",
+                "description": "The built-in SAMPLE layout: made up, to try the engine with. Not a Marg format.",
+                "operationId": "template_v1_settings_export_profiles_template_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TemplateOut"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/export-profiles/fields": {
+            "get": {
+                "summary": "Fields",
+                "description": "What a column can take, for the column picker.",
+                "operationId": "fields_v1_settings_export_profiles_fields_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/FieldOut"
+                                    },
+                                    "type": "array",
+                                    "title": "Response Fields V1 Settings Export Profiles Fields Get"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/export-profiles/read-sample": {
+            "post": {
+                "summary": "Read Sample File",
+                "description": "Read the layout of an import file Marg accepted (CSV or Excel, at most 2 MB) and\noffer a source for each column. Nothing is saved, logged or audited.",
+                "operationId": "read_sample_file_v1_settings_export_profiles_read_sample_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_read_sample_file_v1_settings_export_profiles_read_sample_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SampleOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/export-profiles/{profile_id}": {
+            "get": {
+                "summary": "Read Profile",
+                "operationId": "read_profile_v1_settings_export_profiles__profile_id__get",
+                "parameters": [
+                    {
+                        "name": "profile_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Profile Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProfileOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "summary": "Save Version",
+                "description": "Save the layout as the next version. Past runs keep the version they used.",
+                "operationId": "save_version_v1_settings_export_profiles__profile_id__put",
+                "parameters": [
+                    {
+                        "name": "profile_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Profile Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/VersionIn"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProfileOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/export-profiles/{profile_id}/versions": {
+            "get": {
+                "summary": "List Versions",
+                "description": "Newest first.",
+                "operationId": "list_versions_v1_settings_export_profiles__profile_id__versions_get",
+                "parameters": [
+                    {
+                        "name": "profile_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Profile Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/ProfileVersionOut"
+                                    },
+                                    "title": "Response List Versions V1 Settings Export Profiles  Profile Id  Versions Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/export-profiles/{profile_id}/activate": {
+            "post": {
+                "summary": "Activate",
+                "description": "Make this the workspace's Marg profile; the one active before stops being so.",
+                "operationId": "activate_v1_settings_export_profiles__profile_id__activate_post",
+                "parameters": [
+                    {
+                        "name": "profile_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Profile Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ProfileOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/export-profiles/{profile_id}/check": {
+            "post": {
+                "summary": "Check",
+                "description": "Make this profile's file for the approved bills named (document ids,\ncomma-separated, in the file's order) and compare it, cell by cell, with the file\nMarg accepted for them. Nothing is stored; the comparison is audited by its counts.",
+                "operationId": "check_v1_settings_export_profiles__profile_id__check_post",
+                "parameters": [
+                    {
+                        "name": "profile_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Profile Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_check_v1_settings_export_profiles__profile_id__check_post"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CheckOut"
+                                }
+                            }
+                        }
                     },
                     "422": {
                         "description": "Validation Error",
@@ -4065,6 +4436,26 @@
                 "title": "Block",
                 "description": "One piece of text on a page. `id` is what an extracted field cites."
             },
+            "Body_check_v1_settings_export_profiles__profile_id__check_post": {
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "contentMediaType": "application/octet-stream",
+                        "title": "File"
+                    },
+                    "document_ids": {
+                        "type": "string",
+                        "maxLength": 2000,
+                        "title": "Document Ids"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file",
+                    "document_ids"
+                ],
+                "title": "Body_check_v1_settings_export_profiles__profile_id__check_post"
+            },
             "Body_create_extraction_v1_extractions_post": {
                 "properties": {
                     "file": {
@@ -4092,6 +4483,20 @@
                     "file"
                 ],
                 "title": "Body_import_masters_v1_settings_mappings_import_post"
+            },
+            "Body_read_sample_file_v1_settings_export_profiles_read_sample_post": {
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "contentMediaType": "application/octet-stream",
+                        "title": "File"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file"
+                ],
+                "title": "Body_read_sample_file_v1_settings_export_profiles_read_sample_post"
             },
             "Body_upload_document_v1_documents_post": {
                 "properties": {
@@ -4220,6 +4625,96 @@
                     "anchors_checked"
                 ],
                 "title": "ChainOut"
+            },
+            "CheckOut": {
+                "properties": {
+                    "version_no": {
+                        "type": "integer",
+                        "title": "Version No"
+                    },
+                    "bills": {
+                        "type": "integer",
+                        "title": "Bills"
+                    },
+                    "exact": {
+                        "type": "boolean",
+                        "title": "Exact"
+                    },
+                    "rows_expected": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rows Expected"
+                    },
+                    "rows_produced": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rows Produced"
+                    },
+                    "cells": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Cells"
+                    },
+                    "equal": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Equal"
+                    },
+                    "diffs": {
+                        "items": {
+                            "$ref": "#/components/schemas/DiffOut"
+                        },
+                        "type": "array",
+                        "title": "Diffs"
+                    },
+                    "tasks": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/TasksOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "version_no",
+                    "bills",
+                    "exact",
+                    "rows_expected",
+                    "rows_produced",
+                    "cells",
+                    "equal",
+                    "diffs",
+                    "tasks"
+                ],
+                "title": "CheckOut"
             },
             "ChoiceOut": {
                 "properties": {
@@ -4435,6 +4930,76 @@
                     "created_at"
                 ],
                 "title": "CollectionOut"
+            },
+            "Column": {
+                "properties": {
+                    "header": {
+                        "type": "string",
+                        "maxLength": 100,
+                        "title": "Header"
+                    },
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "invoice",
+                            "line",
+                            "mapping",
+                            "computed",
+                            "constant",
+                            "blank"
+                        ],
+                        "title": "Source"
+                    },
+                    "field": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 40
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Field"
+                    },
+                    "value": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 200
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Value"
+                    },
+                    "format": {
+                        "$ref": "#/components/schemas/Format"
+                    },
+                    "cell": {
+                        "type": "string",
+                        "enum": [
+                            "text",
+                            "number",
+                            "date"
+                        ],
+                        "title": "Cell",
+                        "default": "text"
+                    },
+                    "required": {
+                        "type": "boolean",
+                        "title": "Required",
+                        "default": false
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "header",
+                    "source"
+                ],
+                "title": "Column"
             },
             "ConversationOut": {
                 "properties": {
@@ -4747,6 +5312,34 @@
                     "next_attempt_at"
                 ],
                 "title": "DeliveryOut"
+            },
+            "DiffOut": {
+                "properties": {
+                    "row": {
+                        "type": "integer",
+                        "title": "Row"
+                    },
+                    "column": {
+                        "type": "string",
+                        "title": "Column"
+                    },
+                    "expected": {
+                        "type": "string",
+                        "title": "Expected"
+                    },
+                    "produced": {
+                        "type": "string",
+                        "title": "Produced"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "row",
+                    "column",
+                    "expected",
+                    "produced"
+                ],
+                "title": "DiffOut"
             },
             "DocumentDetailOut": {
                 "properties": {
@@ -5424,6 +6017,53 @@
                 ],
                 "title": "ExtractionResponse"
             },
+            "FieldOut": {
+                "properties": {
+                    "source": {
+                        "type": "string",
+                        "enum": [
+                            "invoice",
+                            "line",
+                            "mapping",
+                            "computed"
+                        ],
+                        "title": "Source"
+                    },
+                    "field": {
+                        "type": "string",
+                        "title": "Field"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": [
+                            "text",
+                            "date",
+                            "month",
+                            "money",
+                            "number",
+                            "int"
+                        ],
+                        "title": "Kind"
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label"
+                    },
+                    "per_line_only": {
+                        "type": "boolean",
+                        "title": "Per Line Only"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "source",
+                    "field",
+                    "kind",
+                    "label",
+                    "per_line_only"
+                ],
+                "title": "FieldOut"
+            },
             "FileOut": {
                 "properties": {
                     "filename": {
@@ -5525,6 +6165,67 @@
                     "capped"
                 ],
                 "title": "FlagSummaryOut"
+            },
+            "Format": {
+                "properties": {
+                    "date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Date"
+                    },
+                    "month_day": {
+                        "type": "string",
+                        "enum": [
+                            "first",
+                            "last"
+                        ],
+                        "title": "Month Day",
+                        "default": "first"
+                    },
+                    "decimals": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 6.0,
+                                "minimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Decimals"
+                    },
+                    "codes": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "maxProperties": 100,
+                        "title": "Codes"
+                    },
+                    "upper": {
+                        "type": "boolean",
+                        "title": "Upper",
+                        "default": false
+                    },
+                    "empty": {
+                        "type": "string",
+                        "maxLength": 20,
+                        "title": "Empty",
+                        "default": ""
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "Format",
+                "description": "How a column's value is written."
             },
             "H1LineOut": {
                 "properties": {
@@ -6792,6 +7493,41 @@
                 ],
                 "title": "OrderLinkIn"
             },
+            "OverlapOut": {
+                "properties": {
+                    "run_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Run Id"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": [
+                            "mapped_csv",
+                            "marg_import"
+                        ],
+                        "title": "Format"
+                    },
+                    "invoices": {
+                        "type": "integer",
+                        "title": "Invoices"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "run_id",
+                    "created_at",
+                    "format",
+                    "invoices"
+                ],
+                "title": "OverlapOut",
+                "description": "An earlier run whose file booked some of these bills: a warning, not a refusal."
+            },
             "OverviewOut": {
                 "properties": {
                     "totals": {
@@ -6887,6 +7623,17 @@
                     "problem": {
                         "type": "string",
                         "title": "Problem"
+                    },
+                    "line": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Line"
                     }
                 },
                 "type": "object",
@@ -6942,6 +7689,289 @@
                     "created_at"
                 ],
                 "title": "ProductOut"
+            },
+            "Profile": {
+                "properties": {
+                    "file_type": {
+                        "type": "string",
+                        "enum": [
+                            "csv",
+                            "xlsx"
+                        ],
+                        "title": "File Type",
+                        "default": "csv"
+                    },
+                    "layout": {
+                        "type": "string",
+                        "enum": [
+                            "per_line",
+                            "per_invoice"
+                        ],
+                        "title": "Layout",
+                        "default": "per_line"
+                    },
+                    "delimiter": {
+                        "type": "string",
+                        "enum": [
+                            ",",
+                            ";",
+                            "\t",
+                            "|"
+                        ],
+                        "title": "Delimiter",
+                        "default": ","
+                    },
+                    "quoting": {
+                        "type": "string",
+                        "enum": [
+                            "minimal",
+                            "all"
+                        ],
+                        "title": "Quoting",
+                        "default": "minimal"
+                    },
+                    "header_row": {
+                        "type": "boolean",
+                        "title": "Header Row",
+                        "default": true
+                    },
+                    "line_end": {
+                        "type": "string",
+                        "enum": [
+                            "crlf",
+                            "lf"
+                        ],
+                        "title": "Line End",
+                        "default": "crlf"
+                    },
+                    "encoding": {
+                        "type": "string",
+                        "enum": [
+                            "utf-8",
+                            "utf-8-sig"
+                        ],
+                        "title": "Encoding",
+                        "default": "utf-8"
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "maxLength": 31,
+                        "minLength": 1,
+                        "title": "Sheet Name",
+                        "default": "Sheet1"
+                    },
+                    "free_qty": {
+                        "type": "string",
+                        "enum": [
+                            "column",
+                            "row"
+                        ],
+                        "title": "Free Qty",
+                        "default": "column"
+                    },
+                    "columns": {
+                        "items": {
+                            "$ref": "#/components/schemas/Column"
+                        },
+                        "type": "array",
+                        "maxItems": 80,
+                        "minItems": 1,
+                        "title": "Columns"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "columns"
+                ],
+                "title": "Profile",
+                "description": "An import file's layout. Raises ValueError, in words, for one that cannot be made."
+            },
+            "ProfileIn": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "maxLength": 200,
+                        "title": "Name"
+                    },
+                    "basis": {
+                        "type": "string",
+                        "enum": [
+                            "sample",
+                            "upload",
+                            "manual"
+                        ],
+                        "title": "Basis"
+                    },
+                    "spec": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Spec"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "name",
+                    "basis",
+                    "spec"
+                ],
+                "title": "ProfileIn"
+            },
+            "ProfileOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "target": {
+                        "type": "string",
+                        "const": "marg",
+                        "title": "Target"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "active": {
+                        "type": "boolean",
+                        "title": "Active"
+                    },
+                    "latest": {
+                        "$ref": "#/components/schemas/ProfileVersionOut"
+                    },
+                    "created_by": {
+                        "type": "string",
+                        "title": "Created By"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "updated_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated By"
+                    },
+                    "updated_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Updated At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "target",
+                    "name",
+                    "active",
+                    "latest",
+                    "created_by",
+                    "created_at",
+                    "updated_by",
+                    "updated_at"
+                ],
+                "title": "ProfileOut"
+            },
+            "ProfileRefOut": {
+                "properties": {
+                    "version_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Version Id"
+                    },
+                    "profile_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Profile Id"
+                    },
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "version_no": {
+                        "type": "integer",
+                        "title": "Version No"
+                    },
+                    "sample": {
+                        "type": "boolean",
+                        "title": "Sample"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "version_id",
+                    "profile_id",
+                    "name",
+                    "version_no",
+                    "sample"
+                ],
+                "title": "ProfileRefOut",
+                "description": "The profile version a Marg import was made in."
+            },
+            "ProfileVersionOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "version_no": {
+                        "type": "integer",
+                        "title": "Version No"
+                    },
+                    "basis": {
+                        "type": "string",
+                        "enum": [
+                            "sample",
+                            "upload",
+                            "manual"
+                        ],
+                        "title": "Basis"
+                    },
+                    "sample": {
+                        "type": "boolean",
+                        "title": "Sample"
+                    },
+                    "spec": {
+                        "$ref": "#/components/schemas/Profile"
+                    },
+                    "created_by": {
+                        "type": "string",
+                        "title": "Created By"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "version_no",
+                    "basis",
+                    "sample",
+                    "spec",
+                    "created_by",
+                    "created_at"
+                ],
+                "title": "ProfileVersionOut"
             },
             "QuestionIn": {
                 "properties": {
@@ -7308,6 +8338,15 @@
                         "type": "string",
                         "format": "date",
                         "title": "To"
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": [
+                            "mapped_csv",
+                            "marg_import"
+                        ],
+                        "title": "Format",
+                        "default": "mapped_csv"
                     }
                 },
                 "additionalProperties": false,
@@ -7333,6 +8372,14 @@
                             "marg"
                         ],
                         "title": "Target"
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": [
+                            "mapped_csv",
+                            "marg_import"
+                        ],
+                        "title": "Format"
                     },
                     "from": {
                         "type": "string",
@@ -7380,6 +8427,23 @@
                             }
                         ]
                     },
+                    "profile": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/ProfileRefOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "overlaps": {
+                        "items": {
+                            "$ref": "#/components/schemas/OverlapOut"
+                        },
+                        "type": "array",
+                        "title": "Overlaps"
+                    },
                     "created_by": {
                         "type": "string",
                         "title": "Created By"
@@ -7394,6 +8458,7 @@
                 "required": [
                     "id",
                     "target",
+                    "format",
                     "from",
                     "to",
                     "status",
@@ -7401,10 +8466,94 @@
                     "lines",
                     "tasks",
                     "file",
+                    "profile",
+                    "overlaps",
                     "created_by",
                     "created_at"
                 ],
                 "title": "RunOut"
+            },
+            "SampleColumnOut": {
+                "properties": {
+                    "header": {
+                        "type": "string",
+                        "title": "Header"
+                    },
+                    "examples": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Examples"
+                    },
+                    "offer": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/Column"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "header",
+                    "examples",
+                    "offer"
+                ],
+                "title": "SampleColumnOut"
+            },
+            "SampleOut": {
+                "properties": {
+                    "file_type": {
+                        "type": "string",
+                        "enum": [
+                            "csv",
+                            "xlsx"
+                        ],
+                        "title": "File Type"
+                    },
+                    "delimiter": {
+                        "type": "string",
+                        "title": "Delimiter"
+                    },
+                    "header_row": {
+                        "type": "boolean",
+                        "title": "Header Row"
+                    },
+                    "encoding": {
+                        "type": "string",
+                        "title": "Encoding"
+                    },
+                    "sheet_name": {
+                        "type": "string",
+                        "title": "Sheet Name"
+                    },
+                    "rows": {
+                        "type": "integer",
+                        "title": "Rows"
+                    },
+                    "columns": {
+                        "items": {
+                            "$ref": "#/components/schemas/SampleColumnOut"
+                        },
+                        "type": "array",
+                        "title": "Columns"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file_type",
+                    "delimiter",
+                    "header_row",
+                    "encoding",
+                    "sheet_name",
+                    "rows",
+                    "columns"
+                ],
+                "title": "SampleOut"
             },
             "SearchOut": {
                 "properties": {
@@ -8244,6 +9393,29 @@
                 ],
                 "title": "TasksOut"
             },
+            "TemplateOut": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "basis": {
+                        "type": "string",
+                        "const": "sample",
+                        "title": "Basis"
+                    },
+                    "spec": {
+                        "$ref": "#/components/schemas/Profile"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "basis",
+                    "spec"
+                ],
+                "title": "TemplateOut"
+            },
             "TotalsExtraction": {
                 "properties": {
                     "taxable_value": {
@@ -8422,6 +9594,43 @@
                     "type"
                 ],
                 "title": "ValidationError"
+            },
+            "VersionIn": {
+                "properties": {
+                    "basis": {
+                        "type": "string",
+                        "enum": [
+                            "sample",
+                            "upload",
+                            "manual"
+                        ],
+                        "title": "Basis"
+                    },
+                    "spec": {
+                        "additionalProperties": true,
+                        "type": "object",
+                        "title": "Spec"
+                    },
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 200
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "basis",
+                    "spec"
+                ],
+                "title": "VersionIn"
             },
             "VersionOut": {
                 "properties": {

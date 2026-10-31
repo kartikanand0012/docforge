@@ -339,6 +339,61 @@ class ExportRun(Base):
     filename: Mapped[str | None] = mapped_column(Text)
     sha256: Mapped[str | None] = mapped_column(CHAR(64))
     size_bytes: Mapped[int | None] = mapped_column(Integer)
+    format: Mapped[str] = mapped_column(Text, server_default="mapped_csv")  # or marg_import
+    profile_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("export_profile_versions.id")
+    )  # the layout a Marg import was made in
+    overlaps: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )  # earlier runs that booked some of the same bills
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ExportRunDocument(Base):
+    """A bill a run booked in its file; what tells a later run it was exported before."""
+
+    __tablename__ = "export_run_documents"
+
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("export_runs.id"), primary_key=True
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+
+
+class ExportProfile(Base):
+    """A workspace's import layout for its books (Marg); at most one active. Its versions
+    hold the layout; it holds the name, whether it is active and its latest version."""
+
+    __tablename__ = "export_profiles"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    target: Mapped[str] = mapped_column(Text)  # marg
+    name: Mapped[str] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    latest_version: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ExportProfileVersion(Base):
+    """One saved layout of a profile. Immutable: an edit is a new version, and a run names
+    the version it used."""
+
+    __tablename__ = "export_profile_versions"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("export_profiles.id")
+    )
+    version_no: Mapped[int] = mapped_column(Integer)
+    spec: Mapped[dict[str, Any]] = mapped_column(JSONB)  # docforge.profiles.spec.Profile
+    basis: Mapped[str] = mapped_column(Text)  # sample (made-up), upload, or manual
     created_by: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
 

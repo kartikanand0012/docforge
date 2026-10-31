@@ -83,9 +83,19 @@ ACTIONS: dict[str, Action] = {
             "unmapped_items",
             "problems",
             "sha256",
+            "format",
+            "profile_version",
+            "exported_before",
         ),
     ),
     "export.downloaded": Action("Export file downloaded", ("sha256",)),
+    # Import-file profiles (V2 P3): the layout's shape, never values from a bill or sample
+    "export_profile.created": Action("Import profile made", ("target", "basis", "columns")),
+    "export_profile.versioned": Action("Import profile changed", ("version", "basis", "columns")),
+    "export_profile.activated": Action("Import profile made active", ("version",)),
+    "export_profile.checked": Action(
+        "Import profile checked against a file", ("version", "bills", "cells", "equal")
+    ),
     # Keys and webhooks
     "api_key.created": Action("API key made", ("name", "role")),
     "api_key.revoked": Action("API key revoked", ("name",)),

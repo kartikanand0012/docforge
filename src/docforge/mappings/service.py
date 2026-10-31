@@ -199,6 +199,7 @@ class BillProblem:
     document_id: uuid.UUID
     filename: str
     problem: str
+    line: int | None = None  # the bill's line, from 1, when the problem is one line's
 
 
 def _plain(value: Any) -> Any:
@@ -257,7 +258,7 @@ class Tasks:
                 for t in data.get("items", ())
             ),
             problems=tuple(
-                BillProblem(uuid.UUID(p["document_id"]), p["filename"], p["problem"])
+                BillProblem(uuid.UUID(p["document_id"]), p["filename"], p["problem"], p.get("line"))
                 for p in data.get("problems", ())
             ),
         )

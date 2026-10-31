@@ -33,6 +33,7 @@ from docforge.api.auth import (
 from docforge.api.chat import chat_router
 from docforge.api.collections import collections_router
 from docforge.api.documents import documents_router
+from docforge.api.export_profiles import export_profiles_router
 from docforge.api.export_runs import export_runs_router
 from docforge.api.exports import exports_router
 from docforge.api.mappings import mappings_router
@@ -292,6 +293,7 @@ def create_app(
         app.include_router(mappings_router(mappings, review, export_runs))
     if export_runs is not None:
         app.include_router(export_runs_router(export_runs))
+        app.include_router(export_profiles_router(export_runs))
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
     if authenticator is not None:
