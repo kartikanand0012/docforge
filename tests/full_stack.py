@@ -26,6 +26,7 @@ from docforge.limits import LocalLimits
 from docforge.mappings.service import MappingService
 from docforge.mcp_server.tools import AgentTools
 from docforge.platform import PlatformService
+from docforge.purchase_register import PurchaseRegisterService
 from docforge.review.service import ReviewService
 from docforge.search.embeddings import FakeEmbedder
 from docforge.search.service import SearchService
@@ -72,7 +73,8 @@ class FullStack:
             webhooks=self.webhooks, search=self.search, chat=self.chat,
             collections=self.collections, settings=WorkspaceSettingsService(sessions),
             h1_products=H1ProductService(sessions), mappings=self.mappings,
-            export_runs=self.runs, limits=self.limits, agents=self.tools,
+            export_runs=self.runs, purchase_register=PurchaseRegisterService(sessions),
+            limits=self.limits, agents=self.tools,
             audit_log=AuditLogService(sessions), signup_enabled=signup,
             signups_per_day=signups_per_day, member_caps=caps or MemberCaps(),
             platform=self.platform,

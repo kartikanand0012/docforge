@@ -89,6 +89,15 @@ ACTIONS: dict[str, Action] = {
         ),
     ),
     "export.downloaded": Action("Export file downloaded", ("sha256",)),
+    # The purchase register (V2 P4): counts and the file's hash, never a value from a bill
+    "register.exported": Action(
+        "Purchase register exported",
+        ("month", "invoices", "supplier_filter", "with_2b", "sha256"),
+    ),
+    "register.compared_2b": Action(
+        "Purchase register compared with GSTR-2B",
+        ("month", "matched", "amount_differs", "docforge_only", "twob_only"),
+    ),
     # Import-file profiles (V2 P3): the layout's shape, never values from a bill or sample
     "export_profile.created": Action("Import profile made", ("target", "basis", "columns")),
     "export_profile.versioned": Action("Import profile changed", ("version", "basis", "columns")),

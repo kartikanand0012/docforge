@@ -3319,6 +3319,138 @@
                 }
             }
         },
+        "/v1/exports/purchase-register": {
+            "get": {
+                "summary": "Preview",
+                "description": "The month's rows (invoices dated in it, India's calendar, whose newest version\nwas approved), their count and totals: what the file will hold. This month by\ndefault.",
+                "operationId": "preview_v1_exports_purchase_register_get",
+                "parameters": [
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "pattern": "^\\d{4}-\\d{2}$"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Month"
+                        }
+                    },
+                    {
+                        "name": "supplier_gstin",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 20
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Supplier Gstin"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RegisterOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/exports/purchase-register/file": {
+            "post": {
+                "summary": "Download",
+                "description": "The register as an Excel file: \"Purchase Register\" (one row per invoice and a\ntotals row), \"About\" and, with a GSTR-2B download attached, \"2B check\".",
+                "operationId": "download_v1_exports_purchase_register_file_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_download_v1_exports_purchase_register_file_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+                        }
+                    },
+                    "422": {
+                        "description": "No approved invoice in the month, or a bad month"
+                    }
+                }
+            }
+        },
+        "/v1/exports/purchase-register/2b-check": {
+            "post": {
+                "summary": "Check",
+                "description": "Set the month's register beside a GSTR-2B download: each row matched, in DocForge\nonly, or with the amounts that differ; and the 2B invoices with no approved bill.",
+                "operationId": "check_v1_exports_purchase_register_2b_check_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_check_v1_exports_purchase_register_2b_check_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TwoBCheckOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/audit": {
             "get": {
                 "summary": "Entries",
@@ -4436,6 +4568,38 @@
                 "title": "Block",
                 "description": "One piece of text on a page. `id` is what an extracted field cites."
             },
+            "Body_check_v1_exports_purchase_register_2b_check_post": {
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "contentMediaType": "application/octet-stream",
+                        "title": "File"
+                    },
+                    "month": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}$",
+                        "title": "Month"
+                    },
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file",
+                    "month"
+                ],
+                "title": "Body_check_v1_exports_purchase_register_2b_check_post"
+            },
             "Body_check_v1_settings_export_profiles__profile_id__check_post": {
                 "properties": {
                     "file": {
@@ -4469,6 +4633,44 @@
                     "file"
                 ],
                 "title": "Body_create_extraction_v1_extractions_post"
+            },
+            "Body_download_v1_exports_purchase_register_file_post": {
+                "properties": {
+                    "month": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}$",
+                        "title": "Month"
+                    },
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    },
+                    "gstr2b": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "contentMediaType": "application/octet-stream"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gstr2B"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "month"
+                ],
+                "title": "Body_download_v1_exports_purchase_register_file_post"
             },
             "Body_import_masters_v1_settings_mappings_import_post": {
                 "properties": {
@@ -7158,6 +7360,50 @@
                 ],
                 "title": "MatchOut"
             },
+            "MatchedOut": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "matched",
+                            "amount_differs",
+                            "docforge_only"
+                        ],
+                        "title": "Status"
+                    },
+                    "document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Document Id"
+                    },
+                    "twob": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/TwoBInvoiceOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "differences": {
+                        "additionalProperties": {
+                            "type": "string",
+                            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                        },
+                        "type": "object",
+                        "title": "Differences"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "status",
+                    "document_id",
+                    "twob",
+                    "differences"
+                ],
+                "title": "MatchedOut"
+            },
             "MemberOut": {
                 "properties": {
                     "id": {
@@ -8088,6 +8334,66 @@
                 ],
                 "title": "QueueItemOut"
             },
+            "RegisterOut": {
+                "properties": {
+                    "month": {
+                        "type": "string",
+                        "title": "Month"
+                    },
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    },
+                    "invoices": {
+                        "type": "integer",
+                        "title": "Invoices"
+                    },
+                    "totals": {
+                        "$ref": "#/components/schemas/TotalsOut"
+                    },
+                    "rows": {
+                        "items": {
+                            "$ref": "#/components/schemas/RowOut"
+                        },
+                        "type": "array",
+                        "title": "Rows"
+                    },
+                    "columns": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Columns"
+                    },
+                    "excluded": {
+                        "type": "string",
+                        "title": "Excluded"
+                    },
+                    "note_help": {
+                        "type": "string",
+                        "title": "Note Help"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "month",
+                    "supplier_gstin",
+                    "invoices",
+                    "totals",
+                    "rows",
+                    "columns",
+                    "excluded",
+                    "note_help"
+                ],
+                "title": "RegisterOut"
+            },
             "RejectedOut": {
                 "properties": {
                     "line": {
@@ -8318,6 +8624,136 @@
                     "near_expiry"
                 ],
                 "title": "ReviewOut"
+            },
+            "RowOut": {
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Document Id"
+                    },
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    },
+                    "supplier_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Name"
+                    },
+                    "invoice_no": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice No"
+                    },
+                    "invoice_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice Date"
+                    },
+                    "place_of_supply": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Place Of Supply"
+                    },
+                    "taxable_value": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Taxable Value"
+                    },
+                    "cgst": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Cgst"
+                    },
+                    "sgst": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Sgst"
+                    },
+                    "igst": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Igst"
+                    },
+                    "total_tax": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Total Tax"
+                    },
+                    "invoice_total": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice Total"
+                    },
+                    "note": {
+                        "type": "string",
+                        "title": "Note"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "document_id",
+                    "supplier_gstin",
+                    "supplier_name",
+                    "invoice_no",
+                    "invoice_date",
+                    "place_of_supply",
+                    "taxable_value",
+                    "cgst",
+                    "sgst",
+                    "igst",
+                    "total_tax",
+                    "invoice_total",
+                    "note"
+                ],
+                "title": "RowOut"
             },
             "RunIn": {
                 "properties": {
@@ -9448,6 +9884,184 @@
                     "grand_total"
                 ],
                 "title": "TotalsExtraction"
+            },
+            "TotalsOut": {
+                "properties": {
+                    "taxable_value": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Taxable Value"
+                    },
+                    "cgst": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Cgst"
+                    },
+                    "sgst": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Sgst"
+                    },
+                    "igst": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Igst"
+                    },
+                    "total_tax": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Total Tax"
+                    },
+                    "invoice_total": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Invoice Total"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "taxable_value",
+                    "cgst",
+                    "sgst",
+                    "igst",
+                    "total_tax",
+                    "invoice_total"
+                ],
+                "title": "TotalsOut"
+            },
+            "TwoBCheckOut": {
+                "properties": {
+                    "month": {
+                        "type": "string",
+                        "title": "Month"
+                    },
+                    "matched": {
+                        "type": "integer",
+                        "title": "Matched"
+                    },
+                    "amount_differs": {
+                        "type": "integer",
+                        "title": "Amount Differs"
+                    },
+                    "docforge_only": {
+                        "type": "integer",
+                        "title": "Docforge Only"
+                    },
+                    "twob_only": {
+                        "type": "integer",
+                        "title": "Twob Only"
+                    },
+                    "rows": {
+                        "items": {
+                            "$ref": "#/components/schemas/MatchedOut"
+                        },
+                        "type": "array",
+                        "title": "Rows"
+                    },
+                    "twob_only_invoices": {
+                        "items": {
+                            "$ref": "#/components/schemas/TwoBInvoiceOut"
+                        },
+                        "type": "array",
+                        "title": "Twob Only Invoices"
+                    },
+                    "note": {
+                        "type": "string",
+                        "title": "Note"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "month",
+                    "matched",
+                    "amount_differs",
+                    "docforge_only",
+                    "twob_only",
+                    "rows",
+                    "twob_only_invoices",
+                    "note"
+                ],
+                "title": "TwoBCheckOut"
+            },
+            "TwoBInvoiceOut": {
+                "properties": {
+                    "supplier_gstin": {
+                        "type": "string",
+                        "title": "Supplier Gstin"
+                    },
+                    "trade_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Trade Name"
+                    },
+                    "invoice_no": {
+                        "type": "string",
+                        "title": "Invoice No"
+                    },
+                    "invoice_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice Date"
+                    },
+                    "invoice_value": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice Value"
+                    },
+                    "taxable_value": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Taxable Value"
+                    },
+                    "cgst": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Cgst"
+                    },
+                    "sgst": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Sgst"
+                    },
+                    "igst": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Igst"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "supplier_gstin",
+                    "trade_name",
+                    "invoice_no",
+                    "invoice_date",
+                    "invoice_value",
+                    "taxable_value",
+                    "cgst",
+                    "sgst",
+                    "igst"
+                ],
+                "title": "TwoBInvoiceOut"
             },
             "UnansweredOut": {
                 "properties": {

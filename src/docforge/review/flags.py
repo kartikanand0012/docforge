@@ -205,6 +205,29 @@ def flag_summary(
     )
 
 
+def repeated_documents(session: Session, tenant_id: uuid.UUID) -> set[uuid.UUID]:
+    """Every live invoice that repeats an earlier one, by the rule `flag_summary` counts
+    (and the review shows): the same IRN, or seller GSTIN and number as corrected, of an
+    earlier live invoice not rejected. For the purchase register's notes (V2 P4)."""
+    upper = datetime.now(_INDIA) + timedelta(days=1)
+    received = _with_key_corrections(session, tenant_id, _received(session, tenant_id, upper))
+    seen_numbers: set[tuple[str, str]] = set()
+    seen_irns: set[str] = set()
+    repeats: set[uuid.UUID] = set()
+    for bill in received:
+        pair = (bill.seller, bill.number) if bill.seller and bill.number else None
+        if (pair is not None and pair in seen_numbers) or (
+            bill.irn is not None and bill.irn in seen_irns
+        ):
+            repeats.add(bill.document_id)
+        if not bill.rejected:
+            if pair is not None:
+                seen_numbers.add(pair)
+            if bill.irn is not None:
+                seen_irns.add(bill.irn)
+    return repeats
+
+
 def _received(session: Session, tenant_id: uuid.UUID, upper: datetime) -> list[_Received]:
     """Every live invoice received before `upper`, oldest first, by its newest version that
     has been read: the counted ones and the earlier ones a duplicate may repeat."""

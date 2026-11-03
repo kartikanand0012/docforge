@@ -38,6 +38,7 @@ from docforge.api.export_runs import export_runs_router
 from docforge.api.exports import exports_router
 from docforge.api.mappings import mappings_router
 from docforge.api.platform import platform_router
+from docforge.api.purchase_register import purchase_register_router
 from docforge.api.review import review_router
 from docforge.api.schedule_h1 import schedule_h1_router
 from docforge.api.search import search_router
@@ -67,6 +68,7 @@ from docforge.mcp_server.server import mount as mount_mcp
 from docforge.mcp_server.tools import AgentTools
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
 from docforge.platform import PlatformService
+from docforge.purchase_register import PurchaseRegisterService
 from docforge.review.service import ReviewService
 from docforge.review.signing import HashingBusy
 from docforge.search.service import SearchService
@@ -142,6 +144,7 @@ def create_app(
     h1_products: H1ProductService | None = None,
     mappings: MappingService | None = None,
     export_runs: ExportRunService | None = None,
+    purchase_register: PurchaseRegisterService | None = None,
     limits: Limits | None = None,
     agents: AgentTools | None = None,
     audit_log: AuditLogService | None = None,
@@ -294,6 +297,8 @@ def create_app(
     if export_runs is not None:
         app.include_router(export_runs_router(export_runs))
         app.include_router(export_profiles_router(export_runs))
+    if purchase_register is not None:
+        app.include_router(purchase_register_router(purchase_register))
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
     if authenticator is not None:

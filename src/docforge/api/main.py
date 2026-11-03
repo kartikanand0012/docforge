@@ -16,6 +16,7 @@ from docforge.h1_products import H1ProductService
 from docforge.limits import DatabaseLimits
 from docforge.mappings.service import MappingService
 from docforge.mcp_server.tools import AgentTools
+from docforge.purchase_register import PurchaseRegisterService
 from docforge.storage import S3ObjectStore
 from docforge.telemetry import configure_tracing, settings_prices
 from docforge.wiring import (
@@ -68,6 +69,7 @@ def create_default_app() -> FastAPI:
         h1_products=H1ProductService(sessions),
         mappings=mappings,
         export_runs=ExportRunService(sessions, S3ObjectStore.from_settings(settings), mappings),
+        purchase_register=PurchaseRegisterService(sessions),
         limits=limits,
         agents=agents,
         audit_log=AuditLogService(sessions),
