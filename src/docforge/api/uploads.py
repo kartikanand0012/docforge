@@ -5,7 +5,8 @@ from pathlib import PurePosixPath, PureWindowsPath
 
 from fastapi import HTTPException, UploadFile
 
-from docforge.formats import ACCEPTED, Format, is_ole, sniff
+from docforge.formats import Format
+from docforge.upload_checks import OLE_MESSAGE, FileRefused, check_format, too_large_message
 
 DEFAULT_MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MULTIPART_OVERHEAD = 64 * 1024  # boundaries and part headers around the file
@@ -13,14 +14,7 @@ _PDF_MAGIC = b"%PDF-"
 _MAX_FILENAME = 255
 
 
-OLE_MESSAGE = (
-    "This is an older Office file (.doc, .xls or .ppt) or one protected by a password. "
-    "Save it as .docx, .xlsx or .pptx without a password, or as a PDF, and upload that."
-)
-
-
-def too_large_message(max_upload_bytes: int) -> str:
-    return f"The file is larger than the limit of {max_upload_bytes} bytes."
+__all__ = ["OLE_MESSAGE", "too_large_message"]  # kept here for the routes that import them
 
 
 def safe_filename(name: str | None) -> str | None:
@@ -49,11 +43,7 @@ async def read_pdf_upload(file: UploadFile, max_upload_bytes: int) -> bytes:
 async def read_upload(file: UploadFile, max_upload_bytes: int) -> tuple[bytes, Format]:
     """The uploaded bytes and their format, or 413 if too large and 415 if not accepted."""
     data = await file.read(max_upload_bytes + 1)
-    if len(data) > max_upload_bytes:
-        raise HTTPException(413, too_large_message(max_upload_bytes))
-    fmt = sniff(data)
-    if fmt is None and is_ole(data):
-        raise HTTPException(415, OLE_MESSAGE)
-    if fmt is None:
-        raise HTTPException(415, f"This file type is not accepted. Accepted: {ACCEPTED}.")
-    return data, fmt
+    try:
+        return data, check_format(data, max_upload_bytes)  # the checks email intake makes too
+    except FileRefused as error:
+        raise HTTPException(error.status, error.message) from error

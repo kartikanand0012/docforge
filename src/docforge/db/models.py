@@ -73,6 +73,7 @@ class Document(Base):
     media_type: Mapped[str] = mapped_column(Text, server_default="application/pdf")
     filename: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(Text, server_default="upload")  # upload or email
     page_count: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(Text, server_default="received")
     # Where it is now (docforge.stages); the audit trail has how it got there.
@@ -396,6 +397,90 @@ class ExportProfileVersion(Base):
     basis: Mapped[str] = mapped_column(Text)  # sample (made-up), upload, or manual
     created_by: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
+
+
+class IntakeAddress(Base):
+    """A workspace's forwarding address (V2 P5). Only the token's SHA-256 is kept; at most
+    one is active, and a revoked one stays so mail to it is known and refused."""
+
+    __tablename__ = "intake_addresses"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    slug: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(CHAR(64))
+    active: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    revoked_by: Mapped[str | None] = mapped_column(Text)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class IntakeSender(Base):
+    """A sender whose mail is read without being held: a@b.in, or @b.in for a domain."""
+
+    __tablename__ = "intake_senders"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    pattern: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class IntakeSettings(Base):
+    __tablename__ = "intake_settings"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+    )
+    trust_accepted: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    per_sender_hourly: Mapped[int] = mapped_column(Integer, server_default="100")
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class IntakeMessage(Base):
+    """One mail received at a workspace's address."""
+
+    __tablename__ = "intake_messages"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    address_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("intake_addresses.id")
+    )
+    sender: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    provider_message_id: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)  # received, held, rejected, accepted, discarded
+    reason: Mapped[str | None] = mapped_column(Text)
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_NOW)
+
+
+class IntakeItem(Base):
+    """One attachment of a mail, and what became of it."""
+
+    __tablename__ = "intake_items"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("intake_messages.id")
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    filename: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str | None] = mapped_column(CHAR(64))
+    # received, already_received, ignored, refused, held, discarded
+    outcome: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    held_key: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class MatchRecord(Base):

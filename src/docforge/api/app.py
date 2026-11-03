@@ -36,6 +36,7 @@ from docforge.api.documents import documents_router
 from docforge.api.export_profiles import export_profiles_router
 from docforge.api.export_runs import export_runs_router
 from docforge.api.exports import exports_router
+from docforge.api.intake import INBOUND_PREFIX, MAX_INBOUND_BYTES, intake_router
 from docforge.api.mappings import mappings_router
 from docforge.api.platform import platform_router
 from docforge.api.purchase_register import purchase_register_router
@@ -61,6 +62,7 @@ from docforge.export_runs import ExportRunService
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, InvoicePipeline
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.h1_products import H1ProductService
+from docforge.intake.service import IntakeService
 from docforge.limits import Limits, LocalLimits
 from docforge.llm.base import LLMError, LLMQuotaExhausted
 from docforge.mappings.service import MappingService
@@ -145,6 +147,8 @@ def create_app(
     mappings: MappingService | None = None,
     export_runs: ExportRunService | None = None,
     purchase_register: PurchaseRegisterService | None = None,
+    intake: IntakeService | None = None,
+    intake_webhook_password: str | None = None,
     limits: Limits | None = None,
     agents: AgentTools | None = None,
     audit_log: AuditLogService | None = None,
@@ -184,7 +188,13 @@ def create_app(
         # Refuse from the declared length, before the body is spooled to disk. A request
         # without a length is still capped when read; a proxy must cap it in production.
         declared = request.headers.get("content-length", "")
-        if declared.isdigit() and int(declared) > max_upload_bytes + MULTIPART_OVERHEAD:
+        # A mail from the provider carries several attachments, base64: its own limit.
+        limit = (
+            MAX_INBOUND_BYTES
+            if request.url.path.startswith(INBOUND_PREFIX)
+            else max_upload_bytes + MULTIPART_OVERHEAD
+        )
+        if declared.isdigit() and int(declared) > limit:
             return JSONResponse({"detail": too_large_message(max_upload_bytes)}, status_code=413)
         return await call_next(request)
 
@@ -299,6 +309,8 @@ def create_app(
         app.include_router(export_profiles_router(export_runs))
     if purchase_register is not None:
         app.include_router(purchase_register_router(purchase_register))
+    if intake is not None:
+        app.include_router(intake_router(intake, webhook_password=intake_webhook_password))
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
     if authenticator is not None:

@@ -8,7 +8,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -35,17 +35,12 @@ from docforge.documents import (
 )
 from docforge.formats import ACCEPTED, extension
 from docforge.limits import LimitReached, Limits
-from docforge.parsing.base import ParseError, PasswordProtected
-from docforge.parsing.pdf import pdf_page_count
 from docforge.review.claims import ClaimedByOther
 from docforge.storage import StorageUnavailable
 from docforge.telemetry import Prices
+from docforge.upload_checks import FileRefused, check_pages
 
 logger = logging.getLogger(__name__)
-PROTECTED_PDF_MESSAGE = (
-    "The PDF is protected by a password. Remove the password, or print it to a new PDF, "
-    "and upload that."
-)
 # Seconds a client should wait before sending again: the queue drains in minutes; storage
 # coming back is usually quicker.
 QUEUE_FULL_RETRY_AFTER = "60"
@@ -67,6 +62,7 @@ class DocumentOut(_Out):
     id: uuid.UUID
     doc_type: str
     filename: str
+    source: str = "upload"  # upload, or email
     sha256: str
     media_type: str
     size_bytes: int
@@ -248,17 +244,10 @@ def documents_router(
             supported = ", ".join(service.document_types)
             raise HTTPException(422, f"Unknown document type. Supported: {supported}.")
         data, fmt = await read_upload(file, max_upload_bytes)
-        if fmt == "pdf":
-            try:
-                pages = await run_in_threadpool(pdf_page_count, data)
-            except PasswordProtected as error:
-                raise HTTPException(422, PROTECTED_PDF_MESSAGE) from error
-            except ParseError as error:
-                raise HTTPException(422, "The file could not be read as a PDF.") from error
-            if pages > max_pages:
-                raise HTTPException(
-                    413, f"The document has {pages} pages; the limit is {max_pages}."
-                )
+        try:
+            await run_in_threadpool(check_pages, data, fmt, max_pages)
+        except FileRefused as error:
+            raise HTTPException(error.status, error.message) from error
 
         # A free workspace's caps; an organisation is held only to the queue's.
         free = principal.role == MEMBER
@@ -421,12 +410,15 @@ def documents_router(
         before: str | None = None,
         doc_type: str | None = None,
         stage: str | None = None,
+        source: Literal["upload", "email"] | None = None,
     ) -> DocumentPage:
-        """The organisation's documents, newest first, each with its stage."""
+        """The organisation's documents, newest first, each with its stage. `source`: those
+        uploaded, or those mailed in."""
         cursor = _parse_cursor(before) if before else None
         rows = service.list_documents(
-            principal.tenant_id, limit=limit + 1, before=cursor, doc_type=doc_type, stage=stage
-        )
+            principal.tenant_id, limit=limit + 1, before=cursor, doc_type=doc_type, stage=stage,
+            source=source,
+        )  # fmt: skip
         page = rows[:limit]
         used = service.usage(principal.tenant_id, [row.id for row in page], priced)
         items = [

@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     model_prices: str = "{}"
 
     max_upload_bytes: int = 10 * 1024 * 1024
+    # Invoices by email (V2 P5). Without a domain and a webhook password, intake is off.
+    intake_domain: str | None = None  # e.g. in.example.com, its MX at the mail provider
+    intake_webhook_password: SecretStr | None = None  # HTTP Basic, from the webhook URL
+    smtp_url: SecretStr | None = None  # smtp://user:pass@host:587 or smtps://...; replies
+    intake_reply_from: str | None = None  # default: DocForge <intake@INTAKE_DOMAIN>
+    web_url: str | None = None  # the web app, for links in replies
     max_pages: int = 20
     # The parser runs in a child process: replaced after this many documents, and stopped if
     # one document takes longer or more memory than this.

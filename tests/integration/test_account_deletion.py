@@ -2,6 +2,7 @@
 erases their whole workspace - every row in every table and every stored file - and nothing
 of anyone else's. Afterwards the email is free and the session is useless."""
 
+import base64
 import logging
 import uuid
 from collections.abc import Callable
@@ -16,7 +17,7 @@ from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
 from docforge.profiles.spec import sample_profile
 from docforge.review.service import ReviewService
-from full_stack import PASSWORD, FullStack
+from full_stack import INTAKE_PASSWORD, PASSWORD, FullStack
 from worlds import World
 
 pytestmark = [pytest.mark.integration, pytest.mark.no_ambient_tenant]
@@ -104,6 +105,25 @@ def two(
                  "VALUES (:t, :r, :d)"),
             {"t": two.asha_ws, "r": run.json()["id"], "d": two.doc},
         )  # fmt: skip
+    # Her email intake (V2 P5): an address, a listed sender, a setting, a test mail read and a
+    # mail from someone not listed, held with its copy.
+    intake = "/v1/settings/intake"
+    made = two.api.post(f"{intake}/address", headers=two.asha)
+    assert made.status_code == 201, made.text
+    address = made.json()["address"]["address"]
+    assert two.api.post(f"{intake}/senders", headers=two.asha,
+                        json={"sender": "@supplier.in"}).status_code == 201  # fmt: skip
+    assert two.api.patch(intake, headers=two.asha,
+                         json={"per_sender_hourly": 50}).status_code == 200  # fmt: skip
+    assert two.api.post(f"{intake}/test", headers=two.asha).status_code == 200
+    basic = base64.b64encode(f"intake:{INTAKE_PASSWORD}".encode()).decode()
+    held = two.api.post(
+        "/v1/intake/inbound", headers={"Authorization": f"Basic {basic}"},
+        json={"from": "stranger@else.in", "to": [address], "subject": "Bill",
+              "attachments": [{"filename": "b.pdf",
+                               "content": base64.b64encode(world.invoice_pdf).decode()}]},
+    )  # fmt: skip
+    assert held.json() == {"delivered": 1}, held.text
     store = world.store
     store.put(f"renditions/{two.asha_ws}/{'a' * 64}.pdf", b"%PDF-", "application/pdf")
     store.put(f"audit-anchors/{two.asha_ws}/latest.json", b"{}", "application/json")
@@ -164,7 +184,8 @@ def test_deleting_an_account_erases_its_whole_workspace_and_nothing_else(
                   "accounts", "reviewers", "assessments", "model_runs", "workspace_settings",
                   "h1_products", "supplier_mappings", "item_mappings", "mapping_masters",
                   "export_runs", "export_profiles", "export_profile_versions",
-                  "export_run_documents", "tenants"):  # fmt: skip
+                  "export_run_documents", "intake_addresses", "intake_senders",
+                  "intake_settings", "intake_messages", "intake_items", "tenants"):  # fmt: skip
         assert before[table] > 0, table
     assert len(keys_of(two, two.asha_ws)) >= 5  # with the export run's file
     bens_rows, bens_keys = rows_of(owner_engine, two.ben_ws), keys_of(two, two.ben_ws)

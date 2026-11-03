@@ -67,7 +67,7 @@
             },
             "get": {
                 "summary": "List Documents",
-                "description": "The organisation's documents, newest first, each with its stage.",
+                "description": "The organisation's documents, newest first, each with its stage. `source`: those\nuploaded, or those mailed in.",
                 "operationId": "list_documents_v1_documents_get",
                 "parameters": [
                     {
@@ -128,6 +128,26 @@
                                 }
                             ],
                             "title": "Stage"
+                        }
+                    },
+                    {
+                        "name": "source",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "enum": [
+                                        "upload",
+                                        "email"
+                                    ],
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Source"
                         }
                     }
                 ],
@@ -3451,6 +3471,436 @@
                 }
             }
         },
+        "/v1/intake/inbound": {
+            "post": {
+                "summary": "Inbound",
+                "description": "A parsed email in the provider-agnostic form.",
+                "operationId": "inbound_v1_intake_inbound_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/InboundIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InboundOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/intake/inbound/postmark": {
+            "post": {
+                "summary": "Inbound Postmark",
+                "description": "Postmark's inbound webhook.",
+                "operationId": "inbound_postmark_v1_intake_inbound_postmark_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "additionalProperties": true,
+                                "type": "object",
+                                "title": "Payload"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/InboundOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/intake": {
+            "get": {
+                "summary": "Read Settings",
+                "description": "The workspace's address (its token hidden), its senders and its limits.",
+                "operationId": "read_settings_v1_settings_intake_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/IntakeSettingsOut"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "summary": "Change Settings",
+                "operationId": "change_settings_v1_settings_intake_patch",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/IntakeSettingsIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/IntakeSettingsOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/intake/address": {
+            "post": {
+                "summary": "Make Address",
+                "description": "A new address, shown whole in this answer only. Any address before it stops now:\nmail to it makes nothing.",
+                "operationId": "make_address_v1_settings_intake_address_post",
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/IntakeSettingsOut"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/intake/senders": {
+            "post": {
+                "summary": "Add Sender",
+                "description": "A whole address, or @ and a domain for everyone at it.",
+                "operationId": "add_sender_v1_settings_intake_senders_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SenderIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SenderOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/intake/senders/{sender_id}": {
+            "delete": {
+                "summary": "Remove Sender",
+                "operationId": "remove_sender_v1_settings_intake_senders__sender_id__delete",
+                "parameters": [
+                    {
+                        "name": "sender_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Sender Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "Successful Response"
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/settings/intake/test": {
+            "post": {
+                "summary": "Test",
+                "description": "Put a made-up invoice through intake as mail from DocForge; watch it arrive in the\nIntake list and the documents.",
+                "operationId": "test_v1_settings_intake_test_post",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/IntakeMessageOut"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/intake/messages": {
+            "get": {
+                "summary": "List Messages",
+                "description": "Mail received, newest first, with what became of each attachment.",
+                "operationId": "list_messages_v1_intake_messages_get",
+                "parameters": [
+                    {
+                        "name": "view",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "enum": [
+                                "all",
+                                "held",
+                                "failed",
+                                "ignored",
+                                "rejected"
+                            ],
+                            "type": "string",
+                            "default": "all",
+                            "title": "View"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/IntakeMessageOut"
+                                    },
+                                    "title": "Response List Messages V1 Intake Messages Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/intake/messages/{message_id}/accept": {
+            "post": {
+                "summary": "Accept",
+                "description": "Read the mail's held attachments now.",
+                "operationId": "accept_v1_intake_messages__message_id__accept_post",
+                "parameters": [
+                    {
+                        "name": "message_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Message Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/IntakeMessageOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/intake/messages/{message_id}/discard": {
+            "post": {
+                "summary": "Discard",
+                "description": "Delete the mail's held copies.",
+                "operationId": "discard_v1_intake_messages__message_id__discard_post",
+                "parameters": [
+                    {
+                        "name": "message_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Message Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/IntakeMessageOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/intake/items/{item_id}/retry": {
+            "post": {
+                "summary": "Retry",
+                "description": "Read again an attachment whose reading failed.",
+                "operationId": "retry_v1_intake_items__item_id__retry_post",
+                "parameters": [
+                    {
+                        "name": "item_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Item Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/audit": {
             "get": {
                 "summary": "Entries",
@@ -4239,6 +4689,35 @@
                 ],
                 "title": "ActivityPageOut"
             },
+            "AddressOut": {
+                "properties": {
+                    "address": {
+                        "type": "string",
+                        "title": "Address"
+                    },
+                    "whole": {
+                        "type": "boolean",
+                        "title": "Whole"
+                    },
+                    "created_by": {
+                        "type": "string",
+                        "title": "Created By"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "address",
+                    "whole",
+                    "created_by",
+                    "created_at"
+                ],
+                "title": "AddressOut"
+            },
             "AgentCallOut": {
                 "properties": {
                     "tool": {
@@ -4409,6 +4888,42 @@
                     "einvoice"
                 ],
                 "title": "AssessmentOut"
+            },
+            "AttachmentIn": {
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "maxLength": 500,
+                        "title": "Filename"
+                    },
+                    "content_type": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 200
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Content Type"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content"
+                    },
+                    "inline": {
+                        "type": "boolean",
+                        "title": "Inline",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "filename",
+                    "content"
+                ],
+                "title": "AttachmentIn"
             },
             "AuditEntryOut": {
                 "properties": {
@@ -5617,6 +6132,11 @@
                         "type": "string",
                         "title": "Filename"
                     },
+                    "source": {
+                        "type": "string",
+                        "title": "Source",
+                        "default": "upload"
+                    },
                     "sha256": {
                         "type": "string",
                         "title": "Sha256"
@@ -6599,6 +7119,304 @@
                     "rejected"
                 ],
                 "title": "ImportOut"
+            },
+            "InboundIn": {
+                "properties": {
+                    "from": {
+                        "type": "string",
+                        "maxLength": 500,
+                        "title": "From"
+                    },
+                    "to": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "maxItems": 100,
+                        "title": "To"
+                    },
+                    "subject": {
+                        "type": "string",
+                        "maxLength": 2000,
+                        "title": "Subject",
+                        "default": ""
+                    },
+                    "message_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 1000
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Message Id"
+                    },
+                    "attachments": {
+                        "items": {
+                            "$ref": "#/components/schemas/AttachmentIn"
+                        },
+                        "type": "array",
+                        "title": "Attachments"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "from",
+                    "to"
+                ],
+                "title": "InboundIn",
+                "description": "A parsed email, as any provider's adapter can give it."
+            },
+            "InboundOut": {
+                "properties": {
+                    "delivered": {
+                        "type": "integer",
+                        "title": "Delivered"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "delivered"
+                ],
+                "title": "InboundOut"
+            },
+            "IntakeItemOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "position": {
+                        "type": "integer",
+                        "title": "Position"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "title": "Filename"
+                    },
+                    "size_bytes": {
+                        "type": "integer",
+                        "title": "Size Bytes"
+                    },
+                    "outcome": {
+                        "type": "string",
+                        "title": "Outcome"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason"
+                    },
+                    "document_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Document Id"
+                    },
+                    "document_status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Document Status"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "position",
+                    "filename",
+                    "size_bytes",
+                    "outcome",
+                    "reason",
+                    "document_id",
+                    "document_status"
+                ],
+                "title": "IntakeItemOut"
+            },
+            "IntakeMessageOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "sender": {
+                        "type": "string",
+                        "title": "Sender"
+                    },
+                    "subject": {
+                        "type": "string",
+                        "title": "Subject"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason"
+                    },
+                    "received_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Received At"
+                    },
+                    "decided_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Decided By"
+                    },
+                    "decided_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Decided At"
+                    },
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/IntakeItemOut"
+                        },
+                        "type": "array",
+                        "title": "Items"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "sender",
+                    "subject",
+                    "status",
+                    "reason",
+                    "received_at",
+                    "decided_by",
+                    "decided_at",
+                    "items"
+                ],
+                "title": "IntakeMessageOut"
+            },
+            "IntakeSettingsIn": {
+                "properties": {
+                    "trust_accepted": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Trust Accepted"
+                    },
+                    "per_sender_hourly": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 10000.0,
+                                "minimum": 1.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Per Sender Hourly"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "IntakeSettingsIn"
+            },
+            "IntakeSettingsOut": {
+                "properties": {
+                    "enabled": {
+                        "type": "boolean",
+                        "title": "Enabled"
+                    },
+                    "domain": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Domain"
+                    },
+                    "address": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/AddressOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
+                    },
+                    "senders": {
+                        "items": {
+                            "$ref": "#/components/schemas/SenderOut"
+                        },
+                        "type": "array",
+                        "title": "Senders"
+                    },
+                    "trust_accepted": {
+                        "type": "boolean",
+                        "title": "Trust Accepted"
+                    },
+                    "per_sender_hourly": {
+                        "type": "integer",
+                        "title": "Per Sender Hourly"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "enabled",
+                    "domain",
+                    "address",
+                    "senders",
+                    "trust_accepted",
+                    "per_sender_hourly"
+                ],
+                "title": "IntakeSettingsOut"
             },
             "InvoiceExtraction": {
                 "properties": {
@@ -9034,6 +9852,51 @@
                     "secret"
                 ],
                 "title": "SecretOut"
+            },
+            "SenderIn": {
+                "properties": {
+                    "sender": {
+                        "type": "string",
+                        "maxLength": 254,
+                        "title": "Sender"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "sender"
+                ],
+                "title": "SenderIn"
+            },
+            "SenderOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "sender": {
+                        "type": "string",
+                        "title": "Sender"
+                    },
+                    "created_by": {
+                        "type": "string",
+                        "title": "Created By"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "sender",
+                    "created_by",
+                    "created_at"
+                ],
+                "title": "SenderOut"
             },
             "SessionOut": {
                 "properties": {

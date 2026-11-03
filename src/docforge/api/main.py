@@ -8,11 +8,14 @@ from docforge.accounts import MemberCaps
 from docforge.api.app import create_app
 from docforge.audit_log import AuditLogService
 from docforge.collections import CollectionService
-from docforge.config import get_settings
-from docforge.db.session import make_engine, make_session_factory
+from docforge.config import Settings, get_settings
+from docforge.db.session import SessionFactory, make_engine, make_session_factory
+from docforge.documents import DocumentService
 from docforge.export_runs import ExportRunService
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.h1_products import H1ProductService
+from docforge.intake.mailer import SmtpMailer
+from docforge.intake.service import IntakeService
 from docforge.limits import DatabaseLimits
 from docforge.mappings.service import MappingService
 from docforge.mcp_server.tools import AgentTools
@@ -30,6 +33,19 @@ from docforge.wiring import (
     load_pipelines,
 )
 from docforge.workspace_settings import WorkspaceSettingsService
+
+
+def build_intake(
+    settings: Settings, sessions: SessionFactory, documents: DocumentService
+) -> IntakeService:
+    domain = settings.intake_domain
+    sender = settings.intake_reply_from or f"DocForge <intake@{domain or 'localhost'}>"
+    mailer = SmtpMailer(settings.smtp_url.get_secret_value(), sender) if settings.smtp_url else None
+    return IntakeService(
+        sessions, documents, S3ObjectStore.from_settings(settings), mailer, domain=domain,
+        web_url=settings.web_url, max_upload_bytes=settings.max_upload_bytes,
+        max_pages=settings.max_pages,
+    )  # fmt: skip
 
 
 def create_default_app() -> FastAPI:
@@ -70,6 +86,12 @@ def create_default_app() -> FastAPI:
         mappings=mappings,
         export_runs=ExportRunService(sessions, S3ObjectStore.from_settings(settings), mappings),
         purchase_register=PurchaseRegisterService(sessions),
+        intake=build_intake(settings, sessions, service),
+        intake_webhook_password=(
+            settings.intake_webhook_password.get_secret_value()
+            if settings.intake_webhook_password
+            else None
+        ),
         limits=limits,
         agents=agents,
         audit_log=AuditLogService(sessions),

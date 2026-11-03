@@ -361,9 +361,11 @@ class DocumentService:
         max_documents: int | None = None,
         readings_per_day: int | None = None,
         free_readings_per_day: int | None = None,
+        source: str = "upload",
     ) -> IngestResult:
-        """Record an upload. The content hash is the identity: the same bytes for the same
-        tenant return the existing document and start no new work.
+        """Record an upload (or a file mailed in: `source="email"`). The content hash is the
+        identity: the same bytes for the same tenant, by any channel, return the existing
+        document and start no new work.
 
         `max_documents`, `readings_per_day` and `free_readings_per_day`, when given, cap a
         new document: the live documents the tenant holds, its readings today (UTC: uploads
@@ -392,7 +394,7 @@ class DocumentService:
         try:
             return self._ingest(
                 tenant_id, doc_type, filename, data, actor, sha256, key, media_type,
-                max_documents, readings_per_day, free_readings_per_day,
+                max_documents, readings_per_day, free_readings_per_day, source,
             )  # fmt: skip
         except Exception:
             if stored_now:
@@ -412,6 +414,7 @@ class DocumentService:
         max_documents: int | None,
         readings_per_day: int | None,
         free_readings_per_day: int | None,
+        source: str = "upload",
     ) -> IngestResult:
         with self._sessions.begin() as session:
             # Not while these bytes' files are being erased (a document of them deleted).
@@ -437,6 +440,7 @@ class DocumentService:
                         media_type=media_type,
                         filename=filename,
                         size_bytes=len(data),
+                        source=source,
                     )
                     .on_conflict_do_nothing(
                         index_elements=["tenant_id", "sha256"], index_where=live()
@@ -1038,12 +1042,16 @@ class DocumentService:
         before: tuple[datetime, uuid.UUID] | None = None,
         doc_type: str | None = None,
         stage: str | None = None,
+        source: str | None = None,
     ) -> list[Document]:
         """The organisation's documents, newest first; `before` is the last one already seen
-        (its created_at and id), so a page never repeats or skips one."""
+        (its created_at and id), so a page never repeats or skips one. `source`: upload or
+        email."""
         query = select(Document).where(Document.tenant_id == tenant_id, live())
         if doc_type is not None:
             query = query.where(Document.doc_type == doc_type)
+        if source is not None:
+            query = query.where(Document.source == source)
         if stage is not None:
             query = query.where(Document.stage == stage)
         if before is not None:
@@ -1367,6 +1375,16 @@ class DocumentService:
             everyone = session.scalar(select(func.docforge_member_readings_since(today)))
             if (everyone or 0) >= free_readings_per_day:
                 raise FreeReadingsUsed(free_readings_per_day)
+
+    @property
+    def max_pending(self) -> int:
+        return self._max_pending
+
+    @scoped
+    def pending(self, tenant_id: uuid.UUID) -> int:
+        """Versions waiting or being read: the queue's places taken."""
+        with self._sessions() as session:
+            return self._pending(session, tenant_id)
 
     @staticmethod
     def _pending(session: Session, tenant_id: uuid.UUID) -> int:

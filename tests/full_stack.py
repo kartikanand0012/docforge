@@ -22,6 +22,7 @@ from docforge.export_runs import ExportRunService
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.h1_products import H1ProductService
+from docforge.intake.service import IntakeService
 from docforge.limits import LocalLimits
 from docforge.mappings.service import MappingService
 from docforge.mcp_server.tools import AgentTools
@@ -35,6 +36,7 @@ from docforge.workspace_settings import WorkspaceSettingsService
 from worlds import World
 
 PASSWORD = "correct horse battery staple"  # noqa: S105 - a test account's
+INTAKE_PASSWORD = "full-stack-intake"  # noqa: S105 - a test stack's
 
 
 class FullStack:
@@ -74,6 +76,8 @@ class FullStack:
             collections=self.collections, settings=WorkspaceSettingsService(sessions),
             h1_products=H1ProductService(sessions), mappings=self.mappings,
             export_runs=self.runs, purchase_register=PurchaseRegisterService(sessions),
+            intake=IntakeService(sessions, self.documents, world.store, domain="in.test"),
+            intake_webhook_password=INTAKE_PASSWORD,
             limits=self.limits, agents=self.tools,
             audit_log=AuditLogService(sessions), signup_enabled=signup,
             signups_per_day=signups_per_day, member_caps=caps or MemberCaps(),
