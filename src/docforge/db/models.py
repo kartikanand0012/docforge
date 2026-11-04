@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
@@ -15,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Identity,
     Integer,
+    Numeric,
     Text,
     false,
     literal_column,
@@ -245,6 +247,13 @@ class WorkspaceSettings(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="RESTRICT"), primary_key=True
     )
     near_expiry_months: Mapped[int] = mapped_column(Integer)  # 0 is off
+    # The PO variance report's tolerances (V2 P7): rupees per unit, units, units, rupees.
+    variance_rate_tolerance: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    variance_qty_tolerance: Mapped[int] = mapped_column(Integer, server_default="0")
+    variance_free_qty_tolerance: Mapped[int] = mapped_column(Integer, server_default="0")
+    variance_amount_tolerance: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), server_default="1.00"
+    )
     updated_by: Mapped[str] = mapped_column(Text)  # who changed it, by name (the log has the id)
     updated_at: Mapped[datetime] = _created_at()
 

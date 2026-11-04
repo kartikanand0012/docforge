@@ -22,6 +22,7 @@ from docforge.mcp_server.tools import AgentTools
 from docforge.purchase_register import PurchaseRegisterService
 from docforge.storage import S3ObjectStore
 from docforge.telemetry import configure_tracing, settings_prices
+from docforge.variance_report import VarianceReportService
 from docforge.wiring import (
     build_authenticator,
     build_chat,
@@ -87,6 +88,7 @@ def create_default_app() -> FastAPI:
         mappings=mappings,
         export_runs=ExportRunService(sessions, S3ObjectStore.from_settings(settings), mappings),
         purchase_register=PurchaseRegisterService(sessions),
+        po_variance=VarianceReportService(sessions),
         intake=build_intake(settings, sessions, service),
         batches=BatchService(
             sessions,

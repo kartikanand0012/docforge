@@ -32,6 +32,7 @@ from docforge.purchase_register import PurchaseRegisterService
 from docforge.review.service import ReviewService
 from docforge.search.embeddings import FakeEmbedder
 from docforge.search.service import SearchService
+from docforge.variance_report import VarianceReportService
 from docforge.webhooks import WebhookService
 from docforge.workspace_settings import WorkspaceSettingsService
 from worlds import World
@@ -77,6 +78,7 @@ class FullStack:
             collections=self.collections, settings=WorkspaceSettingsService(sessions),
             h1_products=H1ProductService(sessions), mappings=self.mappings,
             export_runs=self.runs, purchase_register=PurchaseRegisterService(sessions),
+            po_variance=VarianceReportService(sessions),
             intake=IntakeService(sessions, self.documents, world.store, domain="in.test"),
             intake_webhook_password=INTAKE_PASSWORD,
             batches=BatchService(sessions, self.documents, member_caps=caps or MemberCaps()),

@@ -54,6 +54,7 @@ from docforge.api.uploads import (
     safe_filename,
     too_large_message,
 )
+from docforge.api.variance import variance_router
 from docforge.api.webhooks import webhooks_router
 from docforge.audit_log import AuditLogService
 from docforge.auth import MEMBER, Authenticator, FailureLimiter, Principal
@@ -78,6 +79,7 @@ from docforge.review.service import ReviewService
 from docforge.review.signing import HashingBusy
 from docforge.search.service import SearchService
 from docforge.telemetry import traced
+from docforge.variance_report import VarianceReportService
 from docforge.webhooks import WebhookService
 from docforge.workspace_settings import WorkspaceSettingsService
 
@@ -150,6 +152,7 @@ def create_app(
     mappings: MappingService | None = None,
     export_runs: ExportRunService | None = None,
     purchase_register: PurchaseRegisterService | None = None,
+    po_variance: VarianceReportService | None = None,
     intake: IntakeService | None = None,
     intake_webhook_password: str | None = None,
     batches: BatchService | None = None,
@@ -320,6 +323,8 @@ def create_app(
         app.include_router(export_profiles_router(export_runs))
     if purchase_register is not None:
         app.include_router(purchase_register_router(purchase_register))
+    if po_variance is not None:
+        app.include_router(variance_router(po_variance))
     if intake is not None:
         app.include_router(intake_router(intake, webhook_password=intake_webhook_password))
     if batches is not None:

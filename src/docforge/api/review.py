@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from docforge.accounts import MAX_PASSWORD
 from docforge.api.auth import client_address, require
 from docforge.api.einvoice import EinvoiceOut, einvoice_out
+from docforge.api.variance import VarianceOut, variance_out
 from docforge.auth import FailureLimiter, Principal, TooManyAttempts
 from docforge.documents import DocumentNotFound
 from docforge.parsing.base import ParseError
@@ -217,6 +218,8 @@ class ReviewOut(BaseModel):
     schedule_h1: list[H1LineOut]  # an invoice's lines for the H1 register; never a blocker
     # An invoice's lines with less than the window left after the bill date; never a blocker.
     near_expiry: list[NearExpiryLineOut]
+    # The bill against its PO in rupees (V2 P7); null without a linked PO.
+    variance: VarianceOut | None
 
 
 def _review_out(detail: ReviewDetail) -> ReviewOut:
@@ -261,6 +264,7 @@ def _review_out(detail: ReviewDetail) -> ReviewOut:
             for line in detail.schedule_h1
         ],
         near_expiry=[NearExpiryLineOut(**vars(line)) for line in detail.near_expiry],
+        variance=variance_out(detail.variance) if detail.variance is not None else None,
     )
 
 

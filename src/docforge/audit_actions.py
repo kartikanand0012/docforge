@@ -99,6 +99,11 @@ ACTIONS: dict[str, Action] = {
         "Purchase register compared with GSTR-2B",
         ("month", "matched", "amount_differs", "docforge_only", "twob_only"),
     ),
+    # The PO variance report (V2 P7): counts and the file's hash, never a value from a bill
+    "variance.exported": Action(
+        "PO variance report exported",
+        ("month", "invoices_checked", "not_checked", "variances", "supplier_filter", "sha256"),
+    ),
     # Invoices by email (V2 P5): who sent it and what became of it, never content or names
     "intake.received": Action(
         "Mail received",

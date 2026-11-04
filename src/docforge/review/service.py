@@ -95,7 +95,8 @@ from docforge.trust.einvoice_rules import InvoiceRule, einvoice_rules, unreadabl
 from docforge.trust.invoice_rules import DEFAULT_NEAR_EXPIRY_MONTHS, near_expiry
 from docforge.trust.match import Discrepancy, match_invoice_to_order
 from docforge.trust.rules import run_rules
-from docforge.workspace_settings import near_expiry_months
+from docforge.trust.variance import Variance, compare
+from docforge.workspace_settings import near_expiry_months, variance_tolerances
 
 MAX_FAILED_PINS = 5
 LOCK_FOR = timedelta(minutes=15)
@@ -226,6 +227,8 @@ class ReviewDetail:
     near_expiry_months: int = DEFAULT_NEAR_EXPIRY_MONTHS  # the window the checks used
     schedule_h1: tuple[H1Line, ...] = ()  # an invoice's lines for the H1 register
     near_expiry: tuple[NearExpiryLine, ...] = ()  # an invoice's lines line.shelf_life flags
+    # The bill against its PO, line by line in rupees (V2 P7); None without a linked PO.
+    variance: Variance | None = None
 
     @property
     def decision(self) -> str:
@@ -250,6 +253,8 @@ class _State:
     einvoice_check: EinvoiceCheck | None
     duplicates: tuple[Duplicate, ...]  # earlier bills an invoice repeats
     near_expiry_months: int  # the workspace's window the checks used, 0 for off
+    # The invoice and its PO as corrected, when they are paired (for the variance).
+    order_pair: tuple[InvoiceExtraction, PurchaseOrderExtraction] | None = None
 
     @property
     def blockers(self) -> tuple[str, ...]:
@@ -581,10 +586,18 @@ class ReviewService:
                 if isinstance(extraction, InvoiceExtraction)
                 else ()
             )
+            # Worked out from the pair the match already holds: one more lookup, the
+            # workspace's tolerances.
+            variance = (
+                compare(*state.order_pair, variance_tolerances(session, tenant_id))
+                if state.order_pair is not None
+                else None
+            )
             return replace(
                 self._detail(state),
                 claim=_claim_view(session, document_id, viewer),
                 schedule_h1=h1,
+                variance=variance,
             )
 
     @scoped
@@ -1222,6 +1235,7 @@ class ReviewService:
         match, counterpart = current_match(session, document.tenant_id, version.id)
         discrepancies: tuple[Discrepancy, ...] = ()
         status = "no_counterpart"
+        order_pair: tuple[InvoiceExtraction, PurchaseOrderExtraction] | None = None
         if match is not None:
             other_id = (
                 match.order_version_id
@@ -1235,11 +1249,12 @@ class ReviewService:
                 mine = reassessed.extraction
                 if isinstance(mine, InvoiceExtraction):
                     assert isinstance(other, PurchaseOrderExtraction)  # noqa: S101
-                    found = match_invoice_to_order(mine, other)
+                    order_pair = (mine, other)
                 else:
                     assert isinstance(other, InvoiceExtraction)  # noqa: S101
                     assert isinstance(mine, PurchaseOrderExtraction)  # noqa: S101
-                    found = match_invoice_to_order(other, mine)
+                    order_pair = (other, mine)
+                found = match_invoice_to_order(*order_pair)
                 discrepancies = found
                 status = "mismatch" if any(d.severity == "error" for d in found) else "match"
         signed = session.execute(
@@ -1264,6 +1279,7 @@ class ReviewService:
             einvoice_check=einvoice_check,
             duplicates=_duplicates(session, document, reassessed.extraction, einvoice_check),
             near_expiry_months=window,
+            order_pair=order_pair,
         )
 
     def _certificates(

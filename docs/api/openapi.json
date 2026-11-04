@@ -3636,6 +3636,99 @@
                 }
             }
         },
+        "/v1/exports/po-variance": {
+            "get": {
+                "summary": "Preview",
+                "description": "The month's report: each supplier's sums, each checked invoice, and every invoice\ndated in the month that was not checked, with its reason. This month by default.",
+                "operationId": "preview_v1_exports_po_variance_get",
+                "parameters": [
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "pattern": "^\\d{4}-\\d{2}$"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Month"
+                        }
+                    },
+                    {
+                        "name": "supplier_gstin",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string",
+                                    "maxLength": 20
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "Supplier Gstin"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ReportOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/exports/po-variance/file": {
+            "post": {
+                "summary": "Download",
+                "description": "The report as an Excel file: Summary (by supplier, with totals), Invoices,\nVariances (each with its arithmetic), Not in PO - Not billed, Not checked, About.",
+                "operationId": "download_v1_exports_po_variance_file_post",
+                "requestBody": {
+                    "content": {
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_download_v1_exports_po_variance_file_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {}
+                        }
+                    },
+                    "422": {
+                        "description": "No invoice in the month, or a bad month or GSTIN"
+                    }
+                }
+            }
+        },
         "/v1/intake/inbound": {
             "post": {
                 "summary": "Inbound",
@@ -5824,6 +5917,32 @@
                 ],
                 "title": "Body_create_extraction_v1_extractions_post"
             },
+            "Body_download_v1_exports_po_variance_file_post": {
+                "properties": {
+                    "month": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}$",
+                        "title": "Month"
+                    },
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "maxLength": 20
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "month"
+                ],
+                "title": "Body_download_v1_exports_po_variance_file_post"
+            },
             "Body_download_v1_exports_purchase_register_file_post": {
                 "properties": {
                     "month": {
@@ -6751,6 +6870,125 @@
                     "produced"
                 ],
                 "title": "DiffOut"
+            },
+            "DifferenceOut": {
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "enum": [
+                            "rate",
+                            "qty",
+                            "free_qty",
+                            "taxable"
+                        ],
+                        "title": "Field"
+                    },
+                    "label": {
+                        "type": "string",
+                        "title": "Label"
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "variance",
+                            "within_tolerance",
+                            "not_compared"
+                        ],
+                        "title": "Status"
+                    },
+                    "po_value": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Po Value"
+                    },
+                    "billed_value": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Billed Value"
+                    },
+                    "difference": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Difference"
+                    },
+                    "money_impact": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Money Impact"
+                    },
+                    "working": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Working"
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "field",
+                    "label",
+                    "status",
+                    "po_value",
+                    "billed_value",
+                    "difference",
+                    "money_impact",
+                    "working",
+                    "note"
+                ],
+                "title": "DifferenceOut"
             },
             "DocumentDetailOut": {
                 "properties": {
@@ -8205,6 +8443,156 @@
                 ],
                 "title": "InvoiceExtraction"
             },
+            "InvoiceOut": {
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Document Id"
+                    },
+                    "order_document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Order Document Id"
+                    },
+                    "invoice_no": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice No"
+                    },
+                    "invoice_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice Date"
+                    },
+                    "po_no": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Po No"
+                    },
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    },
+                    "supplier_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Name"
+                    },
+                    "invoice_total": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice Total"
+                    },
+                    "po_total": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Po Total"
+                    },
+                    "net_impact": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Net Impact"
+                    },
+                    "net_percent": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Net Percent"
+                    },
+                    "above_po": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Above Po"
+                    },
+                    "lines_checked": {
+                        "type": "integer",
+                        "title": "Lines Checked"
+                    },
+                    "lines_matched": {
+                        "type": "integer",
+                        "title": "Lines Matched"
+                    },
+                    "variances": {
+                        "type": "integer",
+                        "title": "Variances"
+                    },
+                    "not_in_po_lines": {
+                        "type": "integer",
+                        "title": "Not In Po Lines"
+                    },
+                    "not_billed_lines": {
+                        "type": "integer",
+                        "title": "Not Billed Lines"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "document_id",
+                    "order_document_id",
+                    "invoice_no",
+                    "invoice_date",
+                    "po_no",
+                    "supplier_gstin",
+                    "supplier_name",
+                    "invoice_total",
+                    "po_total",
+                    "net_impact",
+                    "net_percent",
+                    "above_po",
+                    "lines_checked",
+                    "lines_matched",
+                    "variances",
+                    "not_in_po_lines",
+                    "not_billed_lines"
+                ],
+                "title": "InvoiceOut"
+            },
             "Issue": {
                 "properties": {
                     "path": {
@@ -8811,6 +9199,61 @@
                 ],
                 "title": "LineExtraction"
             },
+            "LineOut": {
+                "properties": {
+                    "line": {
+                        "type": "integer",
+                        "title": "Line"
+                    },
+                    "order_line": {
+                        "type": "integer",
+                        "title": "Order Line"
+                    },
+                    "product": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Product"
+                    },
+                    "clean": {
+                        "type": "boolean",
+                        "title": "Clean"
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note"
+                    },
+                    "differences": {
+                        "items": {
+                            "$ref": "#/components/schemas/DifferenceOut"
+                        },
+                        "type": "array",
+                        "title": "Differences"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "line",
+                    "order_line",
+                    "product",
+                    "clean",
+                    "note",
+                    "differences"
+                ],
+                "title": "LineOut"
+            },
             "LoginIn": {
                 "properties": {
                     "tenant": {
@@ -9200,6 +9643,74 @@
                 ],
                 "title": "NearExpiryLineOut",
                 "description": "A line whose stock has less than the workspace's window left after the bill date."
+            },
+            "NotCheckedOut": {
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Document Id"
+                    },
+                    "invoice_no": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice No"
+                    },
+                    "invoice_date": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice Date"
+                    },
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    },
+                    "supplier_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Name"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "title": "Reason"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "document_id",
+                    "invoice_no",
+                    "invoice_date",
+                    "supplier_gstin",
+                    "supplier_name",
+                    "reason"
+                ],
+                "title": "NotCheckedOut"
             },
             "OrderCandidateOut": {
                 "properties": {
@@ -9950,6 +10461,68 @@
                 ],
                 "title": "RejectedOut"
             },
+            "ReportOut": {
+                "properties": {
+                    "month": {
+                        "type": "string",
+                        "title": "Month"
+                    },
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    },
+                    "tolerances": {
+                        "$ref": "#/components/schemas/VarianceTolerancesOut"
+                    },
+                    "totals": {
+                        "$ref": "#/components/schemas/SupplierVarianceOut"
+                    },
+                    "suppliers": {
+                        "items": {
+                            "$ref": "#/components/schemas/SupplierVarianceOut"
+                        },
+                        "type": "array",
+                        "title": "Suppliers"
+                    },
+                    "invoices": {
+                        "items": {
+                            "$ref": "#/components/schemas/InvoiceOut"
+                        },
+                        "type": "array",
+                        "title": "Invoices"
+                    },
+                    "not_checked": {
+                        "items": {
+                            "$ref": "#/components/schemas/NotCheckedOut"
+                        },
+                        "type": "array",
+                        "title": "Not Checked"
+                    },
+                    "sign_note": {
+                        "type": "string",
+                        "title": "Sign Note"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "month",
+                    "supplier_gstin",
+                    "tolerances",
+                    "totals",
+                    "suppliers",
+                    "invoices",
+                    "not_checked",
+                    "sign_note"
+                ],
+                "title": "ReportOut"
+            },
             "ReviewOut": {
                 "properties": {
                     "document_id": {
@@ -10129,6 +10702,16 @@
                         },
                         "type": "array",
                         "title": "Near Expiry"
+                    },
+                    "variance": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/VarianceOut"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "type": "object",
@@ -10159,7 +10742,8 @@
                     "duplicates",
                     "near_expiry_months",
                     "schedule_h1",
-                    "near_expiry"
+                    "near_expiry",
+                    "variance"
                 ],
                 "title": "ReviewOut"
             },
@@ -10639,24 +11223,42 @@
             "SettingsChange": {
                 "properties": {
                     "near_expiry_months": {
-                        "type": "integer",
-                        "maximum": 36.0,
-                        "minimum": 0.0,
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 36.0,
+                                "minimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
                         "title": "Near Expiry Months"
+                    },
+                    "variance_tolerances": {
+                        "anyOf": [
+                            {
+                                "$ref": "#/components/schemas/TolerancesChange"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ]
                     }
                 },
                 "additionalProperties": false,
                 "type": "object",
-                "required": [
-                    "near_expiry_months"
-                ],
-                "title": "SettingsChange"
+                "title": "SettingsChange",
+                "description": "Any of the settings; at least one."
             },
             "SettingsOut": {
                 "properties": {
                     "near_expiry_months": {
                         "type": "integer",
                         "title": "Near Expiry Months"
+                    },
+                    "variance_tolerances": {
+                        "$ref": "#/components/schemas/TolerancesOut"
                     },
                     "updated_by": {
                         "anyOf": [
@@ -10685,6 +11287,7 @@
                 "type": "object",
                 "required": [
                     "near_expiry_months",
+                    "variance_tolerances",
                     "updated_by",
                     "updated_at"
                 ],
@@ -11641,6 +12244,85 @@
                 ],
                 "title": "SupplierTaskOut"
             },
+            "SupplierVarianceOut": {
+                "properties": {
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    },
+                    "supplier_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Name"
+                    },
+                    "invoices_checked": {
+                        "type": "integer",
+                        "title": "Invoices Checked"
+                    },
+                    "lines_checked": {
+                        "type": "integer",
+                        "title": "Lines Checked"
+                    },
+                    "lines_matched": {
+                        "type": "integer",
+                        "title": "Lines Matched"
+                    },
+                    "variances": {
+                        "type": "integer",
+                        "title": "Variances"
+                    },
+                    "not_compared": {
+                        "type": "integer",
+                        "title": "Not Compared"
+                    },
+                    "not_in_po_lines": {
+                        "type": "integer",
+                        "title": "Not In Po Lines"
+                    },
+                    "not_billed_lines": {
+                        "type": "integer",
+                        "title": "Not Billed Lines"
+                    },
+                    "above_po": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Above Po"
+                    },
+                    "net_impact": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Net Impact"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "supplier_gstin",
+                    "supplier_name",
+                    "invoices_checked",
+                    "lines_checked",
+                    "lines_matched",
+                    "variances",
+                    "not_compared",
+                    "not_in_po_lines",
+                    "not_billed_lines",
+                    "above_po",
+                    "net_impact"
+                ],
+                "title": "SupplierVarianceOut"
+            },
             "TasksOut": {
                 "properties": {
                     "suppliers": {
@@ -11695,6 +12377,104 @@
                     "spec"
                 ],
                 "title": "TemplateOut"
+            },
+            "TolerancesChange": {
+                "properties": {
+                    "rate": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "maximum": 1000.0,
+                                "minimum": 0.0
+                            },
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rate"
+                    },
+                    "qty": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 100000.0,
+                                "minimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Qty"
+                    },
+                    "free_qty": {
+                        "anyOf": [
+                            {
+                                "type": "integer",
+                                "maximum": 100000.0,
+                                "minimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Free Qty"
+                    },
+                    "amount": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "maximum": 100000.0,
+                                "minimum": 0.0
+                            },
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Amount"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "title": "TolerancesChange"
+            },
+            "TolerancesOut": {
+                "properties": {
+                    "rate": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Rate"
+                    },
+                    "qty": {
+                        "type": "integer",
+                        "title": "Qty"
+                    },
+                    "free_qty": {
+                        "type": "integer",
+                        "title": "Free Qty"
+                    },
+                    "amount": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Amount"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "rate",
+                    "qty",
+                    "free_qty",
+                    "amount"
+                ],
+                "title": "TolerancesOut",
+                "description": "How far a bill may differ from its PO and still be shown as matched, with a note."
             },
             "TotalsExtraction": {
                 "properties": {
@@ -11985,6 +12765,93 @@
                 ],
                 "title": "UnansweredQuestionOut"
             },
+            "UnpairedOut": {
+                "properties": {
+                    "line": {
+                        "type": "integer",
+                        "title": "Line"
+                    },
+                    "product": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Product"
+                    },
+                    "qty": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Qty"
+                    },
+                    "rate": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Rate"
+                    },
+                    "value": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Value"
+                    },
+                    "working": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Working"
+                    },
+                    "note": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Note"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "line",
+                    "product",
+                    "qty",
+                    "rate",
+                    "value",
+                    "working",
+                    "note"
+                ],
+                "title": "UnpairedOut"
+            },
             "UploadOut": {
                 "properties": {
                     "created": {
@@ -12052,6 +12919,201 @@
                     "type"
                 ],
                 "title": "ValidationError"
+            },
+            "VarianceOut": {
+                "properties": {
+                    "invoice_no": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice No"
+                    },
+                    "po_no": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Po No"
+                    },
+                    "supplier_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Name"
+                    },
+                    "supplier_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Supplier Gstin"
+                    },
+                    "invoice_total": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice Total"
+                    },
+                    "po_total": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Po Total"
+                    },
+                    "net_impact": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Net Impact"
+                    },
+                    "net_percent": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Net Percent"
+                    },
+                    "above_po": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Above Po"
+                    },
+                    "lines_checked": {
+                        "type": "integer",
+                        "title": "Lines Checked"
+                    },
+                    "lines_matched": {
+                        "type": "integer",
+                        "title": "Lines Matched"
+                    },
+                    "variances": {
+                        "type": "integer",
+                        "title": "Variances"
+                    },
+                    "not_compared": {
+                        "type": "integer",
+                        "title": "Not Compared"
+                    },
+                    "lines": {
+                        "items": {
+                            "$ref": "#/components/schemas/LineOut"
+                        },
+                        "type": "array",
+                        "title": "Lines"
+                    },
+                    "not_in_po": {
+                        "items": {
+                            "$ref": "#/components/schemas/UnpairedOut"
+                        },
+                        "type": "array",
+                        "title": "Not In Po"
+                    },
+                    "not_billed": {
+                        "items": {
+                            "$ref": "#/components/schemas/UnpairedOut"
+                        },
+                        "type": "array",
+                        "title": "Not Billed"
+                    },
+                    "not_in_po_value": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Not In Po Value"
+                    },
+                    "not_billed_value": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Not Billed Value"
+                    },
+                    "tolerances": {
+                        "$ref": "#/components/schemas/VarianceTolerancesOut"
+                    },
+                    "sign_note": {
+                        "type": "string",
+                        "title": "Sign Note"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "invoice_no",
+                    "po_no",
+                    "supplier_name",
+                    "supplier_gstin",
+                    "invoice_total",
+                    "po_total",
+                    "net_impact",
+                    "net_percent",
+                    "above_po",
+                    "lines_checked",
+                    "lines_matched",
+                    "variances",
+                    "not_compared",
+                    "lines",
+                    "not_in_po",
+                    "not_billed",
+                    "not_in_po_value",
+                    "not_billed_value",
+                    "tolerances",
+                    "sign_note"
+                ],
+                "title": "VarianceOut"
+            },
+            "VarianceTolerancesOut": {
+                "properties": {
+                    "rate": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Rate"
+                    },
+                    "qty": {
+                        "type": "integer",
+                        "title": "Qty"
+                    },
+                    "free_qty": {
+                        "type": "integer",
+                        "title": "Free Qty"
+                    },
+                    "amount": {
+                        "type": "string",
+                        "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                        "title": "Amount"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "rate",
+                    "qty",
+                    "free_qty",
+                    "amount"
+                ],
+                "title": "VarianceTolerancesOut"
             },
             "VersionIn": {
                 "properties": {
