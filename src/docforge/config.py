@@ -97,6 +97,12 @@ class Settings(BaseSettings):
     intake_reply_from: str | None = None  # default: DocForge <intake@INTAKE_DOMAIN>
     web_url: str | None = None  # the web app, for links in replies
     max_pages: int = 20
+    # V2 P6: an invoice PDF holding several invoices is divided into one document each (off:
+    # every file is read whole). Such a file may have up to `max_bundle_pages` pages; each
+    # invoice in it is held to `max_pages`. A ZIP upload may be up to `max_zip_bytes`.
+    split_invoices: bool = True
+    max_bundle_pages: int = 100
+    max_zip_bytes: int = 500 * 1024 * 1024
     # The parser runs in a child process: replaced after this many documents, and stopped if
     # one document takes longer or more memory than this.
     parser_max_documents: int = 50

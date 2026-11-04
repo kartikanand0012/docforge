@@ -30,6 +30,7 @@ from docforge.api.auth import (
     require,
     sessions_router,
 )
+from docforge.api.batches import BATCH_ZIP_PATH, batches_router
 from docforge.api.chat import chat_router
 from docforge.api.collections import collections_router
 from docforge.api.documents import documents_router
@@ -44,6 +45,7 @@ from docforge.api.review import review_router
 from docforge.api.schedule_h1 import schedule_h1_router
 from docforge.api.search import search_router
 from docforge.api.settings import settings_router
+from docforge.api.splits import splits_router
 from docforge.api.stats import stats_router
 from docforge.api.uploads import (
     DEFAULT_MAX_UPLOAD_BYTES,
@@ -55,6 +57,7 @@ from docforge.api.uploads import (
 from docforge.api.webhooks import webhooks_router
 from docforge.audit_log import AuditLogService
 from docforge.auth import MEMBER, Authenticator, FailureLimiter, Principal
+from docforge.batches import BatchService
 from docforge.chat.service import ChatService
 from docforge.collections import CollectionService
 from docforge.documents import DocumentService
@@ -149,6 +152,8 @@ def create_app(
     purchase_register: PurchaseRegisterService | None = None,
     intake: IntakeService | None = None,
     intake_webhook_password: str | None = None,
+    batches: BatchService | None = None,
+    max_zip_bytes: int = 500 * 1024 * 1024,
     limits: Limits | None = None,
     agents: AgentTools | None = None,
     audit_log: AuditLogService | None = None,
@@ -188,14 +193,19 @@ def create_app(
         # Refuse from the declared length, before the body is spooled to disk. A request
         # without a length is still capped when read; a proxy must cap it in production.
         declared = request.headers.get("content-length", "")
-        # A mail from the provider carries several attachments, base64: its own limit.
-        limit = (
-            MAX_INBOUND_BYTES
-            if request.url.path.startswith(INBOUND_PREFIX)
-            else max_upload_bytes + MULTIPART_OVERHEAD
-        )
+        # A mail from the provider carries several attachments, base64, and a ZIP of bills
+        # many files: each its own limit.
+        path = request.url.path
+        if path.startswith(INBOUND_PREFIX):
+            limit, detail = MAX_INBOUND_BYTES, too_large_message(max_upload_bytes)
+        elif path == BATCH_ZIP_PATH:
+            limit = max_zip_bytes + MULTIPART_OVERHEAD
+            detail = f"The ZIP is larger than the limit of {max_zip_bytes // (1024 * 1024)} MB."
+        else:
+            limit = max_upload_bytes + MULTIPART_OVERHEAD
+            detail = too_large_message(max_upload_bytes)
         if declared.isdigit() and int(declared) > limit:
-            return JSONResponse({"detail": too_large_message(max_upload_bytes)}, status_code=413)
+            return JSONResponse({"detail": detail}, status_code=413)
         return await call_next(request)
 
     @app.middleware("http")
@@ -272,6 +282,7 @@ def create_app(
             )
         )
         app.include_router(stats_router(service, review, model_prices))
+        app.include_router(splits_router(service))
     limiter = authenticator.limiter if authenticator else FailureLimiter(20, 300)
     if authenticator is not None:
         app.include_router(sessions_router(authenticator))
@@ -311,6 +322,10 @@ def create_app(
         app.include_router(purchase_register_router(purchase_register))
     if intake is not None:
         app.include_router(intake_router(intake, webhook_password=intake_webhook_password))
+    if batches is not None:
+        app.include_router(
+            batches_router(batches, max_upload_bytes=max_upload_bytes, max_zip_bytes=max_zip_bytes)
+        )
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
     if authenticator is not None:

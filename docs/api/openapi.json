@@ -536,6 +536,157 @@
                 }
             }
         },
+        "/v1/splits": {
+            "get": {
+                "summary": "List Splits",
+                "description": "Files holding several invoices, newest first: by default those waiting for a person\nto group their pages.",
+                "operationId": "list_splits_v1_splits_get",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "enum": [
+                                "review",
+                                "split",
+                                "all"
+                            ],
+                            "type": "string",
+                            "default": "review",
+                            "title": "Status"
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 200,
+                            "minimum": 1,
+                            "default": 50,
+                            "title": "Limit"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/SplitOut"
+                                    },
+                                    "title": "Response List Splits V1 Splits Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/documents/{document_id}/split": {
+            "get": {
+                "summary": "Get Split",
+                "operationId": "get_split_v1_documents__document_id__split_get",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SplitOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "summary": "Confirm Split",
+                "description": "Confirm how the file's pages group into invoices: each group becomes an invoice,\nread as any upload is. Every page must be in one group or in `non_invoice`.",
+                "operationId": "confirm_split_v1_documents__document_id__split_post",
+                "parameters": [
+                    {
+                        "name": "document_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Document Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SplitIn"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SplitOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/sessions": {
             "post": {
                 "summary": "Sign In",
@@ -1102,6 +1253,20 @@
                         "schema": {
                             "type": "integer",
                             "title": "Page"
+                        }
+                    },
+                    {
+                        "name": "size",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "enum": [
+                                "page",
+                                "thumbnail"
+                            ],
+                            "type": "string",
+                            "default": "page",
+                            "title": "Size"
                         }
                     }
                 ],
@@ -3901,6 +4066,237 @@
                 }
             }
         },
+        "/v1/batches": {
+            "get": {
+                "summary": "List Batches",
+                "description": "The newest batches, with their counts.",
+                "operationId": "list_batches_v1_batches_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "items": {
+                                        "$ref": "#/components/schemas/BatchSummaryOut"
+                                    },
+                                    "type": "array",
+                                    "title": "Response List Batches V1 Batches Get"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "summary": "Create Batch",
+                "description": "A batch for files about to be sent one by one (up to 50; more is a ZIP).",
+                "operationId": "create_batch_v1_batches_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/BatchIn"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BatchOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/batches/{batch_id}/files": {
+            "post": {
+                "summary": "Add File",
+                "description": "One file of the batch. A file refused (too large, not accepted, unreadable) is\nrecorded with the reason and answered 201 like the rest: the batch goes on.",
+                "operationId": "add_file_v1_batches__batch_id__files_post",
+                "parameters": [
+                    {
+                        "name": "batch_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Batch Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_add_file_v1_batches__batch_id__files_post"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BatchItemOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/batches/zip": {
+            "post": {
+                "summary": "Upload Zip",
+                "description": "Every file of a ZIP (up to 200, 500 MB unpacked) as its own document. A ZIP that\nis unsafe or too large is refused whole, and nothing is made from it.",
+                "operationId": "upload_zip_v1_batches_zip_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_upload_zip_v1_batches_zip_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BatchOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/batches/{batch_id}": {
+            "get": {
+                "summary": "Get Batch",
+                "operationId": "get_batch_v1_batches__batch_id__get",
+                "parameters": [
+                    {
+                        "name": "batch_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Batch Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BatchOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/v1/batches/{batch_id}/retry": {
+            "post": {
+                "summary": "Retry Failed",
+                "description": "Read again the batch's documents whose reading failed; nothing else.",
+                "operationId": "retry_failed_v1_batches__batch_id__retry_post",
+                "parameters": [
+                    {
+                        "name": "batch_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid",
+                            "title": "Batch Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/BatchOut"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/audit": {
             "get": {
                 "summary": "Entries",
@@ -5007,6 +5403,271 @@
                 "title": "BBox",
                 "description": "A rectangle in PDF points with the origin at the bottom-left of the page."
             },
+            "BatchCountsOut": {
+                "properties": {
+                    "total": {
+                        "type": "integer",
+                        "title": "Total"
+                    },
+                    "not_sent": {
+                        "type": "integer",
+                        "title": "Not Sent"
+                    },
+                    "received": {
+                        "type": "integer",
+                        "title": "Received"
+                    },
+                    "already_received": {
+                        "type": "integer",
+                        "title": "Already Received"
+                    },
+                    "refused": {
+                        "type": "integer",
+                        "title": "Refused"
+                    },
+                    "waiting": {
+                        "type": "integer",
+                        "title": "Waiting"
+                    },
+                    "processed": {
+                        "type": "integer",
+                        "title": "Processed"
+                    },
+                    "ready": {
+                        "type": "integer",
+                        "title": "Ready"
+                    },
+                    "split": {
+                        "type": "integer",
+                        "title": "Split"
+                    },
+                    "failed": {
+                        "type": "integer",
+                        "title": "Failed"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "total",
+                    "not_sent",
+                    "received",
+                    "already_received",
+                    "refused",
+                    "waiting",
+                    "processed",
+                    "ready",
+                    "split",
+                    "failed"
+                ],
+                "title": "BatchCountsOut"
+            },
+            "BatchIn": {
+                "properties": {
+                    "files": {
+                        "type": "integer",
+                        "maximum": 200.0,
+                        "minimum": 1.0,
+                        "title": "Files"
+                    },
+                    "doc_type": {
+                        "type": "string",
+                        "title": "Doc Type",
+                        "default": "invoice"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "files"
+                ],
+                "title": "BatchIn"
+            },
+            "BatchItemOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "position": {
+                        "type": "integer",
+                        "title": "Position"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "title": "Filename"
+                    },
+                    "size_bytes": {
+                        "type": "integer",
+                        "title": "Size Bytes"
+                    },
+                    "outcome": {
+                        "type": "string",
+                        "title": "Outcome"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason"
+                    },
+                    "document_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Document Id"
+                    },
+                    "state": {
+                        "type": "string",
+                        "title": "State"
+                    },
+                    "error": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Error"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "position",
+                    "filename",
+                    "size_bytes",
+                    "outcome",
+                    "reason",
+                    "document_id",
+                    "state",
+                    "error"
+                ],
+                "title": "BatchItemOut"
+            },
+            "BatchOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "title": "Kind"
+                    },
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name"
+                    },
+                    "doc_type": {
+                        "type": "string",
+                        "title": "Doc Type"
+                    },
+                    "expected": {
+                        "type": "integer",
+                        "title": "Expected"
+                    },
+                    "person": {
+                        "type": "string",
+                        "title": "Person"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "counts": {
+                        "$ref": "#/components/schemas/BatchCountsOut"
+                    },
+                    "items": {
+                        "items": {
+                            "$ref": "#/components/schemas/BatchItemOut"
+                        },
+                        "type": "array",
+                        "title": "Items"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "kind",
+                    "name",
+                    "doc_type",
+                    "expected",
+                    "person",
+                    "created_at",
+                    "counts",
+                    "items"
+                ],
+                "title": "BatchOut"
+            },
+            "BatchSummaryOut": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Id"
+                    },
+                    "kind": {
+                        "type": "string",
+                        "title": "Kind"
+                    },
+                    "name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Name"
+                    },
+                    "person": {
+                        "type": "string",
+                        "title": "Person"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    },
+                    "counts": {
+                        "$ref": "#/components/schemas/BatchCountsOut"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "kind",
+                    "name",
+                    "person",
+                    "created_at",
+                    "counts"
+                ],
+                "title": "BatchSummaryOut"
+            },
             "Block": {
                 "properties": {
                     "id": {
@@ -5082,6 +5743,20 @@
                 ],
                 "title": "Block",
                 "description": "One piece of text on a page. `id` is what an extracted field cites."
+            },
+            "Body_add_file_v1_batches__batch_id__files_post": {
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "contentMediaType": "application/octet-stream",
+                        "title": "File"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file"
+                ],
+                "title": "Body_add_file_v1_batches__batch_id__files_post"
             },
             "Body_check_v1_exports_purchase_register_2b_check_post": {
                 "properties": {
@@ -5233,6 +5908,25 @@
                     "file"
                 ],
                 "title": "Body_upload_document_v1_documents_post"
+            },
+            "Body_upload_zip_v1_batches_zip_post": {
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "contentMediaType": "application/octet-stream",
+                        "title": "File"
+                    },
+                    "doc_type": {
+                        "type": "string",
+                        "title": "Doc Type",
+                        "default": "invoice"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file"
+                ],
+                "title": "Body_upload_zip_v1_batches_zip_post"
             },
             "CallerOut": {
                 "properties": {
@@ -6136,6 +6830,32 @@
                         "type": "string",
                         "title": "Source",
                         "default": "upload"
+                    },
+                    "parent_document_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parent Document Id"
+                    },
+                    "parent_pages": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "integer"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parent Pages"
                     },
                     "sha256": {
                         "type": "string",
@@ -10170,6 +10890,267 @@
                     "draft"
                 ],
                 "title": "SignedOut"
+            },
+            "SplitCountsOut": {
+                "properties": {
+                    "pages": {
+                        "type": "integer",
+                        "title": "Pages"
+                    },
+                    "invoices": {
+                        "type": "integer",
+                        "title": "Invoices"
+                    },
+                    "invoice_pages": {
+                        "type": "integer",
+                        "title": "Invoice Pages"
+                    },
+                    "non_invoice_pages": {
+                        "type": "integer",
+                        "title": "Non Invoice Pages"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "pages",
+                    "invoices",
+                    "invoice_pages",
+                    "non_invoice_pages"
+                ],
+                "title": "SplitCountsOut",
+                "description": "parent pages = invoice pages + non-invoice pages, always."
+            },
+            "SplitGroupOut": {
+                "properties": {
+                    "pages": {
+                        "items": {
+                            "type": "integer"
+                        },
+                        "type": "array",
+                        "title": "Pages"
+                    },
+                    "invoice_no": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Invoice No"
+                    },
+                    "seller_gstin": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Seller Gstin"
+                    },
+                    "document_id": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "uuid"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Document Id"
+                    },
+                    "document_status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Document Status"
+                    },
+                    "new": {
+                        "type": "boolean",
+                        "title": "New"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "pages",
+                    "invoice_no",
+                    "seller_gstin",
+                    "document_id",
+                    "document_status",
+                    "new"
+                ],
+                "title": "SplitGroupOut"
+            },
+            "SplitIn": {
+                "properties": {
+                    "groups": {
+                        "items": {
+                            "items": {
+                                "type": "integer"
+                            },
+                            "type": "array"
+                        },
+                        "type": "array",
+                        "maxItems": 500,
+                        "title": "Groups"
+                    },
+                    "non_invoice": {
+                        "items": {
+                            "type": "integer"
+                        },
+                        "type": "array",
+                        "maxItems": 1000,
+                        "title": "Non Invoice"
+                    }
+                },
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                    "groups"
+                ],
+                "title": "SplitIn"
+            },
+            "SplitOut": {
+                "properties": {
+                    "document_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "title": "Document Id"
+                    },
+                    "filename": {
+                        "type": "string",
+                        "title": "Filename"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "automatic": {
+                        "type": "boolean",
+                        "title": "Automatic"
+                    },
+                    "reason": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Reason"
+                    },
+                    "page_count": {
+                        "type": "integer",
+                        "title": "Page Count"
+                    },
+                    "proposed": {
+                        "items": {
+                            "$ref": "#/components/schemas/SplitGroupOut"
+                        },
+                        "type": "array",
+                        "title": "Proposed"
+                    },
+                    "proposed_non_invoice": {
+                        "items": {
+                            "type": "integer"
+                        },
+                        "type": "array",
+                        "title": "Proposed Non Invoice"
+                    },
+                    "pages_in_doubt": {
+                        "items": {
+                            "type": "integer"
+                        },
+                        "type": "array",
+                        "title": "Pages In Doubt"
+                    },
+                    "groups": {
+                        "items": {
+                            "$ref": "#/components/schemas/SplitGroupOut"
+                        },
+                        "type": "array",
+                        "title": "Groups"
+                    },
+                    "non_invoice": {
+                        "items": {
+                            "type": "integer"
+                        },
+                        "type": "array",
+                        "title": "Non Invoice"
+                    },
+                    "counts": {
+                        "$ref": "#/components/schemas/SplitCountsOut"
+                    },
+                    "decided_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Decided By"
+                    },
+                    "decided_person": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Decided Person"
+                    },
+                    "decided_at": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Decided At"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "document_id",
+                    "filename",
+                    "status",
+                    "automatic",
+                    "reason",
+                    "page_count",
+                    "proposed",
+                    "proposed_non_invoice",
+                    "pages_in_doubt",
+                    "groups",
+                    "non_invoice",
+                    "counts",
+                    "decided_by",
+                    "decided_person",
+                    "decided_at",
+                    "created_at"
+                ],
+                "title": "SplitOut"
             },
             "StatsOut": {
                 "properties": {

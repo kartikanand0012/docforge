@@ -74,6 +74,11 @@ class Document(Base):
     filename: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     source: Mapped[str] = mapped_column(Text, server_default="upload")  # upload or email
+    # One invoice cut from a PDF that held several (V2 P6): that upload, and its pages.
+    parent_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id")
+    )
+    parent_pages: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
     page_count: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(Text, server_default="received")
     # Where it is now (docforge.stages); the audit trail has how it got there.
@@ -481,6 +486,65 @@ class IntakeItem(Base):
     held_key: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentSplit(Base):
+    """What became of a PDF that held several invoices: the proposal, and the grouping made.
+
+    `status` is `review` while a person must confirm the grouping, `split` once the children
+    exist. Every page is in one group or in `non_invoice` (`split.detect.reconcile`).
+    """
+
+    __tablename__ = "document_splits"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"))
+    version_id: Mapped[uuid.UUID] = _version()
+    status: Mapped[str] = mapped_column(Text)  # review, split
+    automatic: Mapped[bool] = mapped_column(Boolean)  # split without a person: every page certain
+    reason: Mapped[str | None] = mapped_column(Text)  # why a person must confirm
+    page_count: Mapped[int] = mapped_column(Integer)
+    proposal: Mapped[dict[str, Any]] = mapped_column(JSONB)  # groups, non_invoice, in doubt
+    groups: Mapped[list[Any] | None] = mapped_column(JSONB)  # as made: pages, document id
+    non_invoice: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
+    decided_by: Mapped[str | None] = mapped_column(Text)  # the reviewer's actor
+    decided_person: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class UploadBatch(Base):
+    """Files dropped together, or one ZIP: each became its own document (V2 P6)."""
+
+    __tablename__ = "upload_batches"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    kind: Mapped[str] = mapped_column(Text)  # files, zip
+    doc_type: Mapped[str] = mapped_column(Text)
+    expected: Mapped[int] = mapped_column(Integer)  # files the browser said it would send
+    name: Mapped[str | None] = mapped_column(Text)  # the ZIP's name
+    created_by: Mapped[str] = mapped_column(Text)
+    person: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class UploadBatchItem(Base):
+    """One file of a batch, and what became of it when it arrived."""
+
+    __tablename__ = "upload_batch_items"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    batch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("upload_batches.id"))
+    position: Mapped[int] = mapped_column(Integer)
+    filename: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    outcome: Mapped[str] = mapped_column(Text)  # received, already_received, refused
+    reason: Mapped[str | None] = mapped_column(Text)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = _created_at()
 
 
 class MatchRecord(Base):

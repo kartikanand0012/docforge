@@ -219,7 +219,8 @@ def confirmation(subject: str, workspace: str, items: Sequence[ItemView], link: 
         lines.append(f"- {item.filename}: {words.rstrip('.')}.")
     lines += [
         "",
-        "Each attached file is read as one document: a PDF holding several bills is read as one.",
+        "A PDF holding several bills is divided into one document per bill; where its pages "
+        "are unclear, a person in your workspace groups them first.",
     ]
     if link:
         lines.append(f"See them in DocForge: {link}")
@@ -387,8 +388,9 @@ class IntakeService:
             if ignored is not None:
                 outcome, reason = "ignored", ignored
             else:
-                check_file(data, max_upload_bytes=self._max_upload_bytes,
-                           max_pages=self._max_pages)  # fmt: skip
+                # An invoice PDF may hold several invoices, divided as an upload's is (P6).
+                pages = self._documents.pages_allowed("invoice", self._max_pages)
+                check_file(data, max_upload_bytes=self._max_upload_bytes, max_pages=pages)
                 hold = self._hold_reason(tenant_id, sender, allowed=allowed, hourly=hourly)
                 if hold is None:
                     outcome, reason, document_id = self._ingest(tenant_id, filename, data, free)

@@ -29,6 +29,7 @@ from docforge.documents import (
     FreeReadingsUsed,
     QueueFull,
     ReprocessInProgress,
+    SplitFile,
     UnknownDocumentType,
     UnsupportedFormat,
     WorkspaceFull,
@@ -48,7 +49,7 @@ UNAVAILABLE_RETRY_AFTER = "30"
 
 Reader = Annotated[Principal, Depends(require("documents:read"))]
 Writer = Annotated[Principal, Depends(require("documents:write"))]
-_FINAL_STAGES = ("ready", "processed", "failed")
+_FINAL_STAGES = ("ready", "processed", "failed", "split", "split_review")
 # Each open stream reads the timeline every second; a cap per caller keeps one caller from
 # taking every thread and connection.
 MAX_STREAMS_PER_CALLER = 5
@@ -63,10 +64,15 @@ class DocumentOut(_Out):
     doc_type: str
     filename: str
     source: str = "upload"  # upload, or email
+    # One invoice cut from a file that held several (V2 P6): that file, and its pages there.
+    parent_document_id: uuid.UUID | None = None
+    parent_pages: list[int] | None = None
     sha256: str
     media_type: str
     size_bytes: int
     page_count: int | None
+    # received, processing, extracted, failed; split: divided into its invoices (no bill
+    # itself); split_review: waiting for a person to group its pages into invoices
     status: str
     stage: str  # stored, parsing, extracting, checking, indexing, processed, ready, ...
     ready_for_chat: bool
@@ -245,7 +251,9 @@ def documents_router(
             raise HTTPException(422, f"Unknown document type. Supported: {supported}.")
         data, fmt = await read_upload(file, max_upload_bytes)
         try:
-            await run_in_threadpool(check_pages, data, fmt, max_pages)
+            # An invoice PDF may hold several invoices, to be divided (V2 P6).
+            pages = service.pages_allowed(doc_type, max_pages)
+            await run_in_threadpool(check_pages, data, fmt, pages)
         except FileRefused as error:
             raise HTTPException(error.status, error.message) from error
 
@@ -378,6 +386,8 @@ def documents_router(
             raise _NOT_FOUND from None
         except ReprocessInProgress:
             raise HTTPException(409, "This document is still being processed.") from None
+        except SplitFile as error:
+            raise HTTPException(409, str(error)) from None
         except (DailyReadingsUsed, FreeReadingsUsed) as error:
             raise _readings_used(error) from error
         except ClaimedByOther as error:
@@ -399,7 +409,7 @@ def documents_router(
             )
         except DocumentNotFound:
             raise _NOT_FOUND from None
-        except ClaimedByOther as error:
+        except (ClaimedByOther, SplitFile) as error:
             raise HTTPException(409, str(error)) from None
         return Response(status_code=204)
 

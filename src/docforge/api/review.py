@@ -7,6 +7,7 @@ and is never logged or returned.
 import json
 import uuid
 from datetime import date, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from zoneinfo import ZoneInfo
@@ -498,9 +499,17 @@ def review_router(
         response_class=Response,
         responses={200: {"content": {"image/png": {}}}},
     )
-    async def page_image(document_id: uuid.UUID, page: int, principal: Reader) -> Response:
+    async def page_image(
+        document_id: uuid.UUID,
+        page: int,
+        principal: Reader,
+        size: Literal["page", "thumbnail"] = "page",
+    ) -> Response:
         try:
-            png = await run_in_threadpool(review.page_image, principal.tenant_id, document_id, page)
+            png = await run_in_threadpool(
+                partial(review.page_image, thumbnail=size == "thumbnail"),
+                principal.tenant_id, document_id, page,
+            )  # fmt: skip
         except ParseError as error:
             raise HTTPException(422, "The page could not be rendered.") from error
         except Exception as error:

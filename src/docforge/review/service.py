@@ -101,6 +101,7 @@ MAX_FAILED_PINS = 5
 LOCK_FOR = timedelta(minutes=15)
 _MIN_PIN_DIGITS = 6
 _PAGE_DPI = 110
+_THUMBNAIL_DPI = 24  # an A4 page about 200 pixels wide: every page of a file side by side
 _QUEUE_LIMIT = 200
 _QUEUE_SCAN = 20  # documents examined per queue entry returned, at most
 STATS_SCAN = 50  # documents the home screen's count of those awaiting review looks at, at most
@@ -723,8 +724,11 @@ class ReviewService:
             )
 
     @scoped
-    def page_image(self, tenant_id: uuid.UUID, document_id: uuid.UUID, page: int) -> bytes:
-        """Page `page` of the original as uploaded, as PNG: what the reviewer compares with."""
+    def page_image(
+        self, tenant_id: uuid.UUID, document_id: uuid.UUID, page: int, *, thumbnail: bool = False
+    ) -> bytes:
+        """Page `page` of the original as uploaded, as PNG: what the reviewer compares with.
+        A thumbnail is small enough to show every page of a file side by side."""
         with self._sessions() as session:
             document = self._find(session, tenant_id, document_id)
             pages = document.page_count or 0
@@ -745,7 +749,8 @@ class ReviewService:
         if not 1 <= page <= pages:
             raise PageNotFound(f"the document has no page {page}")
         with self._renders:  # rendering holds the PDF library's lock; keep a queue short
-            (image,) = render_pages(self._store.get(key), _PAGE_DPI, page, page)
+            dpi = _THUMBNAIL_DPI if thumbnail else _PAGE_DPI
+            (image,) = render_pages(self._store.get(key), dpi, page, page)
             out = io.BytesIO()
             image.save(out, format="PNG", optimize=True)
         return out.getvalue()

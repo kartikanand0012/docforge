@@ -15,6 +15,7 @@ from test_chat import Model
 from docforge.api.app import MemberCaps, create_app
 from docforge.audit_log import AuditLogService
 from docforge.auth import Authenticator
+from docforge.batches import BatchService
 from docforge.chat.service import ChatService
 from docforge.collections import CollectionService
 from docforge.db.session import SessionFactory
@@ -78,6 +79,7 @@ class FullStack:
             export_runs=self.runs, purchase_register=PurchaseRegisterService(sessions),
             intake=IntakeService(sessions, self.documents, world.store, domain="in.test"),
             intake_webhook_password=INTAKE_PASSWORD,
+            batches=BatchService(sessions, self.documents, member_caps=caps or MemberCaps()),
             limits=self.limits, agents=self.tools,
             audit_log=AuditLogService(sessions), signup_enabled=signup,
             signups_per_day=signups_per_day, member_caps=caps or MemberCaps(),

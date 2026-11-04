@@ -4,9 +4,9 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from docforge.accounts import MemberCaps
 from docforge.api.app import create_app
 from docforge.audit_log import AuditLogService
+from docforge.batches import BatchService
 from docforge.collections import CollectionService
 from docforge.config import Settings, get_settings
 from docforge.db.session import SessionFactory, make_engine, make_session_factory
@@ -31,6 +31,7 @@ from docforge.wiring import (
     build_service,
     build_webhooks,
     load_pipelines,
+    member_caps,
 )
 from docforge.workspace_settings import WorkspaceSettingsService
 
@@ -87,6 +88,14 @@ def create_default_app() -> FastAPI:
         export_runs=ExportRunService(sessions, S3ObjectStore.from_settings(settings), mappings),
         purchase_register=PurchaseRegisterService(sessions),
         intake=build_intake(settings, sessions, service),
+        batches=BatchService(
+            sessions,
+            service,
+            max_upload_bytes=settings.max_upload_bytes,
+            max_pages=settings.max_pages,
+            member_caps=member_caps(settings),
+        ),
+        max_zip_bytes=settings.max_zip_bytes,
         intake_webhook_password=(
             settings.intake_webhook_password.get_secret_value()
             if settings.intake_webhook_password
@@ -100,10 +109,5 @@ def create_default_app() -> FastAPI:
         signup_enabled=settings.signup_enabled,
         signups_per_day=settings.signups_per_day,
         signups_per_address_per_hour=settings.signups_per_address_per_hour,
-        member_caps=MemberCaps(
-            max_documents=settings.member_max_documents,
-            uploads_per_day=settings.member_uploads_per_day,
-            questions_per_day=settings.member_questions_per_day,
-            readings_per_day_total=settings.member_readings_per_day_total,
-        ),
+        member_caps=member_caps(settings),
     )

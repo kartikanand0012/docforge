@@ -6,6 +6,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
+from docforge.accounts import MemberCaps
 from docforge.anchors import AnchorStore
 from docforge.auth import Authenticator
 from docforge.chat.service import ChatService
@@ -34,6 +35,7 @@ from docforge.queue import JobQueue
 from docforge.review.service import ReviewService
 from docforge.search.embeddings import Embedder, FakeEmbedder, GeminiEmbedder, RecordingEmbedder
 from docforge.search.service import SearchService
+from docforge.split.reader import Splitter
 from docforge.storage import S3ObjectStore
 from docforge.webhooks import WebhookService
 
@@ -273,6 +275,25 @@ def build_chat(settings: Settings, search: SearchService) -> ChatService:
     )
 
 
+def build_splitter(settings: Settings, pipelines: dict[str, Pipeline]) -> Splitter | None:
+    """Divides an invoice PDF holding several invoices, with the invoice pipeline's own parser
+    and extraction; None when switched off or the pipeline cannot be read in two steps."""
+    invoice = pipelines.get("invoice")
+    if not settings.split_invoices or not isinstance(invoice, ExtractionPipeline):
+        return None
+    return Splitter(invoice, max_bundle_pages=settings.max_bundle_pages)
+
+
+def member_caps(settings: Settings) -> MemberCaps:
+    """What one free workspace may hold and do."""
+    return MemberCaps(
+        max_documents=settings.member_max_documents,
+        uploads_per_day=settings.member_uploads_per_day,
+        questions_per_day=settings.member_questions_per_day,
+        readings_per_day_total=settings.member_readings_per_day_total,
+    )
+
+
 def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
     database_url = settings.database_url.get_secret_value()
     queue = JobQueue(
@@ -282,10 +303,11 @@ def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
     )
     sessions = make_session_factory(make_engine(database_url))
     webhooks = build_webhooks(settings, queue)
+    pipelines = load_pipelines(settings)
     service = DocumentService(
         sessions,
         S3ObjectStore.from_settings(settings),
-        load_pipelines(settings),
+        pipelines,
         queue.enqueue,
         max_attempts=settings.job_max_attempts,
         max_pending=settings.max_pending_documents,
@@ -295,6 +317,8 @@ def build_service(settings: Settings) -> tuple[DocumentService, JobQueue]:
         converter=build_converter(settings),
         max_pages=settings.max_pages,
         einvoice=build_einvoice(settings),
+        splitter=build_splitter(settings, pipelines),
+        member_caps=member_caps(settings),
     )
     queue.bind(service)
     queue.bind_search(build_search(settings))

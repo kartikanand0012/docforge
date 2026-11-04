@@ -63,8 +63,8 @@ same bytes from any channel are one document ("already received").
 
 Ignored, with the reason recorded, not failed: `winmail.dat` (Outlook's formatting), text,
 HTML, calendar and contact files, and images under 30 KB (logos and signatures; a phone photo
-of a bill is far larger). One PDF holding several bills is read as one document, and the reply
-says each attached file is one document.
+of a bill is far larger). One PDF holding several bills is divided into one document per bill
+as an upload's is (V2 P6, `v2-p6-bulk-split.md`), and the reply says so.
 
 ### Limits and failures
 

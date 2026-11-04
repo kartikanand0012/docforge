@@ -29,11 +29,13 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session, aliased
 
 from docforge import audit
+from docforge.accounts import MemberCaps
 from docforge.conversion import ConversionError, Converter, ConverterUnavailable, FileConverter
 from docforge.db.models import (
     AssessmentRecord,
     AuditEntry,
     Document,
+    DocumentSplit,
     DocumentVersion,
     EinvoiceCheck,
     Extraction,
@@ -42,6 +44,7 @@ from docforge.db.models import (
     ParseOutput,
     QuestionUsage,
     Review,
+    Tenant,
     live,
 )
 from docforge.db.session import SessionFactory
@@ -71,6 +74,9 @@ from docforge.parsing.base import (
 from docforge.parsing.cache import NotCached
 from docforge.parsing.pdf import pdf_page_count
 from docforge.review.claims import refuse_if_claimed
+from docforge.split.detect import PagesDoNotReconcile, Proposal, reconcile
+from docforge.split.pages import cut
+from docforge.split.reader import Splitter
 from docforge.stages import stage_listener
 from docforge.storage import (
     ObjectNotFound,
@@ -94,7 +100,7 @@ WORKER = "system:worker"
 IN_FLIGHT = ("queued", "running")
 # Document types that are compared with each other once both are extracted, joined on the
 # order number each carries.
-Outcome = Literal["succeeded", "failed", "skipped"]
+Outcome = Literal["succeeded", "failed", "skipped", "split"]
 
 
 class UnknownDocumentType(ValueError):
@@ -141,6 +147,23 @@ class FreeReadingsUsed(Exception):
     """Free workspaces together have had as many readings today as the deployment allows."""
 
 
+class SplitFile(Exception):
+    """A file divided into its invoices (or waiting for a person to group its pages) is no
+    bill itself: it is not read again or deleted while its invoices are kept."""
+
+
+class SplitNotFound(LookupError):
+    """No division of this document, or none waiting for a person."""
+
+
+class SplitDecided(Exception):
+    """The pages were grouped already: by the splitter, or by another person."""
+
+
+class NoRoom(Exception):
+    """A free workspace has no room for the invoices a divided file would make; in words."""
+
+
 class TransientProcessingError(Exception):
     """Processing failed in a way that may succeed later; the queue should retry the job."""
 
@@ -182,6 +205,57 @@ class IngestResult:
     document: Document
     version: DocumentVersion | None  # None when the file was already known
     created: bool
+
+
+@dataclass(frozen=True)
+class SplitGroupView:
+    pages: tuple[int, ...]
+    invoice_no: str | None  # as the splitter read it from the first page, when proposed
+    seller_gstin: str | None
+    document_id: uuid.UUID | None  # the invoice made from these pages, once made
+    document_status: str | None
+    new: bool  # made by this division (false: the same pages were a document already)
+
+
+@dataclass(frozen=True)
+class SplitView:
+    """A file holding several invoices: what the splitter proposed, and what was made."""
+
+    document_id: uuid.UUID
+    filename: str
+    status: str  # review: a person is to group the pages; split: the invoices are made
+    automatic: bool
+    reason: str | None  # why a person must confirm
+    page_count: int
+    proposed: tuple[SplitGroupView, ...]
+    proposed_non_invoice: tuple[int, ...]
+    pages_in_doubt: tuple[int, ...]
+    groups: tuple[SplitGroupView, ...]  # as made; empty while in review
+    non_invoice: tuple[int, ...]
+    decided_by: str | None
+    decided_person: str | None
+    decided_at: datetime | None
+    created_at: datetime
+
+
+def _span(pages: Sequence[int]) -> str:
+    if len(pages) == 1:
+        return f"page {pages[0]}"
+    if list(pages) == list(range(pages[0], pages[-1] + 1)):
+        return f"pages {pages[0]}-{pages[-1]}"
+    return "pages " + ", ".join(str(page) for page in pages)
+
+
+def _proposal_json(proposal: Proposal) -> dict[str, Any]:
+    return {
+        "groups": [
+            {"pages": list(g.pages), "invoice_no": g.invoice_no, "seller_gstin": g.seller_gstin}
+            for g in proposal.groups
+        ],
+        "non_invoice": list(proposal.non_invoice),
+        "pages_in_doubt": list(proposal.pages_in_doubt),
+        "uncertain": list(proposal.uncertain),
+    }
 
 
 @dataclass(frozen=True)
@@ -231,6 +305,9 @@ _STAGE_OF = {
     "processing.retry_scheduled": "retrying",
     "processing.failed": "failed",
     "indexing.completed": "ready",
+    "split.proposed": "split_review",
+    "split.made": "split",
+    "split.confirmed": "split",
 }
 
 
@@ -309,6 +386,23 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _moved(proposal: dict[str, Any], groups: list[list[int]], non_invoice: list[int]) -> int:
+    """Pages a person placed differently from the proposal: in another invoice, or moved
+    into or out of "not an invoice page"."""
+
+    def places(grouped: list[list[int]], outside: list[int]) -> dict[int, int]:
+        # A group is known by its first page, so the order groups are listed in does not count.
+        placed = {page: min(pages) for pages in grouped if pages for page in pages}
+        placed.update({page: 0 for page in outside})
+        return placed
+
+    before = places(
+        [g["pages"] for g in proposal.get("groups", [])], proposal.get("non_invoice", [])
+    )
+    after = places(groups, non_invoice)
+    return sum(1 for page, place in after.items() if before.get(page) != place)
+
+
 class DocumentService:
     def __init__(
         self,
@@ -325,7 +419,13 @@ class DocumentService:
         converter: Converter | None = None,
         max_pages: int = DEFAULT_MAX_PAGES,
         einvoice: EinvoiceChecker | None = None,
+        splitter: Splitter | None = None,
+        member_caps: MemberCaps | None = None,
     ) -> None:
+        # Divides an invoice PDF holding several (V2 P6); None: every file is read whole.
+        self._splitter = splitter
+        # A free workspace's caps, held to the invoices a divided file makes as well.
+        self._member_caps = member_caps or MemberCaps()
         self._einvoice = einvoice  # checks an invoice's signed QR; None: switched off
         self._max_pages = max_pages  # a PDF made from another file is held to it too
         self._converter = converter or FileConverter()  # files that are not PDFs, to PDFs
@@ -346,6 +446,13 @@ class DocumentService:
     @property
     def document_types(self) -> list[str]:
         return sorted(self._pipelines)
+
+    def pages_allowed(self, doc_type: str, max_pages: int) -> int:
+        """The pages an upload of `doc_type` may have: one invoice's, or with splitting on, a
+        PDF holding several invoices (`Splitter.max_bundle_pages`)."""
+        if self._splitter is not None and doc_type == "invoice":
+            return max(max_pages, self._splitter.max_bundle_pages)
+        return max_pages
 
     # --- ingest -----------------------------------------------------------------------------
 
@@ -508,6 +615,10 @@ class DocumentService:
         """
         with self._sessions.begin() as session:
             document = self._document(session, tenant_id, document_id, lock=True)
+            if document.status == "split":
+                raise SplitFile("This file was divided into its invoices: read those again.")
+            if document.status == "split_review":
+                raise SplitFile("Group this file's pages into invoices first.")
             refuse_if_claimed(session, document.id, reviewer_id)
             newest = session.scalar(
                 select(DocumentVersion)
@@ -547,6 +658,12 @@ class DocumentService:
         with self._sessions.begin() as session:
             document = self._document(session, tenant_id, document_id, lock=True)
             refuse_if_claimed(session, document.id, reviewer_id)
+            children = self._children(session, document.id)
+            if children:
+                raise SplitFile(
+                    f"This file was divided into {len(children)} invoices, which are kept from "
+                    "it. Delete those first."
+                )
             # A reading still waiting or under way ends here: the worker drops a deleted
             # document's job, and a version left in flight would hold a place in the queue.
             for version in session.scalars(
@@ -629,6 +746,13 @@ class DocumentService:
             turn = version.attempts
             doc_type, storage_key, sha256 = document.doc_type, document.storage_key, document.sha256
             tenant = document.tenant_id
+            # An invoice PDF may hold several; one cut from such a file holds one.
+            divisible = (
+                self._splitter is not None
+                and doc_type == "invoice"
+                and fmt == "pdf"
+                and document.parent_document_id is None
+            )
             # The workspace's near-expiry window as it is now, for the stored assessment.
             stock_rules = (
                 (near_expiry(near_expiry_months(session, tenant)),) if doc_type == "invoice" else ()
@@ -668,8 +792,13 @@ class DocumentService:
                 signed = einvoice_rules(evidence, parsed) if evidence is not None else ()
                 return (*signed, *stock_rules)
 
+            read: PipelineResult[BaseModel] | Proposal
             with stage_listener(lambda stage: self._reach(version_id, turn, stage)):
-                result = pipeline.run(data, extra_rules_for=extra_rules_for)
+                pages = pdf_page_count(data) if divisible else 1
+                if self._splitter is not None and pages > 1:
+                    read = self._splitter.read(data, pages, extra_rules_for)
+                else:
+                    read = pipeline.run(data, extra_rules_for=extra_rules_for)
         except ConversionError as error:
             return self._fail(version_id, turn, f"The file could not be converted to PDF. {error}")
         except ConverterUnavailable as error:
@@ -710,6 +839,9 @@ class DocumentService:
         except Exception as error:
             logger.exception("unexpected error processing version %s", version_id)
             return self._retry_or_fail(version_id, turn, "Internal error.", error, final)
+        if isinstance(read, Proposal):
+            return self._divide(version_id, turn, tenant, read, data, final)
+        result = read
         calls = [
             (r.provider, r.model, r.input_tokens or 0, r.output_tokens or 0, r.thinking_tokens or 0)
             for r in result.responses
@@ -731,6 +863,326 @@ class DocumentService:
                 # The extraction is stored; a failed comparison must not fail the job.
                 logger.exception("could not match version %s with its counterpart", version_id)
         return outcome
+
+    # --- one file holding several invoices (V2 P6) -------------------------------------------
+
+    def _divide(
+        self,
+        version_id: uuid.UUID,
+        turn: int,
+        tenant: uuid.UUID,
+        proposal: Proposal,
+        data: bytes,
+        final: bool,
+    ) -> Outcome:
+        """Record what the splitter found. When every page was certain the invoices are made
+        now, each read as its own document; otherwise the file waits for a person to group
+        its pages (Split Review) and nothing is made until they confirm."""
+        groups = [list(group.pages) for group in proposal.groups]
+        try:
+            pdfs = [cut(data, pages) for pages in groups] if proposal.certain else []
+            self._store_pdfs(tenant, pdfs)
+        except ParseError:
+            return self._fail(version_id, turn, "The file's pages could not be divided.")
+        except StorageUnavailable as error:
+            logger.warning("object storage unavailable for version %s: %s", version_id, error)
+            return self._retry_or_fail(
+                version_id, turn, "Object storage was unavailable.", error, final
+            )
+        with self._sessions.begin() as session:
+            owned = self._owned(session, version_id, turn)
+            if owned is None:
+                return "skipped"
+            document, version = owned
+            version.status = "split"
+            version.error = None
+            version.finished_at = _now()
+            document.page_count = proposal.page_count
+            no_room = self._room_problem(session, document.tenant_id, len(groups))
+            split = DocumentSplit(
+                tenant_id=document.tenant_id, document_id=document.id, version_id=version.id,
+                status="review", automatic=False, reason=proposal.reason or no_room,
+                page_count=proposal.page_count, proposal=_proposal_json(proposal),
+            )  # fmt: skip
+            session.add(split)
+            if proposal.certain and no_room is None:
+                made = self._make_children(session, document, groups, pdfs, WORKER)
+                self._made(session, document, split, groups, made, [], actor=WORKER)
+            else:
+                document.status = document.stage = "split_review"
+                self._audit(
+                    session, document, WORKER, "split.proposed",
+                    pages=proposal.page_count, invoices=len(groups),
+                    non_invoice_pages=len(proposal.non_invoice),
+                    pages_in_doubt=len(proposal.pages_in_doubt),
+                )  # fmt: skip
+        return "split"
+
+    def _store_pdfs(self, tenant: uuid.UUID, pdfs: Sequence[bytes]) -> None:
+        """Stored before the transaction that records them, as an upload's file is: an
+        object without a row is harmless."""
+        for data in pdfs:
+            key = original_key(tenant, hashlib.sha256(data).hexdigest(), "pdf")
+            if not self._store.exists(key):
+                self._store.put(key, data, "application/pdf")
+
+    def _room_problem(self, session: Session, tenant_id: uuid.UUID, count: int) -> str | None:
+        """Why a free workspace cannot take `count` new invoices now, in words; None if it
+        can. An organisation is not held to a free workspace's caps."""
+        tenant = session.get(Tenant, tenant_id)
+        if tenant is None or tenant.kind != "personal":
+            return None
+        caps = self._member_caps
+        session.execute(select(func.pg_advisory_xact_lock(func.hashtext(f"uploads:{tenant_id}"))))
+        held = (
+            session.scalar(
+                select(func.count())
+                .select_from(Document)
+                .where(Document.tenant_id == tenant_id, live())
+            )
+            or 0
+        )
+        if held + count > caps.max_documents:
+            return (
+                f"this free workspace holds up to {caps.max_documents} documents and has room "
+                f"for {max(caps.max_documents - held, 0)}; the file holds {count} invoices"
+            )
+        today = func.date_trunc("day", func.now(), "UTC")
+        readings = session.scalar(
+            select(func.count()).select_from(AuditEntry).where(
+                AuditEntry.tenant_id == tenant_id,
+                AuditEntry.action.in_(READINGS),
+                AuditEntry.occurred_at >= today,
+            )
+        ) or 0  # fmt: skip
+        if readings + count > caps.uploads_per_day:
+            return (
+                f"this free workspace takes up to {caps.uploads_per_day} readings a day and has "
+                f"{max(caps.uploads_per_day - readings, 0)} left today; the file holds {count} "
+                "invoices"
+            )
+        return None
+
+    def _make_children(
+        self,
+        session: Session,
+        parent: Document,
+        groups: list[list[int]],
+        pdfs: list[bytes],
+        actor: str,
+    ) -> list[tuple[uuid.UUID, bool]]:
+        """One invoice document per group, each queued to be read as any upload is. Pages
+        already a document (the same bytes) are that document."""
+        made: list[tuple[uuid.UUID, bool]] = []
+        stem = (parent.filename.rsplit(".", 1)[0] or "file")[:150]
+        for index, (pages, data) in enumerate(zip(groups, pdfs, strict=True), start=1):
+            sha256 = hashlib.sha256(data).hexdigest()
+            key = original_key(parent.tenant_id, sha256, "pdf")
+            lock_content(session, parent.tenant_id, sha256)
+            existing = self._by_hash(session, parent.tenant_id, sha256)
+            if existing is not None:
+                made.append((existing.id, False))
+                continue
+            if not self._store.exists(key):  # erased since it was stored: stored again
+                self._store.put(key, data, "application/pdf")
+            child = Document(
+                tenant_id=parent.tenant_id, doc_type="invoice", sha256=sha256, storage_key=key,
+                media_type="application/pdf", size_bytes=len(data), source=parent.source,
+                filename=f"{stem} - invoice {index} of {len(groups)} ({_span(pages)}).pdf",
+                parent_document_id=parent.id, parent_pages=pages,
+            )  # fmt: skip
+            session.add(child)
+            session.flush()
+            version = self._new_version(session, child, version_no=1)
+            self._audit(
+                session, child, actor, "document.received", sha256=sha256,
+                size_bytes=len(data), doc_type="invoice", media_type="application/pdf",
+                parent_document_id=str(parent.id), pages=len(pages),
+            )  # fmt: skip
+            self._enqueue(session, version)
+            made.append((child.id, True))
+        return made
+
+    def _made(
+        self,
+        session: Session,
+        parent: Document,
+        split: DocumentSplit,
+        groups: list[list[int]],
+        made: list[tuple[uuid.UUID, bool]],
+        non_invoice: list[int],
+        *,
+        actor: str,
+        person: str | None = None,
+        moved: int = 0,
+    ) -> None:
+        # Enforced here as well as where the grouping came from: no page is ever dropped.
+        reconcile(split.page_count, groups, non_invoice)
+        split.status = "split"
+        split.automatic = person is None
+        split.groups = [
+            {"pages": pages, "document_id": str(document_id), "new": new}
+            for pages, (document_id, new) in zip(groups, made, strict=True)
+        ]
+        split.non_invoice = non_invoice
+        split.decided_by, split.decided_person, split.decided_at = actor, person, _now()
+        parent.status = parent.stage = "split"
+        details: dict[str, str | int] = {
+            "pages": split.page_count,
+            "invoices": len(groups),
+            "invoice_pages": sum(len(pages) for pages in groups),
+            "non_invoice_pages": len(non_invoice),
+            "already_received": sum(1 for _, new in made if not new),
+        }
+        if person is None:
+            self._audit(session, parent, actor, "split.made", **details)
+        else:
+            self._audit(
+                session, parent, actor, "split.confirmed", person=person, pages_moved=moved,
+                **details,
+            )  # fmt: skip
+
+    @scoped
+    def confirm_split(
+        self,
+        tenant_id: uuid.UUID,
+        document_id: uuid.UUID,
+        groups: list[list[int]],
+        non_invoice: list[int],
+        *,
+        actor: str,
+        person: str,
+    ) -> SplitView:
+        """A person's grouping of a file's pages: one invoice per group, made and queued now.
+
+        Raises `DocumentNotFound`, `SplitNotFound`, `SplitDecided`, `PagesDoNotReconcile`
+        (with the reason in words) or `NoRoom`."""
+        with self._sessions() as session:
+            document = self._document(session, tenant_id, document_id)
+            split = self._split_row(session, document.id)
+            if split.status != "review":
+                raise SplitDecided("The pages of this file were grouped already.")
+            reconcile(split.page_count, groups, non_invoice)
+            if not groups:
+                raise PagesDoNotReconcile(
+                    "Put at least one page in an invoice. If no page is an invoice, delete the "
+                    "file instead."
+                )
+            longest = max(range(len(groups)), key=lambda i: len(groups[i]))
+            limit = self._splitter.max_pages if self._splitter is not None else self._max_pages
+            if len(groups[longest]) > limit:
+                raise PagesDoNotReconcile(
+                    f"Invoice {longest + 1} has {len(groups[longest])} pages; one invoice may "
+                    f"have up to {limit}."
+                )
+            proposal = split.proposal
+            key = document.storage_key
+        groups = [sorted(pages) for pages in groups]
+        non_invoice = sorted(non_invoice)
+        data = self._store.get(key)
+        pdfs = [cut(data, pages) for pages in groups]
+        self._store_pdfs(tenant_id, pdfs)
+        with self._sessions.begin() as session:
+            document = self._document(session, tenant_id, document_id, lock=True)
+            split = self._split_row(session, document.id, lock=True)
+            if split.status != "review":
+                raise SplitDecided("The pages of this file were grouped already.")
+            no_room = self._room_problem(session, tenant_id, len(groups))
+            if no_room is not None:
+                raise NoRoom(no_room[0].upper() + no_room[1:] + ".")
+            made = self._make_children(session, document, groups, pdfs, actor)
+            self._made(
+                session, document, split, groups, made, non_invoice, actor=actor, person=person,
+                moved=_moved(proposal, groups, non_invoice),
+            )  # fmt: skip
+        return self.split_view(tenant_id, document_id)
+
+    @staticmethod
+    def _split_row(
+        session: Session, document_id: uuid.UUID, *, lock: bool = False
+    ) -> DocumentSplit:
+        query = select(DocumentSplit).where(DocumentSplit.document_id == document_id)
+        split = session.scalar(query.with_for_update() if lock else query)
+        if split is None:
+            raise SplitNotFound(f"no division of document {document_id}")
+        return split
+
+    @staticmethod
+    def _children(session: Session, parent_id: uuid.UUID) -> list[Document]:
+        return list(
+            session.scalars(
+                select(Document)
+                .where(Document.parent_document_id == parent_id, live())
+                .order_by(Document.created_at, Document.id)
+            )
+        )
+
+    @scoped
+    def split_view(self, tenant_id: uuid.UUID, document_id: uuid.UUID) -> SplitView:
+        """Raises `DocumentNotFound` or `SplitNotFound`."""
+        with self._sessions() as session:
+            document = self._document(session, tenant_id, document_id)
+            split = self._split_row(session, document.id)
+            return self._split_views(session, [(split, document)])[0]
+
+    @scoped
+    def splits(
+        self, tenant_id: uuid.UUID, *, status: str | None = None, limit: int = 50
+    ) -> list[SplitView]:
+        """Divided files, newest first; `status="review"`: those waiting for a person."""
+        with self._sessions() as session:
+            query = (
+                select(DocumentSplit, Document)
+                .join(Document, Document.id == DocumentSplit.document_id)
+                .where(DocumentSplit.tenant_id == tenant_id, live())
+                .order_by(DocumentSplit.created_at.desc(), DocumentSplit.id.desc())
+                .limit(limit)
+            )
+            if status is not None:
+                query = query.where(DocumentSplit.status == status)
+            rows = [(split, document) for split, document in session.execute(query).all()]
+            return self._split_views(session, rows)
+
+    @staticmethod
+    def _split_views(
+        session: Session, rows: list[tuple[DocumentSplit, Document]]
+    ) -> list[SplitView]:
+        made_ids = {
+            uuid.UUID(group["document_id"]) for split, _ in rows for group in (split.groups or [])
+        }
+        statuses = dict(
+            session.execute(
+                select(Document.id, Document.status).where(Document.id.in_(made_ids), live())
+            ).all()
+        ) if made_ids else {}  # fmt: skip
+        views = []
+        for split, document in rows:
+            proposal = split.proposal
+            proposed = tuple(
+                SplitGroupView(tuple(g["pages"]), g.get("invoice_no"), g.get("seller_gstin"),
+                               None, None, False)
+                for g in proposal.get("groups", [])
+            )  # fmt: skip
+            groups = tuple(
+                SplitGroupView(
+                    tuple(g["pages"]), None, None, uuid.UUID(g["document_id"]),
+                    statuses.get(uuid.UUID(g["document_id"]), "deleted"), bool(g["new"]),
+                )
+                for g in (split.groups or [])
+            )  # fmt: skip
+            views.append(
+                SplitView(
+                    document_id=document.id, filename=document.filename, status=split.status,
+                    automatic=split.automatic, reason=split.reason, page_count=split.page_count,
+                    proposed=proposed,
+                    proposed_non_invoice=tuple(proposal.get("non_invoice", [])),
+                    pages_in_doubt=tuple(proposal.get("pages_in_doubt", [])),
+                    groups=groups, non_invoice=tuple(split.non_invoice or ()),
+                    decided_by=split.decided_by, decided_person=split.decided_person,
+                    decided_at=split.decided_at, created_at=split.created_at,
+                )
+            )  # fmt: skip
+        return views
 
     def _drop_superseded(
         self, version_id: uuid.UUID, tenant: uuid.UUID, sha256: str, kept: str

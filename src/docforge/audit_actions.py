@@ -19,7 +19,8 @@ class Action:
 ACTIONS: dict[str, Action] = {
     # Documents, as the worker reads them
     "document.received": Action(
-        "Document received", ("doc_type", "media_type", "size_bytes", "sha256")
+        "Document received",
+        ("doc_type", "media_type", "size_bytes", "sha256", "parent_document_id", "pages"),
     ),
     "document.reprocess_requested": Action("Reading requested again", ("version_no",)),
     "processing.started": Action("Reading started", ("version_no", "attempt", "stage")),
@@ -132,6 +133,32 @@ ACTIONS: dict[str, Action] = {
     "intake.sender_added": Action("Sender listed for intake", ("sender",)),
     "intake.sender_removed": Action("Sender taken off the intake list", ("sender",)),
     "intake.settings_changed": Action("Intake settings changed", ("fields",)),
+    # Bulk upload and divided files (V2 P6): counts, never filenames or values from a bill
+    "batch.created": Action(
+        "Files uploaded together",
+        ("kind", "files", "received", "already_received", "refused"),
+    ),
+    "batch.retried": Action("Failed files of a batch read again", ("documents",)),
+    "split.proposed": Action(
+        "Pages to be grouped into invoices by a person",
+        ("pages", "invoices", "non_invoice_pages", "pages_in_doubt"),
+    ),
+    "split.made": Action(
+        "Divided into invoices",
+        ("pages", "invoices", "invoice_pages", "non_invoice_pages", "already_received"),
+    ),
+    "split.confirmed": Action(
+        "Pages grouped into invoices",
+        (
+            "person",
+            "pages",
+            "invoices",
+            "invoice_pages",
+            "non_invoice_pages",
+            "pages_moved",
+            "already_received",
+        ),
+    ),
     # Import-file profiles (V2 P3): the layout's shape, never values from a bill or sample
     "export_profile.created": Action("Import profile made", ("target", "basis", "columns")),
     "export_profile.versioned": Action("Import profile changed", ("version", "basis", "columns")),
