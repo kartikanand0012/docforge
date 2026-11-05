@@ -15,6 +15,16 @@ working as expected").
 | P6 bulk upload + PDF split | c4f0143 | 5554952 | 0047 |
 | P7 PO Variance Report | c6fc85d | 612f8b3 | 0048 |
 
+**Security upgrades found by CI's audits on the release PRs** (production runs the old
+versions today, so these ship with the release):
+
+- Web: Next.js 16.3.8 -> 16.4.5 (GHSA-2464-fhr4-w9xw and GHSA-673q-mjm6-r5xr,
+  unauthenticated remote code execution; GHSA-p3m5-59mp-jv5r, denial of service).
+- Backend: pypdf 6.19.0 -> 6.21.4 (it reads uploaded PDFs), Pillow 12.3.0 -> 13.0.0 (which
+  needs Docling 2.132 -> 2.147, the PDF reader), setuptools, pyasn1, brotli, certifi,
+  filelock, OpenTelemetry 1.45.0 -> 1.45.2. `make audit` clean. The Docling upgrade changes the
+  reader, so the release check reads real bills live after the deploy.
+
 **Not shipped:** P2 Tally XML (not built: waits on a real Tally purchase export). The 50-file
 drop limit stays at 50.
 
