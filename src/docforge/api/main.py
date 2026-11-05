@@ -4,17 +4,25 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
-from docforge.accounts import MemberCaps
 from docforge.api.app import create_app
 from docforge.audit_log import AuditLogService
+from docforge.batches import BatchService
 from docforge.collections import CollectionService
-from docforge.config import get_settings
-from docforge.db.session import make_engine, make_session_factory
+from docforge.config import Settings, get_settings
+from docforge.db.session import SessionFactory, make_engine, make_session_factory
+from docforge.documents import DocumentService
+from docforge.export_runs import ExportRunService
 from docforge.extraction.pipeline import InvoicePipeline
 from docforge.h1_products import H1ProductService
+from docforge.intake.mailer import SmtpMailer
+from docforge.intake.service import IntakeService
 from docforge.limits import DatabaseLimits
+from docforge.mappings.service import MappingService
 from docforge.mcp_server.tools import AgentTools
+from docforge.purchase_register import PurchaseRegisterService
+from docforge.storage import S3ObjectStore
 from docforge.telemetry import configure_tracing, settings_prices
+from docforge.variance_report import VarianceReportService
 from docforge.wiring import (
     build_authenticator,
     build_chat,
@@ -24,8 +32,22 @@ from docforge.wiring import (
     build_service,
     build_webhooks,
     load_pipelines,
+    member_caps,
 )
 from docforge.workspace_settings import WorkspaceSettingsService
+
+
+def build_intake(
+    settings: Settings, sessions: SessionFactory, documents: DocumentService
+) -> IntakeService:
+    domain = settings.intake_domain
+    sender = settings.intake_reply_from or f"DocForge <intake@{domain or 'localhost'}>"
+    mailer = SmtpMailer(settings.smtp_url.get_secret_value(), sender) if settings.smtp_url else None
+    return IntakeService(
+        sessions, documents, S3ObjectStore.from_settings(settings), mailer, domain=domain,
+        web_url=settings.web_url, max_upload_bytes=settings.max_upload_bytes,
+        max_pages=settings.max_pages,
+    )  # fmt: skip
 
 
 def create_default_app() -> FastAPI:
@@ -41,6 +63,7 @@ def create_default_app() -> FastAPI:
     chat = build_chat(settings, search)
     collections = CollectionService(sessions)
     limits = DatabaseLimits(sessions)
+    mappings = MappingService(sessions)
     # AI agents read through the same services, under the same limits.
     agents = AgentTools(
         sessions, search=search, chat=chat, collections=collections, documents=service,
@@ -62,6 +85,24 @@ def create_default_app() -> FastAPI:
         collections=collections,
         settings=WorkspaceSettingsService(sessions),
         h1_products=H1ProductService(sessions),
+        mappings=mappings,
+        export_runs=ExportRunService(sessions, S3ObjectStore.from_settings(settings), mappings),
+        purchase_register=PurchaseRegisterService(sessions),
+        po_variance=VarianceReportService(sessions),
+        intake=build_intake(settings, sessions, service),
+        batches=BatchService(
+            sessions,
+            service,
+            max_upload_bytes=settings.max_upload_bytes,
+            max_pages=settings.max_pages,
+            member_caps=member_caps(settings),
+        ),
+        max_zip_bytes=settings.max_zip_bytes,
+        intake_webhook_password=(
+            settings.intake_webhook_password.get_secret_value()
+            if settings.intake_webhook_password
+            else None
+        ),
         limits=limits,
         agents=agents,
         audit_log=AuditLogService(sessions),
@@ -70,10 +111,5 @@ def create_default_app() -> FastAPI:
         signup_enabled=settings.signup_enabled,
         signups_per_day=settings.signups_per_day,
         signups_per_address_per_hour=settings.signups_per_address_per_hour,
-        member_caps=MemberCaps(
-            max_documents=settings.member_max_documents,
-            uploads_per_day=settings.member_uploads_per_day,
-            questions_per_day=settings.member_questions_per_day,
-            readings_per_day_total=settings.member_readings_per_day_total,
-        ),
+        member_caps=member_caps(settings),
     )

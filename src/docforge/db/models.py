@@ -1,7 +1,8 @@
 """ORM models for the tables the service reads and writes. Migrations are hand-written."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
@@ -9,12 +10,15 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     ColumnElement,
+    Date,
     DateTime,
     Float,
     ForeignKey,
     Identity,
     Integer,
+    Numeric,
     Text,
+    false,
     literal_column,
     text,
     true,
@@ -71,6 +75,12 @@ class Document(Base):
     media_type: Mapped[str] = mapped_column(Text, server_default="application/pdf")
     filename: Mapped[str] = mapped_column(Text)
     size_bytes: Mapped[int] = mapped_column(BigInteger)
+    source: Mapped[str] = mapped_column(Text, server_default="upload")  # upload or email
+    # One invoice cut from a PDF that held several (V2 P6): that upload, and its pages.
+    parent_document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id")
+    )
+    parent_pages: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
     page_count: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(Text, server_default="received")
     # Where it is now (docforge.stages); the audit trail has how it got there.
@@ -237,6 +247,13 @@ class WorkspaceSettings(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="RESTRICT"), primary_key=True
     )
     near_expiry_months: Mapped[int] = mapped_column(Integer)  # 0 is off
+    # The PO variance report's tolerances (V2 P7): rupees per unit, units, units, rupees.
+    variance_rate_tolerance: Mapped[Decimal] = mapped_column(Numeric(12, 2), server_default="0")
+    variance_qty_tolerance: Mapped[int] = mapped_column(Integer, server_default="0")
+    variance_free_qty_tolerance: Mapped[int] = mapped_column(Integer, server_default="0")
+    variance_amount_tolerance: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), server_default="1.00"
+    )
     updated_by: Mapped[str] = mapped_column(Text)  # who changed it, by name (the log has the id)
     updated_at: Mapped[datetime] = _created_at()
 
@@ -255,6 +272,290 @@ class H1Product(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class SupplierMapping(Base):
+    """How the workspace's books name one supplier, keyed by its seller GSTIN (V2 P1): every
+    bill from that GSTIN, whatever name it prints, is booked under these names. Edited in
+    place and removed by deleting; past export runs keep the names they were made with."""
+
+    __tablename__ = "supplier_mappings"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    seller_gstin: Mapped[str] = mapped_column(Text)  # upper case, no spaces
+    printed_name: Mapped[str] = mapped_column(Text)  # as a bill printed it, for showing
+    sort_key: Mapped[str] = mapped_column(Text(collation="C"))  # printed_name, case-folded
+    tally_ledger: Mapped[str | None] = mapped_column(Text)
+    marg_party: Mapped[str | None] = mapped_column(Text)
+    purchase_ledger: Mapped[str | None] = mapped_column(Text)
+    tax_treatment: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)  # typed, or suggestion (confirmed by a click)
+    created_by: Mapped[str] = mapped_column(Text)  # by name (the audit log has the id)
+    created_at: Mapped[datetime] = _created_at()
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ItemMapping(Base):
+    """How the workspace's books name one product, keyed by its printed name and pack
+    (`mappings.keys.item_key`), with the HSN the workspace prefers if it differs."""
+
+    __tablename__ = "item_mappings"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    item_key: Mapped[str] = mapped_column(Text)
+    product_name: Mapped[str] = mapped_column(Text)  # as a bill printed it
+    pack: Mapped[str | None] = mapped_column(Text)
+    printed_hsn: Mapped[str | None] = mapped_column(Text)
+    sort_key: Mapped[str] = mapped_column(Text(collation="C"))  # product_name, case-folded
+    tally_item: Mapped[str | None] = mapped_column(Text)
+    marg_item: Mapped[str | None] = mapped_column(Text)
+    preferred_hsn: Mapped[str | None] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class MappingMaster(Base):
+    """A name the workspace's books already use - a ledger or party, or a stock item -
+    imported from its masters to be offered as a suggestion. Never applied by itself."""
+
+    __tablename__ = "mapping_masters"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    kind: Mapped[str] = mapped_column(Text)  # supplier or item
+    name: Mapped[str] = mapped_column(Text)
+    name_key: Mapped[str] = mapped_column(Text)  # case-folded, spacing collapsed
+    gstin: Mapped[str | None] = mapped_column(Text)  # a supplier's, when the file had it
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ExportRun(Base):
+    """One export of approved bills for Tally or Marg. Immutable: a run that met an
+    unmapped supplier or item holds its task list and no file; a ready one names its stored
+    file and the file's SHA-256, so a later download is the file as it was made."""
+
+    __tablename__ = "export_runs"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    target: Mapped[str] = mapped_column(Text)  # tally or marg
+    range_start: Mapped[date] = mapped_column(Date)  # India's dates the bills were approved
+    range_end: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(Text)  # needs_mapping or ready
+    invoices: Mapped[int] = mapped_column(Integer)
+    lines: Mapped[int] = mapped_column(Integer)
+    tasks: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    file_key: Mapped[str | None] = mapped_column(Text)
+    filename: Mapped[str | None] = mapped_column(Text)
+    sha256: Mapped[str | None] = mapped_column(CHAR(64))
+    size_bytes: Mapped[int | None] = mapped_column(Integer)
+    format: Mapped[str] = mapped_column(Text, server_default="mapped_csv")  # or marg_import
+    profile_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("export_profile_versions.id")
+    )  # the layout a Marg import was made in
+    overlaps: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB(none_as_null=True)
+    )  # earlier runs that booked some of the same bills
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ExportRunDocument(Base):
+    """A bill a run booked in its file; what tells a later run it was exported before."""
+
+    __tablename__ = "export_run_documents"
+
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("export_runs.id"), primary_key=True
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+
+
+class ExportProfile(Base):
+    """A workspace's import layout for its books (Marg); at most one active. Its versions
+    hold the layout; it holds the name, whether it is active and its latest version."""
+
+    __tablename__ = "export_profiles"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    target: Mapped[str] = mapped_column(Text)  # marg
+    name: Mapped[str] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    latest_version: Mapped[int] = mapped_column(Integer)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ExportProfileVersion(Base):
+    """One saved layout of a profile. Immutable: an edit is a new version, and a run names
+    the version it used."""
+
+    __tablename__ = "export_profile_versions"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    profile_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("export_profiles.id")
+    )
+    version_no: Mapped[int] = mapped_column(Integer)
+    spec: Mapped[dict[str, Any]] = mapped_column(JSONB)  # docforge.profiles.spec.Profile
+    basis: Mapped[str] = mapped_column(Text)  # sample (made-up), upload, or manual
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class IntakeAddress(Base):
+    """A workspace's forwarding address (V2 P5). Only the token's SHA-256 is kept; at most
+    one is active, and a revoked one stays so mail to it is known and refused."""
+
+    __tablename__ = "intake_addresses"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    slug: Mapped[str] = mapped_column(Text)
+    token_hash: Mapped[str] = mapped_column(CHAR(64))
+    active: Mapped[bool] = mapped_column(Boolean, server_default=true())
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    revoked_by: Mapped[str | None] = mapped_column(Text)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class IntakeSender(Base):
+    """A sender whose mail is read without being held: a@b.in, or @b.in for a domain."""
+
+    __tablename__ = "intake_senders"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    pattern: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class IntakeSettings(Base):
+    __tablename__ = "intake_settings"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id"), primary_key=True
+    )
+    trust_accepted: Mapped[bool] = mapped_column(Boolean, server_default=false())
+    per_sender_hourly: Mapped[int] = mapped_column(Integer, server_default="100")
+    updated_by: Mapped[str | None] = mapped_column(Text)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class IntakeMessage(Base):
+    """One mail received at a workspace's address."""
+
+    __tablename__ = "intake_messages"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    address_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("intake_addresses.id")
+    )
+    sender: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    provider_message_id: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)  # received, held, rejected, accepted, discarded
+    reason: Mapped[str | None] = mapped_column(Text)
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=_NOW)
+
+
+class IntakeItem(Base):
+    """One attachment of a mail, and what became of it."""
+
+    __tablename__ = "intake_items"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("intake_messages.id")
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    filename: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    sha256: Mapped[str | None] = mapped_column(CHAR(64))
+    # received, already_received, ignored, refused, held, discarded
+    outcome: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    held_key: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DocumentSplit(Base):
+    """What became of a PDF that held several invoices: the proposal, and the grouping made.
+
+    `status` is `review` while a person must confirm the grouping, `split` once the children
+    exist. Every page is in one group or in `non_invoice` (`split.detect.reconcile`).
+    """
+
+    __tablename__ = "document_splits"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"))
+    version_id: Mapped[uuid.UUID] = _version()
+    status: Mapped[str] = mapped_column(Text)  # review, split
+    automatic: Mapped[bool] = mapped_column(Boolean)  # split without a person: every page certain
+    reason: Mapped[str | None] = mapped_column(Text)  # why a person must confirm
+    page_count: Mapped[int] = mapped_column(Integer)
+    proposal: Mapped[dict[str, Any]] = mapped_column(JSONB)  # groups, non_invoice, in doubt
+    groups: Mapped[list[Any] | None] = mapped_column(JSONB)  # as made: pages, document id
+    non_invoice: Mapped[list[int] | None] = mapped_column(ARRAY(Integer))
+    decided_by: Mapped[str | None] = mapped_column(Text)  # the reviewer's actor
+    decided_person: Mapped[str | None] = mapped_column(Text)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class UploadBatch(Base):
+    """Files dropped together, or one ZIP: each became its own document (V2 P6)."""
+
+    __tablename__ = "upload_batches"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    kind: Mapped[str] = mapped_column(Text)  # files, zip
+    doc_type: Mapped[str] = mapped_column(Text)
+    expected: Mapped[int] = mapped_column(Integer)  # files the browser said it would send
+    name: Mapped[str | None] = mapped_column(Text)  # the ZIP's name
+    created_by: Mapped[str] = mapped_column(Text)
+    person: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class UploadBatchItem(Base):
+    """One file of a batch, and what became of it when it arrived."""
+
+    __tablename__ = "upload_batch_items"
+
+    id: Mapped[uuid.UUID] = _id()
+    tenant_id: Mapped[uuid.UUID] = _tenant()
+    batch_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("upload_batches.id"))
+    position: Mapped[int] = mapped_column(Integer)
+    filename: Mapped[str] = mapped_column(Text)
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    outcome: Mapped[str] = mapped_column(Text)  # received, already_received, refused
+    reason: Mapped[str | None] = mapped_column(Text)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    created_at: Mapped[datetime] = _created_at()
+
+
 class MatchRecord(Base):
     """One comparison of an invoice version with a purchase-order version. Immutable."""
 
@@ -266,6 +567,7 @@ class MatchRecord(Base):
     order_version_id: Mapped[uuid.UUID] = _version()
     decision: Mapped[str] = mapped_column(Text)
     data: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    manual: Mapped[bool] = mapped_column(Boolean, server_default=false())  # linked by hand
     created_at: Mapped[datetime] = _created_at()
 
 

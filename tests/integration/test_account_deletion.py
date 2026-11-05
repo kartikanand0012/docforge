@@ -2,8 +2,11 @@
 erases their whole workspace - every row in every table and every stored file - and nothing
 of anyone else's. Afterwards the email is free and the session is useless."""
 
+import base64
+import io
 import logging
 import uuid
+import zipfile
 from collections.abc import Callable
 from typing import Any
 
@@ -14,8 +17,9 @@ from test_member_isolation import Two
 
 from docforge.db import DEFAULT_TENANT_ID
 from docforge.db.session import SessionFactory
+from docforge.profiles.spec import sample_profile
 from docforge.review.service import ReviewService
-from full_stack import PASSWORD, FullStack
+from full_stack import INTAKE_PASSWORD, PASSWORD, FullStack
 from worlds import World
 
 pytestmark = [pytest.mark.integration, pytest.mark.no_ambient_tenant]
@@ -63,6 +67,85 @@ def two(
         "/v1/schedule-h1/products", headers=two.asha, json={"product_name": "ALPRAX 0.5 TAB"}
     )
     assert marked.status_code == 201, marked.text
+    # Her mapping master and an export run, with its stored file (V2 P1).
+    mapped = two.api.post(
+        "/v1/settings/mappings/suppliers", headers=two.asha,
+        json={"seller_gstin": "24AABFN7754K1Z0", "printed_name": "Navjivan",
+              "tally_ledger": "Navjivan"},
+    )  # fmt: skip
+    assert mapped.status_code == 201, mapped.text
+    item = two.api.post(
+        "/v1/settings/mappings/items", headers=two.asha,
+        json={"product_name": "Dolo 650 Tab", "tally_item": "DOLO 650"},
+    )  # fmt: skip
+    assert item.status_code == 201, item.text
+    imported = two.api.post(
+        "/v1/settings/mappings/import", headers=two.asha,
+        files={"file": ("m.csv", b"name,type\nNavjivan,supplier\n")},
+    )  # fmt: skip
+    assert imported.json()["imported"] == 1, imported.text
+    run = two.api.post(
+        "/v1/exports/runs", headers=two.asha,
+        json={"target": "tally", "from": "2026-01-01", "to": "2026-01-31"},
+    )  # fmt: skip
+    assert run.json()["status"] == "ready", run.text
+    # Her Marg import profile, edited once, and what her run booked (V2 P3).
+    spec = sample_profile().model_dump(mode="json")
+    profile = two.api.post(
+        "/v1/settings/export-profiles", headers=two.asha,
+        json={"name": "Ours", "basis": "upload", "spec": spec},
+    )  # fmt: skip
+    assert profile.status_code == 201, profile.text
+    edited = two.api.put(
+        f"/v1/settings/export-profiles/{profile.json()['id']}", headers=two.asha,
+        json={"basis": "manual", "spec": spec},
+    )  # fmt: skip
+    assert edited.status_code == 200, edited.text
+    with owner_engine.begin() as conn:  # her bill was rejected, so no run of hers booked one
+        conn.execute(
+            text("INSERT INTO export_run_documents (tenant_id, run_id, document_id) "
+                 "VALUES (:t, :r, :d)"),
+            {"t": two.asha_ws, "r": run.json()["id"], "d": two.doc},
+        )  # fmt: skip
+    # Her email intake (V2 P5): an address, a listed sender, a setting, a test mail read and a
+    # mail from someone not listed, held with its copy.
+    intake = "/v1/settings/intake"
+    made = two.api.post(f"{intake}/address", headers=two.asha)
+    assert made.status_code == 201, made.text
+    address = made.json()["address"]["address"]
+    assert two.api.post(f"{intake}/senders", headers=two.asha,
+                        json={"sender": "@supplier.in"}).status_code == 201  # fmt: skip
+    assert two.api.patch(intake, headers=two.asha,
+                         json={"per_sender_hourly": 50}).status_code == 200  # fmt: skip
+    assert two.api.post(f"{intake}/test", headers=two.asha).status_code == 200
+    basic = base64.b64encode(f"intake:{INTAKE_PASSWORD}".encode()).decode()
+    held = two.api.post(
+        "/v1/intake/inbound", headers={"Authorization": f"Basic {basic}"},
+        json={"from": "stranger@else.in", "to": [address], "subject": "Bill",
+              "attachments": [{"filename": "b.pdf",
+                               "content": base64.b64encode(world.invoice_pdf).decode()}]},
+    )  # fmt: skip
+    assert held.json() == {"delivered": 1}, held.text
+    # Her bulk upload (V2 P6): a ZIP of one bill, and a file divided into invoices - her other
+    # document made one cut from the first, the division waiting for her to confirm it.
+    zipped = io.BytesIO()
+    with zipfile.ZipFile(zipped, "w") as archive:
+        archive.writestr("bill.pdf", world.invoice_pdf + b"\n%zipped\n")
+    batch = two.api.post("/v1/batches/zip", headers=two.asha,
+                         files={"file": ("bills.zip", zipped.getvalue())})  # fmt: skip
+    assert batch.status_code == 201, batch.text
+    with owner_engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO document_splits (tenant_id, document_id, version_id, status, "
+                 "automatic, page_count, proposal) SELECT tenant_id, document_id, id, 'review', "
+                 "false, 2, '{}' FROM document_versions WHERE document_id = :d LIMIT 1"),
+            {"d": two.doc},
+        )  # fmt: skip
+        conn.execute(
+            text("UPDATE documents SET parent_document_id = :p, parent_pages = '{1}' "
+                 "WHERE id = :c"),
+            {"p": two.doc, "c": other},
+        )  # fmt: skip
     store = world.store
     store.put(f"renditions/{two.asha_ws}/{'a' * 64}.pdf", b"%PDF-", "application/pdf")
     store.put(f"audit-anchors/{two.asha_ws}/latest.json", b"{}", "application/json")
@@ -121,9 +204,13 @@ def test_deleting_an_account_erases_its_whole_workspace_and_nothing_else(
                   "conversations", "messages", "collections", "collection_documents",
                   "review_claims", "corrections", "reviews", "sessions", "audit_log",
                   "accounts", "reviewers", "assessments", "model_runs", "workspace_settings",
-                  "h1_products", "tenants"):  # fmt: skip
+                  "h1_products", "supplier_mappings", "item_mappings", "mapping_masters",
+                  "export_runs", "export_profiles", "export_profile_versions",
+                  "export_run_documents", "intake_addresses", "intake_senders",
+                  "intake_settings", "intake_messages", "intake_items", "upload_batches",
+                  "upload_batch_items", "document_splits", "tenants"):  # fmt: skip
         assert before[table] > 0, table
-    assert len(keys_of(two, two.asha_ws)) >= 4
+    assert len(keys_of(two, two.asha_ws)) >= 5  # with the export run's file
     bens_rows, bens_keys = rows_of(owner_engine, two.ben_ws), keys_of(two, two.ben_ws)
 
     with caplog.at_level(logging.INFO, logger="docforge.auth"):

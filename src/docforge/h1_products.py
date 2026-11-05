@@ -8,7 +8,7 @@ nor a fail and never holds a bill: it is shown, not checked.
 
 import unicodedata
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -63,15 +63,27 @@ def schedule_h1_lines(
 ) -> tuple[H1Line, ...]:
     """The bill's H1 lines, as named by the schedule or marked by the workspace. A bill with
     no date is taken as dated `today` (India's date)."""
-    names = [(index, line.product_name.value) for index, line in enumerate(invoice.lines)]
-    keys = {product_key(name) for _, name in names if name}
+    names = [line.product_name.value for line in invoice.lines]
+    keys = {product_key(name) for name in names if name}
     marks = _marks(session, tenant_id, keys - {""})
-    billed = invoice.invoice_date.value or today
+    return h1_lines(names, marks, billed=invoice.invoice_date.value, today=today)
+
+
+def h1_lines(
+    names: Sequence[str | None],
+    marks: Mapping[str, H1Product],
+    *,
+    billed: date | None,
+    today: date,
+) -> tuple[H1Line, ...]:
+    """The H1 lines among a bill's product names (by position), given the workspace's marks
+    keyed by `product_key`. A bill with no date is taken as dated `today`."""
+    on = billed or today
     found = []
-    for index, name in names:
+    for index, name in enumerate(names):
         if not name:
             continue
-        molecule = h1_molecule(name, on=billed)
+        molecule = h1_molecule(name, on=on)
         mark = marks.get(product_key(name))
         if molecule is None and mark is None:
             continue
@@ -84,13 +96,17 @@ def schedule_h1_lines(
                 product_id=mark.id if mark else None,
                 # Only while the day is still ahead: stock billed before it is sold after it.
                 joins_on=(
-                    molecule.in_force
-                    if molecule and max(billed, today) < molecule.in_force
-                    else None
+                    molecule.in_force if molecule and max(on, today) < molecule.in_force else None
                 ),
             )
         )
     return tuple(found)
+
+
+def all_marks(session: Session, tenant_id: uuid.UUID) -> dict[str, H1Product]:
+    """Every product the workspace marked (at most `MAX_MARKS`), keyed by `product_key`."""
+    rows = session.scalars(select(H1Product).where(H1Product.tenant_id == tenant_id))
+    return {row.product_key: row for row in rows}
 
 
 def _marks(session: Session, tenant_id: uuid.UUID, keys: Iterable[str]) -> dict[str, H1Product]:

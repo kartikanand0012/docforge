@@ -11,7 +11,7 @@ import logging
 import threading
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -47,6 +47,15 @@ from docforge.extraction.pipeline import DocumentSpec
 from docforge.extraction.purchase_order import PurchaseOrderExtraction
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.h1_products import H1Line, schedule_h1_lines
+from docforge.order_match import (
+    COUNTERPART,
+    MATCH_PATHS,
+    OrderCandidate,
+    find_counterpart,
+    newest_read_version,
+    order_candidates,
+    record_match,
+)
 from docforge.parsing.base import ParsedDocument
 from docforge.parsing.raster import render_pages
 from docforge.review.claims import (
@@ -55,6 +64,13 @@ from docforge.review.claims import (
     TakeOverRefused,
     live_claim,
     refuse_if_claimed,
+)
+from docforge.review.flags import (
+    FlagCounts,
+    FlagSummary,
+    NearExpiryLine,
+    flag_summary,
+    near_expiry_lines,
 )
 from docforge.review.revise import (
     Correction,
@@ -79,12 +95,14 @@ from docforge.trust.einvoice_rules import InvoiceRule, einvoice_rules, unreadabl
 from docforge.trust.invoice_rules import DEFAULT_NEAR_EXPIRY_MONTHS, near_expiry
 from docforge.trust.match import Discrepancy, match_invoice_to_order
 from docforge.trust.rules import run_rules
-from docforge.workspace_settings import near_expiry_months
+from docforge.trust.variance import Variance, compare
+from docforge.workspace_settings import near_expiry_months, variance_tolerances
 
 MAX_FAILED_PINS = 5
 LOCK_FOR = timedelta(minutes=15)
 _MIN_PIN_DIGITS = 6
 _PAGE_DPI = 110
+_THUMBNAIL_DPI = 24  # an A4 page about 200 pixels wide: every page of a file side by side
 _QUEUE_LIMIT = 200
 _QUEUE_SCAN = 20  # documents examined per queue entry returned, at most
 STATS_SCAN = 50  # documents the home screen's count of those awaiting review looks at, at most
@@ -129,6 +147,10 @@ class PageNotFound(LookupError):
     """The document has no such page."""
 
 
+class NotLinkable(Exception):
+    """Only an invoice is linked by hand, and only to a purchase order that has been read."""
+
+
 @dataclass(frozen=True)
 class QueueItem:
     document_id: uuid.UUID
@@ -139,6 +161,7 @@ class QueueItem:
     reasons: tuple[str, ...]
     match_status: str
     claimed_by: str | None = None  # who else has it open now, if anyone
+    flags: FlagCounts = field(default_factory=FlagCounts)  # what the checks flagged, per badge
 
 
 @dataclass(frozen=True)
@@ -203,6 +226,9 @@ class ReviewDetail:
     duplicates: tuple[Duplicate, ...] = ()  # earlier bills this invoice repeats
     near_expiry_months: int = DEFAULT_NEAR_EXPIRY_MONTHS  # the window the checks used
     schedule_h1: tuple[H1Line, ...] = ()  # an invoice's lines for the H1 register
+    near_expiry: tuple[NearExpiryLine, ...] = ()  # an invoice's lines line.shelf_life flags
+    # The bill against its PO, line by line in rupees (V2 P7); None without a linked PO.
+    variance: Variance | None = None
 
     @property
     def decision(self) -> str:
@@ -227,6 +253,8 @@ class _State:
     einvoice_check: EinvoiceCheck | None
     duplicates: tuple[Duplicate, ...]  # earlier bills an invoice repeats
     near_expiry_months: int  # the workspace's window the checks used, 0 for off
+    # The invoice and its PO as corrected, when they are paired (for the variance).
+    order_pair: tuple[InvoiceExtraction, PurchaseOrderExtraction] | None = None
 
     @property
     def blockers(self) -> tuple[str, ...]:
@@ -292,6 +320,21 @@ def _duplicates(
         seller_gstin=extraction.seller.gstin.value,
         invoice_no=extraction.invoice_no.value,
         irn=_text(signed.get("irn")) if isinstance(signed, dict) else None,
+    )
+
+
+def _flag_counts(session: Session, state: "_State", today: date) -> FlagCounts:
+    """A queued bill's flags. H1 lines are found here only for the rows the queue returns,
+    never for every document it scans."""
+    extraction = state.reassessed.extraction
+    if not isinstance(extraction, InvoiceExtraction):
+        return FlagCounts()
+    return FlagCounts(
+        duplicates=len(state.duplicates),
+        near_expiry_lines=len(near_expiry_lines(extraction, state.near_expiry_months)),
+        schedule_h1_lines=len(
+            schedule_h1_lines(session, state.document.tenant_id, extraction, today=today)
+        ),
     )
 
 
@@ -435,6 +478,7 @@ class ReviewService:
                 self._candidates(tenant_id).limit(self._queue_limit * _QUEUE_SCAN)
             ).all()
             window = near_expiry_months(session, tenant_id)  # once for the whole scan
+            today = _india_today()
             for document in documents:
                 state = self._awaiting(session, document, memo, window)
                 if state is not None:
@@ -447,6 +491,7 @@ class ReviewService:
                             created_at=state.version.created_at,
                             reasons=state.blockers,
                             match_status=state.match_status,
+                            flags=_flag_counts(session, state, today),
                         )
                     )
                     if len(items) >= self._queue_limit:
@@ -541,11 +586,63 @@ class ReviewService:
                 if isinstance(extraction, InvoiceExtraction)
                 else ()
             )
+            # Worked out from the pair the match already holds: one more lookup, the
+            # workspace's tolerances.
+            variance = (
+                compare(*state.order_pair, variance_tolerances(session, tenant_id))
+                if state.order_pair is not None
+                else None
+            )
             return replace(
                 self._detail(state),
                 claim=_claim_view(session, document_id, viewer),
                 schedule_h1=h1,
+                variance=variance,
             )
+
+    @scoped
+    def flag_summary(self, tenant_id: uuid.UUID, start: date, end: date) -> FlagSummary:
+        """What the checks flagged on the invoices received from `start` to `end` (India's
+        dates, both included). Raises `RangeInvalid`."""
+        with self._sessions() as session:
+            window = near_expiry_months(session, tenant_id)
+
+            def effective(version_id: uuid.UUID) -> InvoiceExtraction | None:
+                found = self._effective(session, version_id, "invoice")
+                return found if isinstance(found, InvoiceExtraction) else None
+
+            return flag_summary(
+                session, tenant_id, start, end,
+                window=window, today=_india_today(), effective=effective,
+            )  # fmt: skip
+
+    @scoped
+    def effective_invoice(
+        self, tenant_id: uuid.UUID, document_id: uuid.UUID
+    ) -> tuple[str, InvoiceExtraction]:
+        """An invoice's filename and its newest read version's values as corrected, without
+        the checks a review read runs (for what it needs mapped, V2 P1). Raises
+        `DocumentNotFound`, or `NotReviewable` for a document that is no invoice or not read."""
+        with self._sessions() as session:
+            document = self._find(session, tenant_id, document_id)
+            version_id = session.scalar(
+                select(DocumentVersion.id)
+                .join(Extraction, Extraction.document_version_id == DocumentVersion.id)
+                .where(
+                    DocumentVersion.document_id == document.id,
+                    Extraction.tenant_id == tenant_id,
+                )
+                .order_by(DocumentVersion.version_no.desc())
+                .limit(1)
+            )
+            found = (
+                self._effective(session, version_id, document.doc_type)
+                if version_id is not None and document.doc_type == "invoice"
+                else None
+            )
+            if not isinstance(found, InvoiceExtraction):
+                raise NotReviewable(document_id)
+            return document.filename, found
 
     # Claims
 
@@ -640,8 +737,11 @@ class ReviewService:
             )
 
     @scoped
-    def page_image(self, tenant_id: uuid.UUID, document_id: uuid.UUID, page: int) -> bytes:
-        """Page `page` of the original as uploaded, as PNG: what the reviewer compares with."""
+    def page_image(
+        self, tenant_id: uuid.UUID, document_id: uuid.UUID, page: int, *, thumbnail: bool = False
+    ) -> bytes:
+        """Page `page` of the original as uploaded, as PNG: what the reviewer compares with.
+        A thumbnail is small enough to show every page of a file side by side."""
         with self._sessions() as session:
             document = self._find(session, tenant_id, document_id)
             pages = document.page_count or 0
@@ -662,7 +762,8 @@ class ReviewService:
         if not 1 <= page <= pages:
             raise PageNotFound(f"the document has no page {page}")
         with self._renders:  # rendering holds the PDF library's lock; keep a queue short
-            (image,) = render_pages(self._store.get(key), _PAGE_DPI, page, page)
+            dpi = _THUMBNAIL_DPI if thumbnail else _PAGE_DPI
+            (image,) = render_pages(self._store.get(key), dpi, page, page)
             out = io.BytesIO()
             image.save(out, format="PNG", optimize=True)
         return out.getvalue()
@@ -780,7 +881,95 @@ class ReviewService:
                     "changed": old != text,
                 },
             )
+            if path in MATCH_PATHS and document.doc_type in COUNTERPART:
+                session.flush()  # the correction counts when the counterpart is looked for
+                self._pair_again(session, document, state, actor=f"reviewer:{reviewer.id}")
         return self.detail(tenant_id, document_id, viewer=reviewer.id)
+
+    def _pair_again(self, session: Session, document: Document, state: _State, actor: str) -> None:
+        """After a correction to a value pairing reads, look for the counterpart again by the
+        values as corrected, and store the pair if it is a new one. A failure here leaves the
+        correction stored: the pair can still be linked by hand."""
+        try:
+            with session.begin_nested():
+                found = find_counterpart(session, document, state.version.id)
+                if found is None or found[0].id == state.counterpart:
+                    return
+                other, other_version = found
+                mine = self._effective(session, state.version.id, document.doc_type)
+                theirs = self._effective(session, other_version, other.doc_type)
+                if isinstance(mine, InvoiceExtraction):
+                    assert isinstance(theirs, PurchaseOrderExtraction)  # noqa: S101
+                    pair = ((document, state.version.id), (other, other_version), mine, theirs)
+                else:
+                    assert isinstance(mine, PurchaseOrderExtraction)  # noqa: S101
+                    assert isinstance(theirs, InvoiceExtraction)  # noqa: S101
+                    pair = ((other, other_version), (document, state.version.id), theirs, mine)
+                record_match(
+                    session, invoice=pair[0], order=pair[1], records=(pair[2], pair[3]), actor=actor
+                )
+        except Exception:
+            logger.exception("could not pair version %s again after a correction", state.version.id)
+
+    @scoped
+    def order_candidates(
+        self, tenant_id: uuid.UUID, document_id: uuid.UUID
+    ) -> list[OrderCandidate]:
+        """Purchase orders an invoice might be linked to by hand, its seller's first."""
+        with self._sessions() as session:
+            document = self._find(session, tenant_id, document_id)
+            if document.doc_type != "invoice":
+                raise NotLinkable("only an invoice is linked to a purchase order")
+            version_id = newest_read_version(session, document)
+            if version_id is None:
+                raise NotReviewable(document_id)
+            return order_candidates(session, document, version_id)
+
+    @scoped
+    def link_order(
+        self,
+        tenant_id: uuid.UUID,
+        document_id: uuid.UUID,
+        order_document_id: uuid.UUID,
+        *,
+        reason: str,
+        actor: str,
+        name: str,
+    ) -> ReviewDetail:
+        """Link an invoice to its purchase order by hand, when nothing on the page links them.
+        The two are then compared as usual; the link is the invoice's newest pair. `actor` and
+        `name` are the signed-in person, as the audit log and the screen name them."""
+        if not reason.strip():
+            raise ValueError("a link to an order needs a reason")
+        with self._sessions.begin() as session:
+            document = self._find(session, tenant_id, document_id, lock=True)
+            if document.doc_type != "invoice":
+                raise NotLinkable("only an invoice is linked to a purchase order")
+            state = self._changeable(self._state(session, document))
+            order = self._find(session, tenant_id, order_document_id)
+            if order.doc_type != "purchase_order":
+                raise NotLinkable("an invoice is linked to a purchase order only")
+            order_version = newest_read_version(session, order)
+            theirs = (
+                self._effective(session, order_version, "purchase_order")
+                if order_version is not None
+                else None
+            )
+            mine = state.reassessed.extraction
+            if order_version is None or not isinstance(theirs, PurchaseOrderExtraction):
+                raise NotLinkable("the purchase order has not been read yet")
+            assert isinstance(mine, InvoiceExtraction)  # noqa: S101
+            record_match(
+                session,
+                invoice=(document, state.version.id),
+                order=(order, order_version),
+                records=(mine, theirs),
+                actor=actor,
+                manual=True,
+                reason=reason.strip(),
+                linked_by=name,
+            )
+        return self.detail(tenant_id, document_id)
 
     @scoped
     def sign(
@@ -1046,6 +1235,7 @@ class ReviewService:
         match, counterpart = current_match(session, document.tenant_id, version.id)
         discrepancies: tuple[Discrepancy, ...] = ()
         status = "no_counterpart"
+        order_pair: tuple[InvoiceExtraction, PurchaseOrderExtraction] | None = None
         if match is not None:
             other_id = (
                 match.order_version_id
@@ -1059,11 +1249,12 @@ class ReviewService:
                 mine = reassessed.extraction
                 if isinstance(mine, InvoiceExtraction):
                     assert isinstance(other, PurchaseOrderExtraction)  # noqa: S101
-                    found = match_invoice_to_order(mine, other)
+                    order_pair = (mine, other)
                 else:
                     assert isinstance(other, InvoiceExtraction)  # noqa: S101
                     assert isinstance(mine, PurchaseOrderExtraction)  # noqa: S101
-                    found = match_invoice_to_order(other, mine)
+                    order_pair = (other, mine)
+                found = match_invoice_to_order(*order_pair)
                 discrepancies = found
                 status = "mismatch" if any(d.severity == "error" for d in found) else "match"
         signed = session.execute(
@@ -1088,6 +1279,7 @@ class ReviewService:
             einvoice_check=einvoice_check,
             duplicates=_duplicates(session, document, reassessed.extraction, einvoice_check),
             near_expiry_months=window,
+            order_pair=order_pair,
         )
 
     def _certificates(
@@ -1230,6 +1422,11 @@ class ReviewService:
             einvoice=einvoice_view(state.einvoice_check, state.reassessed.assessment.rules),
             duplicates=state.duplicates,
             near_expiry_months=state.near_expiry_months,
+            near_expiry=(
+                near_expiry_lines(state.reassessed.extraction, state.near_expiry_months)
+                if isinstance(state.reassessed.extraction, InvoiceExtraction)
+                else ()
+            ),
         )
 
 

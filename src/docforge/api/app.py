@@ -30,15 +30,22 @@ from docforge.api.auth import (
     require,
     sessions_router,
 )
+from docforge.api.batches import BATCH_ZIP_PATH, batches_router
 from docforge.api.chat import chat_router
 from docforge.api.collections import collections_router
 from docforge.api.documents import documents_router
+from docforge.api.export_profiles import export_profiles_router
+from docforge.api.export_runs import export_runs_router
 from docforge.api.exports import exports_router
+from docforge.api.intake import INBOUND_PREFIX, MAX_INBOUND_BYTES, intake_router
+from docforge.api.mappings import mappings_router
 from docforge.api.platform import platform_router
+from docforge.api.purchase_register import purchase_register_router
 from docforge.api.review import review_router
 from docforge.api.schedule_h1 import schedule_h1_router
 from docforge.api.search import search_router
 from docforge.api.settings import settings_router
+from docforge.api.splits import splits_router
 from docforge.api.stats import stats_router
 from docforge.api.uploads import (
     DEFAULT_MAX_UPLOAD_BYTES,
@@ -47,25 +54,32 @@ from docforge.api.uploads import (
     safe_filename,
     too_large_message,
 )
+from docforge.api.variance import variance_router
 from docforge.api.webhooks import webhooks_router
 from docforge.audit_log import AuditLogService
 from docforge.auth import MEMBER, Authenticator, FailureLimiter, Principal
+from docforge.batches import BatchService
 from docforge.chat.service import ChatService
 from docforge.collections import CollectionService
 from docforge.documents import DocumentService
+from docforge.export_runs import ExportRunService
 from docforge.extraction.pipeline import DEFAULT_MAX_PAGES, ExtractionError, InvoicePipeline
 from docforge.extraction.schema import InvoiceExtraction
 from docforge.h1_products import H1ProductService
+from docforge.intake.service import IntakeService
 from docforge.limits import Limits, LocalLimits
 from docforge.llm.base import LLMError, LLMQuotaExhausted
+from docforge.mappings.service import MappingService
 from docforge.mcp_server.server import mount as mount_mcp
 from docforge.mcp_server.tools import AgentTools
 from docforge.parsing.base import Block, DocumentTooLarge, NoTextLayer, ParseError
 from docforge.platform import PlatformService
+from docforge.purchase_register import PurchaseRegisterService
 from docforge.review.service import ReviewService
 from docforge.review.signing import HashingBusy
 from docforge.search.service import SearchService
 from docforge.telemetry import traced
+from docforge.variance_report import VarianceReportService
 from docforge.webhooks import WebhookService
 from docforge.workspace_settings import WorkspaceSettingsService
 
@@ -135,6 +149,14 @@ def create_app(
     collections: CollectionService | None = None,
     settings: WorkspaceSettingsService | None = None,
     h1_products: H1ProductService | None = None,
+    mappings: MappingService | None = None,
+    export_runs: ExportRunService | None = None,
+    purchase_register: PurchaseRegisterService | None = None,
+    po_variance: VarianceReportService | None = None,
+    intake: IntakeService | None = None,
+    intake_webhook_password: str | None = None,
+    batches: BatchService | None = None,
+    max_zip_bytes: int = 500 * 1024 * 1024,
     limits: Limits | None = None,
     agents: AgentTools | None = None,
     audit_log: AuditLogService | None = None,
@@ -174,8 +196,19 @@ def create_app(
         # Refuse from the declared length, before the body is spooled to disk. A request
         # without a length is still capped when read; a proxy must cap it in production.
         declared = request.headers.get("content-length", "")
-        if declared.isdigit() and int(declared) > max_upload_bytes + MULTIPART_OVERHEAD:
-            return JSONResponse({"detail": too_large_message(max_upload_bytes)}, status_code=413)
+        # A mail from the provider carries several attachments, base64, and a ZIP of bills
+        # many files: each its own limit.
+        path = request.url.path
+        if path.startswith(INBOUND_PREFIX):
+            limit, detail = MAX_INBOUND_BYTES, too_large_message(max_upload_bytes)
+        elif path == BATCH_ZIP_PATH:
+            limit = max_zip_bytes + MULTIPART_OVERHEAD
+            detail = f"The ZIP is larger than the limit of {max_zip_bytes // (1024 * 1024)} MB."
+        else:
+            limit = max_upload_bytes + MULTIPART_OVERHEAD
+            detail = too_large_message(max_upload_bytes)
+        if declared.isdigit() and int(declared) > limit:
+            return JSONResponse({"detail": detail}, status_code=413)
         return await call_next(request)
 
     @app.middleware("http")
@@ -252,6 +285,7 @@ def create_app(
             )
         )
         app.include_router(stats_router(service, review, model_prices))
+        app.include_router(splits_router(service))
     limiter = authenticator.limiter if authenticator else FailureLimiter(20, 300)
     if authenticator is not None:
         app.include_router(sessions_router(authenticator))
@@ -282,6 +316,21 @@ def create_app(
         app.include_router(settings_router(settings))
     if h1_products is not None:
         app.include_router(schedule_h1_router(h1_products))
+    if mappings is not None:
+        app.include_router(mappings_router(mappings, review, export_runs))
+    if export_runs is not None:
+        app.include_router(export_runs_router(export_runs))
+        app.include_router(export_profiles_router(export_runs))
+    if purchase_register is not None:
+        app.include_router(purchase_register_router(purchase_register))
+    if po_variance is not None:
+        app.include_router(variance_router(po_variance))
+    if intake is not None:
+        app.include_router(intake_router(intake, webhook_password=intake_webhook_password))
+    if batches is not None:
+        app.include_router(
+            batches_router(batches, max_upload_bytes=max_upload_bytes, max_zip_bytes=max_zip_bytes)
+        )
     if audit_log is not None:
         app.include_router(audit_router(audit_log, caps))
     if authenticator is not None:

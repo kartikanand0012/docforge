@@ -1,6 +1,7 @@
 """Compare an invoice with the purchase order it claims to fulfil."""
 
 import re
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
@@ -34,7 +35,7 @@ def company_key(name: object) -> str | None:
     return " ".join(_COMPANY_WORDS.get(word, word) for word in words) or None
 
 
-def _key(product_name: str) -> str:
+def product_key(product_name: str) -> str:
     """Product names are compared without regard to case or spacing."""
     return " ".join(product_name.split()).casefold()
 
@@ -123,7 +124,7 @@ def _total(invoice: InvoiceExtraction, order: PurchaseOrderExtraction) -> list[D
     ]
 
 
-def _free_quantity(scheme: str | None, qty: int) -> int:
+def free_quantity(scheme: str | None, qty: int) -> int:
     if scheme is None:
         return 0
     buy, free = (int(part) for part in scheme.split("+"))
@@ -168,7 +169,7 @@ def _line(
     if ordered.scheme.raw is not None and ordered.scheme.value is None:
         return found
     if billed.qty.value is not None:
-        expected = _free_quantity(ordered.scheme.value, billed.qty.value)
+        expected = free_quantity(ordered.scheme.value, billed.qty.value)
         # A blank free quantity is zero, which is wrong if the order promised free goods.
         if (billed.free_qty.value or 0) != expected:
             found.append(
@@ -184,6 +185,46 @@ def _line(
                 )
             )
     return found
+
+
+@dataclass(frozen=True)
+class LinePairing:
+    """Which order line each bill line was compared with.
+
+    `billed` holds, for each bill line in order, its index, the order line it was paired
+    with (None: not ordered) and the differences found; `unread_orders` the order lines with
+    no readable product; `not_supplied` the order lines no bill line was paired with."""
+
+    billed: tuple[tuple[int, int | None, tuple[Discrepancy, ...]], ...]
+    unread_orders: tuple[int, ...]
+    not_supplied: tuple[int, ...]
+
+
+def pair_lines(invoice: InvoiceExtraction, order: PurchaseOrderExtraction) -> LinePairing:
+    """Lines are paired by product, because an invoice need not list them in order sequence.
+    The same product may appear on several lines (one per batch), so each name keeps a list,
+    and of several order lines for a product a bill line takes the one it agrees with most."""
+    ordered: dict[str, list[int]] = {}
+    unread = []
+    for index, wanted in enumerate(order.lines):
+        if wanted.product_name.value:
+            ordered.setdefault(product_key(wanted.product_name.value), []).append(index)
+        else:
+            unread.append(index)
+    billed: list[tuple[int, int | None, tuple[Discrepancy, ...]]] = []
+    for index, line in enumerate(invoice.lines):
+        candidates = ordered.get(product_key(line.product_name.value or ""), [])
+        if not candidates:
+            billed.append((index, None, ()))
+            continue
+        differences = [
+            _line(f"lines[{index}]", line, f"lines[{other}]", order.lines[other])
+            for other in candidates
+        ]
+        best = min(range(len(candidates)), key=lambda i: len(differences[i]))
+        billed.append((index, candidates.pop(best), tuple(differences[best])))
+    remaining = tuple(index for indexes in ordered.values() for index in indexes)
+    return LinePairing(tuple(billed), tuple(unread), remaining)
 
 
 def match_invoice_to_order(
@@ -233,57 +274,46 @@ def match_invoice_to_order(
             )
         )
 
-    # Lines are paired by product, because an invoice need not list them in order sequence.
-    # The same product may appear on several lines (one per batch), so each name keeps a list.
-    ordered: dict[str, list[tuple[str, OrderLineExtraction]]] = {}
-    for index, line in enumerate(order.lines):
-        if line.product_name.value:
-            ordered.setdefault(_key(line.product_name.value), []).append((f"lines[{index}]", line))
-        else:
-            found.append(
-                Discrepancy(
-                    code="line.unchecked",
-                    severity="error",
-                    message="An order line has no readable product, so it could not be compared.",
-                    invoice_path=None,
-                    order_path=f"lines[{index}].product_name",
-                    invoice_value=None,
-                    order_value=None,
-                )
+    pairing = pair_lines(invoice, order)
+    for index in pairing.unread_orders:
+        found.append(
+            Discrepancy(
+                code="line.unchecked",
+                severity="error",
+                message="An order line has no readable product, so it could not be compared.",
+                invoice_path=None,
+                order_path=f"lines[{index}].product_name",
+                invoice_value=None,
+                order_value=None,
             )
-    for index, billed in enumerate(invoice.lines):
-        path = f"lines[{index}]"
-        candidates = ordered.get(_key(billed.product_name.value or ""), [])
-        if not candidates:
+        )
+    for index, paired, differences in pairing.billed:
+        if paired is None:
+            name = invoice.lines[index].product_name.value
             found.append(
                 Discrepancy(
                     code="line.not_ordered",
                     severity="error",
-                    message=f"{billed.product_name.value or 'A line'} is billed but not ordered.",
-                    invoice_path=f"{path}.product_name",
+                    message=f"{name or 'A line'} is billed but not ordered.",
+                    invoice_path=f"lines[{index}].product_name",
                     order_path=None,
-                    invoice_value=billed.product_name.value,
+                    invoice_value=name,
                     order_value=None,
                 )
             )
-            continue
-        # Of several order lines for this product, take the one this line agrees with most.
-        differences = [_line(path, billed, *candidate) for candidate in candidates]
-        best = min(range(len(candidates)), key=lambda i: len(differences[i]))
-        candidates.pop(best)
-        found += differences[best]
-    for remaining in ordered.values():
-        for order_path, line in remaining:
-            found.append(
-                Discrepancy(
-                    code="line.not_supplied",
-                    severity="error",  # may be a part shipment, but someone has to confirm it
-                    message=f"{line.product_name.value} was ordered but is not on the invoice.",
-                    invoice_path=None,
-                    order_path=f"{order_path}.product_name",
-                    invoice_value=None,
-                    order_value=line.product_name.value,
-                )
+        found += differences
+    for index in pairing.not_supplied:
+        name = order.lines[index].product_name.value
+        found.append(
+            Discrepancy(
+                code="line.not_supplied",
+                severity="error",  # may be a part shipment, but someone has to confirm it
+                message=f"{name} was ordered but is not on the invoice.",
+                invoice_path=None,
+                order_path=f"lines[{index}].product_name",
+                invoice_value=None,
+                order_value=name,
             )
+        )
     found += _total(invoice, order)
     return tuple(found)

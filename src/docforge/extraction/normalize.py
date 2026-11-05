@@ -40,10 +40,32 @@ _INTEGER = re.compile(rf"({_DIGITS})(?:\.0+)?", re.ASCII)
 _NUMBER = re.compile(rf"-?{_DIGITS}(?:\.\d+)?", re.ASCII)
 # A currency mark may lead and a percent sign may trail; neither may sit inside the digits.
 _AFFIXES = re.compile(r"^(?:rs\.?|inr|₹)\s*|\s*%$", re.IGNORECASE)
-_STATE_THEN_CODE = re.compile(r"(.+?)\s*\((\d{2})\)", re.ASCII)
-_CODE_THEN_STATE = re.compile(r"(\d{2})\s*-\s*(.+)", re.ASCII)
-_STATE_DASH_CODE = re.compile(r"(.+?)\s*-\s*(\d{2})", re.ASCII)
+# The place of supply as bills print it: a state and its 2-digit GST code, in either order.
+_CODE_LABEL = r"(?:(?:state\s*)?code\s*[:\-]?\s*)?"
+_STATE_LABEL = r"(?:state(?:\s*name)?\s*[:\-]\s*)?"
+_PLACE_PATTERNS = (
+    # Gujarat (24), Gujarat [24], Gujarat (State Code: 24)
+    (re.compile(rf"(.+?)\s*[(\[]\s*{_CODE_LABEL}(\d{{2}})\s*[)\]]", re.ASCII | re.I), 1, 2),
+    # State: Gujarat, Code: 24 / State Name: Gujarat State Code: 24
+    (
+        re.compile(
+            rf"{_STATE_LABEL}(.+?)\s*[,/\-]?\s*(?:state\s*)?code\s*[:\-]?\s*(\d{{2}})",
+            re.ASCII | re.I,
+        ),
+        1,
+        2,
+    ),
+    # 24-Gujarat, 07 - Delhi, (24) Gujarat, 24 Gujarat
+    (re.compile(r"[(\[]?(\d{2})[)\]]?\s*[-,/]?\s*([A-Za-z].*)", re.ASCII), 2, 1),
+    # Gujarat - 24, Gujarat, 24, Gujarat / 24
+    (re.compile(r"(.+?)\s*[-,/]\s*(\d{2})", re.ASCII), 1, 2),
+    # Gujarat 24
+    (re.compile(r"(.*[A-Za-z])\s+(\d{2})", re.ASCII), 1, 2),
+)
 _CODE_ONLY = re.compile(r"\d{2}", re.ASCII)
+# GST state codes: 01-38 for the states and union territories (38 Ladakh), 96 another
+# country, 97 other territory. Anything else is not a place of supply's code.
+GST_STATE_CODES = frozenset({f"{n:02d}" for n in range(1, 39)} | {"96", "97"})
 _EARLIEST_YEAR = 1900
 
 
@@ -99,16 +121,19 @@ def parse_int(raw: str) -> int | None:
 
 
 def parse_place_of_supply(raw: str) -> tuple[str | None, str | None]:
-    """`Gujarat (24)`, `24-Gujarat` or `Gujarat - 24` to (state, code); either may be None."""
+    """`Gujarat (24)`, `24-Gujarat`, `State: Gujarat, Code: 24` and the like to (state, code).
+
+    Either may be None. The code is always exactly a 2-digit GST state code, or None: never
+    the printed text around it, and never a number that is not a state's code.
+    """
     text = raw.strip()
     if _CODE_ONLY.fullmatch(text):
-        return None, text
-    if match := _STATE_THEN_CODE.fullmatch(text):
-        return match[1], match[2]
-    if match := _CODE_THEN_STATE.fullmatch(text):
-        return match[2], match[1]
-    if match := _STATE_DASH_CODE.fullmatch(text):
-        return match[1], match[2]
+        return None, text if text in GST_STATE_CODES else None
+    for pattern, state_group, code_group in _PLACE_PATTERNS:
+        if match := pattern.fullmatch(text):
+            state = match[state_group].strip(" ,-/:") or None
+            code = match[code_group]
+            return state, code if code in GST_STATE_CODES else None
     return text, None
 
 

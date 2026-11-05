@@ -159,7 +159,13 @@ def test_the_settings_are_the_defaults_until_changed(bill: Bill) -> None:
     response = client(bill, "reviewer").get("/v1/settings")
 
     assert response.status_code == 200
-    assert response.json() == {"near_expiry_months": 6, "updated_by": None, "updated_at": None}
+    assert response.json() == {
+        "near_expiry_months": 6,
+        # The PO variance's tolerances (V2 P7): exact, but a taxable amount within one rupee.
+        "variance_tolerances": {"rate": "0.00", "qty": 0, "free_qty": 0, "amount": "1.00"},
+        "updated_by": None,
+        "updated_at": None,
+    }
 
 
 @pytest.mark.parametrize("role", ["admin", "member"])

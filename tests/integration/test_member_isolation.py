@@ -97,6 +97,8 @@ def test_every_route_about_ashas_document_is_not_found_for_ben(two: Two) -> None
             "expected_record_sha256": "0" * 64, **secret,
         },
         ("POST", "/claim"): {},
+        ("POST", "/order-link"): {"order_document_id": str(uuid.uuid4()), "reason": "r"},
+        ("POST", "/split"): {"groups": [[1]], "non_invoice": []},
     }  # fmt: skip
     for method, path in about_a_document:
         url = path.replace("{document_id}", str(two.doc)).replace("{page}", "1")

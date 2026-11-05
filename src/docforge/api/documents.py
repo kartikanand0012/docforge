@@ -8,7 +8,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
@@ -29,23 +29,19 @@ from docforge.documents import (
     FreeReadingsUsed,
     QueueFull,
     ReprocessInProgress,
+    SplitFile,
     UnknownDocumentType,
     UnsupportedFormat,
     WorkspaceFull,
 )
 from docforge.formats import ACCEPTED, extension
 from docforge.limits import LimitReached, Limits
-from docforge.parsing.base import ParseError, PasswordProtected
-from docforge.parsing.pdf import pdf_page_count
 from docforge.review.claims import ClaimedByOther
 from docforge.storage import StorageUnavailable
 from docforge.telemetry import Prices
+from docforge.upload_checks import FileRefused, check_pages
 
 logger = logging.getLogger(__name__)
-PROTECTED_PDF_MESSAGE = (
-    "The PDF is protected by a password. Remove the password, or print it to a new PDF, "
-    "and upload that."
-)
 # Seconds a client should wait before sending again: the queue drains in minutes; storage
 # coming back is usually quicker.
 QUEUE_FULL_RETRY_AFTER = "60"
@@ -53,7 +49,7 @@ UNAVAILABLE_RETRY_AFTER = "30"
 
 Reader = Annotated[Principal, Depends(require("documents:read"))]
 Writer = Annotated[Principal, Depends(require("documents:write"))]
-_FINAL_STAGES = ("ready", "processed", "failed")
+_FINAL_STAGES = ("ready", "processed", "failed", "split", "split_review")
 # Each open stream reads the timeline every second; a cap per caller keeps one caller from
 # taking every thread and connection.
 MAX_STREAMS_PER_CALLER = 5
@@ -67,10 +63,16 @@ class DocumentOut(_Out):
     id: uuid.UUID
     doc_type: str
     filename: str
+    source: str = "upload"  # upload, or email
+    # One invoice cut from a file that held several (V2 P6): that file, and its pages there.
+    parent_document_id: uuid.UUID | None = None
+    parent_pages: list[int] | None = None
     sha256: str
     media_type: str
     size_bytes: int
     page_count: int | None
+    # received, processing, extracted, failed; split: divided into its invoices (no bill
+    # itself); split_review: waiting for a person to group its pages into invoices
     status: str
     stage: str  # stored, parsing, extracting, checking, indexing, processed, ready, ...
     ready_for_chat: bool
@@ -248,17 +250,12 @@ def documents_router(
             supported = ", ".join(service.document_types)
             raise HTTPException(422, f"Unknown document type. Supported: {supported}.")
         data, fmt = await read_upload(file, max_upload_bytes)
-        if fmt == "pdf":
-            try:
-                pages = await run_in_threadpool(pdf_page_count, data)
-            except PasswordProtected as error:
-                raise HTTPException(422, PROTECTED_PDF_MESSAGE) from error
-            except ParseError as error:
-                raise HTTPException(422, "The file could not be read as a PDF.") from error
-            if pages > max_pages:
-                raise HTTPException(
-                    413, f"The document has {pages} pages; the limit is {max_pages}."
-                )
+        try:
+            # An invoice PDF may hold several invoices, to be divided (V2 P6).
+            pages = service.pages_allowed(doc_type, max_pages)
+            await run_in_threadpool(check_pages, data, fmt, pages)
+        except FileRefused as error:
+            raise HTTPException(error.status, error.message) from error
 
         # A free workspace's caps; an organisation is held only to the queue's.
         free = principal.role == MEMBER
@@ -389,6 +386,8 @@ def documents_router(
             raise _NOT_FOUND from None
         except ReprocessInProgress:
             raise HTTPException(409, "This document is still being processed.") from None
+        except SplitFile as error:
+            raise HTTPException(409, str(error)) from None
         except (DailyReadingsUsed, FreeReadingsUsed) as error:
             raise _readings_used(error) from error
         except ClaimedByOther as error:
@@ -410,7 +409,7 @@ def documents_router(
             )
         except DocumentNotFound:
             raise _NOT_FOUND from None
-        except ClaimedByOther as error:
+        except (ClaimedByOther, SplitFile) as error:
             raise HTTPException(409, str(error)) from None
         return Response(status_code=204)
 
@@ -421,12 +420,15 @@ def documents_router(
         before: str | None = None,
         doc_type: str | None = None,
         stage: str | None = None,
+        source: Literal["upload", "email"] | None = None,
     ) -> DocumentPage:
-        """The organisation's documents, newest first, each with its stage."""
+        """The organisation's documents, newest first, each with its stage. `source`: those
+        uploaded, or those mailed in."""
         cursor = _parse_cursor(before) if before else None
         rows = service.list_documents(
-            principal.tenant_id, limit=limit + 1, before=cursor, doc_type=doc_type, stage=stage
-        )
+            principal.tenant_id, limit=limit + 1, before=cursor, doc_type=doc_type, stage=stage,
+            source=source,
+        )  # fmt: skip
         page = rows[:limit]
         used = service.usage(principal.tenant_id, [row.id for row in page], priced)
         items = [

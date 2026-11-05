@@ -19,7 +19,8 @@ class Action:
 ACTIONS: dict[str, Action] = {
     # Documents, as the worker reads them
     "document.received": Action(
-        "Document received", ("doc_type", "media_type", "size_bytes", "sha256")
+        "Document received",
+        ("doc_type", "media_type", "size_bytes", "sha256", "parent_document_id", "pages"),
     ),
     "document.reprocess_requested": Action("Reading requested again", ("version_no",)),
     "processing.started": Action("Reading started", ("version_no", "attempt", "stage")),
@@ -32,6 +33,9 @@ ACTIONS: dict[str, Action] = {
     ),
     "einvoice.checked": Action("E-invoice QR checked", ("version_no", "status", "irp")),
     "match.created": Action("Matched", ("counterpart_document_id", "decision", "discrepancies")),
+    "match.linked": Action(
+        "Linked to its order by hand", ("counterpart_document_id", "decision", "discrepancies")
+    ),
     "processing.retry_scheduled": Action(
         "Reading to be retried", ("version_no", "attempt", "error")
     ),
@@ -61,6 +65,112 @@ ACTIONS: dict[str, Action] = {
     # Schedule H1 products a reviewer marks for the workspace
     "h1_product.marked": Action("Product marked Schedule H1", ("product_name",)),
     "h1_product.unmarked": Action("Schedule H1 mark removed", ("product_name",)),
+    # The mapping master (V2 P1): what was done, never the names themselves
+    "mapping.created": Action("Mapping made", ("kind", "source")),
+    "mapping.updated": Action("Mapping changed", ("kind", "fields")),
+    "mapping.deleted": Action("Mapping removed", ("kind",)),
+    "mapping.imported": Action(
+        "Master names imported", ("rows", "imported", "already_known", "rejected")
+    ),
+    # Export runs for Tally and Marg
+    "export.created": Action(
+        "Export run",
+        (
+            "target",
+            "status",
+            "invoices",
+            "lines",
+            "unmapped_suppliers",
+            "unmapped_items",
+            "problems",
+            "sha256",
+            "format",
+            "profile_version",
+            "exported_before",
+        ),
+    ),
+    "export.downloaded": Action("Export file downloaded", ("sha256",)),
+    # The purchase register (V2 P4): counts and the file's hash, never a value from a bill
+    "register.exported": Action(
+        "Purchase register exported",
+        ("month", "invoices", "supplier_filter", "with_2b", "sha256"),
+    ),
+    "register.compared_2b": Action(
+        "Purchase register compared with GSTR-2B",
+        ("month", "matched", "amount_differs", "docforge_only", "twob_only"),
+    ),
+    # The PO variance report (V2 P7): counts and the file's hash, never a value from a bill
+    "variance.exported": Action(
+        "PO variance report exported",
+        ("month", "invoices_checked", "not_checked", "variances", "supplier_filter", "sha256"),
+    ),
+    # Invoices by email (V2 P5): who sent it and what became of it, never content or names
+    "intake.received": Action(
+        "Mail received",
+        (
+            "sender",
+            "status",
+            "reason",
+            "received",
+            "already_received",
+            "ignored",
+            "refused",
+            "held",
+        ),
+    ),
+    "intake.held": Action(
+        "Mail held for review",
+        (
+            "sender",
+            "status",
+            "reason",
+            "received",
+            "already_received",
+            "ignored",
+            "refused",
+            "held",
+        ),
+    ),
+    "intake.accepted": Action("Held mail accepted", ("sender", "documents")),
+    "intake.discarded": Action("Held mail discarded", ("sender", "attachments")),
+    "intake.address_created": Action("Intake address made"),
+    "intake.token_revoked": Action("Intake address revoked"),
+    "intake.sender_added": Action("Sender listed for intake", ("sender",)),
+    "intake.sender_removed": Action("Sender taken off the intake list", ("sender",)),
+    "intake.settings_changed": Action("Intake settings changed", ("fields",)),
+    # Bulk upload and divided files (V2 P6): counts, never filenames or values from a bill
+    "batch.created": Action(
+        "Files uploaded together",
+        ("kind", "files", "received", "already_received", "refused"),
+    ),
+    "batch.retried": Action("Failed files of a batch read again", ("documents",)),
+    "split.proposed": Action(
+        "Pages to be grouped into invoices by a person",
+        ("pages", "invoices", "non_invoice_pages", "pages_in_doubt"),
+    ),
+    "split.made": Action(
+        "Divided into invoices",
+        ("pages", "invoices", "invoice_pages", "non_invoice_pages", "already_received"),
+    ),
+    "split.confirmed": Action(
+        "Pages grouped into invoices",
+        (
+            "person",
+            "pages",
+            "invoices",
+            "invoice_pages",
+            "non_invoice_pages",
+            "pages_moved",
+            "already_received",
+        ),
+    ),
+    # Import-file profiles (V2 P3): the layout's shape, never values from a bill or sample
+    "export_profile.created": Action("Import profile made", ("target", "basis", "columns")),
+    "export_profile.versioned": Action("Import profile changed", ("version", "basis", "columns")),
+    "export_profile.activated": Action("Import profile made active", ("version",)),
+    "export_profile.checked": Action(
+        "Import profile checked against a file", ("version", "bills", "cells", "equal")
+    ),
     # Keys and webhooks
     "api_key.created": Action("API key made", ("name", "role")),
     "api_key.revoked": Action("API key revoked", ("name",)),

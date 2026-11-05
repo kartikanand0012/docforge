@@ -15,23 +15,30 @@ from test_chat import Model
 from docforge.api.app import MemberCaps, create_app
 from docforge.audit_log import AuditLogService
 from docforge.auth import Authenticator
+from docforge.batches import BatchService
 from docforge.chat.service import ChatService
 from docforge.collections import CollectionService
 from docforge.db.session import SessionFactory
+from docforge.export_runs import ExportRunService
 from docforge.extraction.pipeline import INVOICE_SPEC
 from docforge.extraction.purchase_order import PURCHASE_ORDER_SPEC
 from docforge.h1_products import H1ProductService
+from docforge.intake.service import IntakeService
 from docforge.limits import LocalLimits
+from docforge.mappings.service import MappingService
 from docforge.mcp_server.tools import AgentTools
 from docforge.platform import PlatformService
+from docforge.purchase_register import PurchaseRegisterService
 from docforge.review.service import ReviewService
 from docforge.search.embeddings import FakeEmbedder
 from docforge.search.service import SearchService
+from docforge.variance_report import VarianceReportService
 from docforge.webhooks import WebhookService
 from docforge.workspace_settings import WorkspaceSettingsService
 from worlds import World
 
 PASSWORD = "correct horse battery staple"  # noqa: S105 - a test account's
+INTAKE_PASSWORD = "full-stack-intake"  # noqa: S105 - a test stack's
 
 
 class FullStack:
@@ -63,11 +70,18 @@ class FullStack:
             documents=self.documents, limits=self.limits,
         )  # fmt: skip
         self.platform = PlatformService(platform, prices) if platform else None
+        self.mappings = MappingService(sessions)
+        self.runs = ExportRunService(sessions, world.store, self.mappings)
         self.app = create_app(
             None, service=self.documents, review=self.review, authenticator=self.auth,
             webhooks=self.webhooks, search=self.search, chat=self.chat,
             collections=self.collections, settings=WorkspaceSettingsService(sessions),
-            h1_products=H1ProductService(sessions),
+            h1_products=H1ProductService(sessions), mappings=self.mappings,
+            export_runs=self.runs, purchase_register=PurchaseRegisterService(sessions),
+            po_variance=VarianceReportService(sessions),
+            intake=IntakeService(sessions, self.documents, world.store, domain="in.test"),
+            intake_webhook_password=INTAKE_PASSWORD,
+            batches=BatchService(sessions, self.documents, member_caps=caps or MemberCaps()),
             limits=self.limits, agents=self.tools,
             audit_log=AuditLogService(sessions), signup_enabled=signup,
             signups_per_day=signups_per_day, member_caps=caps or MemberCaps(),

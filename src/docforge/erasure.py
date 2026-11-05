@@ -45,7 +45,12 @@ class Erasure:
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _ORIGINAL_EXTENSION = re.compile(r"\.[a-z0-9]{1,8}")
-TENANT_PREFIXES = ("originals", "renditions")
+TENANT_PREFIXES = (
+    "originals",
+    "renditions",
+    "exports",
+    "intake",
+)  # exports: V2 P1; intake: P5's held mail
 
 
 def _original_key(erasure: Erasure) -> str:
